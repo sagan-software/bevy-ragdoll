@@ -1,0 +1,22 @@
+[package]
+name = "bevy_ragdoll"
+description = "Active ragdolls for Bevy on any skeleton and physics engine"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[features]
+default = ["3d", "gltf", "serialize"]
+3d = []
+2d = []
+gltf = []
+serialize = []
+
+[dependencies]
+bevy = { workspace = true, features = ["std", "bevy_asset", "bevy_animation", "bevy_log"] }
+bevy_transform.workspace = true
+
+[lints]
+workspace = true
