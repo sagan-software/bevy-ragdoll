@@ -11,12 +11,16 @@ repository.workspace = true
 default = ["3d", "gltf", "serialize"]
 3d = []
 2d = []
-gltf = []
-serialize = []
+gltf = ["serialize", "dep:serde_json"]
+serialize = ["dep:ron", "dep:serde", "bevy/serialize"]
 
 [dependencies]
 bevy = { workspace = true, features = ["std", "bevy_asset", "bevy_animation", "bevy_log"] }
 bevy_transform.workspace = true
+ron = { workspace = true, optional = true }
+serde = { workspace = true, optional = true }
+serde_json = { workspace = true, optional = true }
+thiserror.workspace = true
 
 [lints]
 workspace = true

@@ -1,9 +1,13 @@
-//! Active ragdolls for Bevy skeletons and physics backends.
+//! Profile-driven ragdolls for Bevy skeletons and physics backends.
 //!
-//! This crate is the public home for the Bevy ragdoll plugin, configuration, and
-//! runtime components. Later phases add profile loading, skeleton binding, and
-//! backend behavior. Phase 1 registers no systems and performs no physics work.
-//! Add `RagdollPlugin` to an `App` as the integration entry point.
+//! This crate defines serializable profile data, validates body and joint
+//! invariants, derives contact and child masks, and exposes Skein authoring
+//! components. Enable `serialize` for RON assets and `gltf` for GLB rig import.
+//! The `skein` module documents the reflected annotation schema, while the
+//! profile module's root re-exports cover validated data and authoring builders.
+//! Add [`RagdollPlugin`] to initialize the profile asset type and reflected
+//! Skein components. Physics backend integrations and active control build on
+//! the validated [`RagdollProfile`] data model.
 //!
 //! ```ignore
 //! use bevy::prelude::*;
@@ -14,16 +18,37 @@
 //!     .run();
 //! ```
 
+use bevy::asset::AssetApp;
 use bevy::prelude::{App, Plugin};
 use bevy_transform as _;
 
-/// Registers the phase 1 ragdoll integration point with a Bevy app.
+#[cfg(feature = "gltf")]
+pub mod gltf;
+mod profile;
+pub mod skein;
+
+pub use self::profile::{
+    AngleRange, Body, BodyIndex, BodySpec, Joint, JointAxis, JointLimits, JointSpec, MAX_BODIES,
+    Mass, MassError, ProfileBuilder, ProfileError, ProfileSpec, RagdollProfile, ShapeSpec,
+};
+#[cfg(feature = "serialize")]
+pub use self::profile::{RagdollProfileLoader, RagdollProfileLoaderError};
+
+/// Registers profile assets and reflected Skein authoring components with Bevy.
 ///
-/// Later phases add profile loading, skeleton binding, and backend systems to
-/// this plugin.
+/// Add the plugin once before loading `.ragdoll.ron` assets or reflecting body
+/// and joint annotations. It initializes the loader only when `serialize` is
+/// enabled, and it does not start a physics backend by itself.
 #[derive(Clone, Copy, Debug)]
 pub struct RagdollPlugin;
 
 impl Plugin for RagdollPlugin {
-    fn build(&self, _app: &mut App) {}
+    fn build(&self, app: &mut App) {
+        app.init_asset::<RagdollProfile>();
+        #[cfg(feature = "serialize")]
+        app.init_asset_loader::<RagdollProfileLoader>();
+        app.register_type::<skein::RagdollBody>()
+            .register_type::<skein::AngleRange>()
+            .register_type::<skein::RagdollJoint>();
+    }
 }
