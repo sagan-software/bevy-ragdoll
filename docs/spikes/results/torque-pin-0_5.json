@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "configuration": {
+    "drive": "torque",
+    "pin": 0.5,
+    "muscle": 1.0,
+    "count": 1,
+    "seconds": 10.0,
+    "natural_frequency_hz": 4.0,
+    "fixed_frequency_hz": 60.0
+  },
+  "metrics": {
+    "fixed_steps": 600,
+    "mean_joint_angle_error_deg": 8.746509396751838,
+    "max_joint_angle_error_deg": 113.82304663132233,
+    "max_pelvis_height_drift_m": 0.84376836,
+    "max_pelvis_height_drift_at_s": 7.850000157,
+    "max_pin_force_n": 136.6885,
+    "final_pelvis_height_m": 0.12085253,
+    "mean_step_ms": 0.12721186166666665,
+    "p95_step_ms": 0.1472,
+    "unstable_bodies": 0
+  }
+}

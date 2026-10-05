@@ -10,5 +10,32 @@ repository.workspace = true
 [lib]
 path = "src/lib.rs"
 
+[features]
+default = []
+rapier3d = [
+    "dep:bevy",
+    "dep:bevy_ragdoll",
+    "dep:bevy_rapier3d",
+    "dep:clap",
+    "dep:ron",
+    "dep:serde",
+    "dep:serde_json",
+]
+visual = ["rapier3d", "bevy/3d", "bevy/png", "bevy/x11"]
+
+[dependencies]
+bevy = { workspace = true, optional = true, features = ["std"] }
+bevy_ragdoll = { path = "../crates/bevy_ragdoll", default-features = false, features = ["3d", "serialize"], optional = true }
+bevy_rapier3d = { workspace = true, default-features = false, features = ["dim3"], optional = true }
+clap = { workspace = true, optional = true }
+ron = { workspace = true, optional = true }
+serde = { workspace = true, optional = true }
+serde_json = { workspace = true, optional = true }
+
+[[example]]
+name = "spike_rapier_powered"
+path = "spike_rapier_powered.rs"
+required-features = ["rapier3d"]
+
 [lints]
 workspace = true

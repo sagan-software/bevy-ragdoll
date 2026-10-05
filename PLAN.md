@@ -4,7 +4,7 @@
 | --- | --- | --- |
 | [x] | 1. Repository, toolchain and CI | Local workspace and gates complete. GitHub creation, authentication, push and CI are deferred at the owner's direction. |
 | [x] | 2. Profile data model and import | Profile model, RON loader, Skein components and TGF GLB import implemented; all phase 2 gates pass. Coverage gaps are documented below and in the commit body. |
-| [ ] | 3. Rapier powered-ragdoll spike | |
+| [x] | 3. Rapier powered-ragdoll spike | [Report](docs/spikes/rapier-powered.md); checks and coverage gap recorded below. |
 | [ ] | 4. Core runtime | |
 | [ ] | 5. Rapier 3D backend | |
 | [ ] | 6. Performance | |
@@ -140,3 +140,44 @@
   directories. It passed with 79 GiB free. Nix printed the ignored
   `/etc/nix/sentry-endpoint` permission warning; Cargo emitted no warning
   diagnostics.
+
+## Phase 3 evidence
+
+- Report: [docs/spikes/rapier-powered.md](docs/spikes/rapier-powered.md).
+  It links both actual Bevy window screenshots and the JSON reports for all
+  matrix runs. The report recommends `AccelerationBased` joint motors.
+- The phase's owner-review checkpoint was waived by the owner's instruction
+  to continue through all phases. The local implementation continues to phase
+  4; GitHub operations remain deferred.
+- `cargo fmt --all -- --check` passed. `cargo test --workspace` passed 25
+  library unit tests, 15 profile integration tests, and 39 doctests. One
+  integration test and one doctest remain intentionally ignored.
+- `cargo test -p bevy_ragdoll_examples --example spike_rapier_powered
+  --features visual` passed all 10 example tests. The real visible run
+  produced the screenshots listed in the report.
+- `cargo build -p bevy_ragdoll_examples --example spike_rapier_powered
+  --features visual` passed after the final source edits.
+- `cargo clippy --workspace --all-targets --all-features -- -D warnings`
+  passed. Its first run found two undocumented private enum fields and one
+  collapsible conditional; all three findings were fixed before rerunning.
+- `cargo deny check` passed all four checks. `cargo doc -p bevy_ragdoll
+  --no-deps` passed. Dylints `sagan-lints --fast` passed after the shared
+  Rapier workspace dependency disabled default features, matching the example
+  dependency declaration.
+- `rumdl check --no-config README.md CHANGELOG.md PLAN.md assets/CREDITS.md
+  docs/spikes/rapier-powered.md` passed after the report was written.
+- The stress build command
+  `cargo build -p bevy_ragdoll_examples --example spike_rapier_powered
+  --features rapier3d --profile stress-test` passed. The 1, 32, and 128
+  ragdoll runs each completed 600 steps with zero unstable bodies. The 128
+  ragdoll p95 was 10.6003 ms on this machine.
+- `cargo llvm-cov -p bevy_ragdoll_examples --example
+  spike_rapier_powered --features visual --summary-only` passed all 10 tests.
+  Before the coverage build, the SD card had 61 GiB free. Its report listed
+  core-library files but omitted `examples/spike_rapier_powered.rs`; the
+  changed example has no measured line or branch coverage. This remains an
+  unresolved coverage gap. The report's 49.20% region and 51.98% line totals
+  cover only the files LLVM included and do not measure the example.
+- No matrix row met both the mean joint-error and pelvis-drift thresholds.
+  The best mean error was 3.270 degrees at count 128. The best pelvis drift
+  was 0.1936 m in the single-ragdoll 6 Hz motor run.
