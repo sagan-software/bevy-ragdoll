@@ -28,6 +28,7 @@ criterion = "0.8"
 argh = "0.1"
 clap = { version = "4", features = ["derive"] }
 rand_chacha = "0.9"
+rand_core = "0.9"
 num-traits = "=0.2.19"
 
 [workspace.lints.rust]

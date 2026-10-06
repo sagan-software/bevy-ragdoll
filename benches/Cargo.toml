@@ -7,14 +7,47 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 
+[features]
+default = ["rapier3d"]
+rapier3d = ["dep:bevy_ragdoll_rapier3d", "dep:bevy_rapier3d"]
+
 [dependencies]
 bevy = { workspace = true, features = ["std", "bevy_asset", "bevy_animation", "bevy_log"] }
 bevy_ragdoll = { path = "../crates/bevy_ragdoll" }
+bevy_ragdoll_rapier3d = { path = "../crates/bevy_ragdoll_rapier3d", optional = true }
+bevy_rapier3d = { workspace = true, default-features = false, features = ["dim3"], optional = true }
+rand_chacha.workspace = true
+rand_core.workspace = true
+ron.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
 criterion.workspace = true
 
 [[bench]]
 name = "plugin_build"
 harness = false
+
+[[bench]]
+name = "profile"
+harness = false
+
+[[bench]]
+name = "math"
+harness = false
+
+[[bench]]
+name = "capture"
+harness = false
+
+[[bench]]
+name = "writeback"
+harness = false
+
+[[bench]]
+name = "step_rapier3d"
+harness = false
+required-features = ["rapier3d"]
 
 [lints]
 workspace = true

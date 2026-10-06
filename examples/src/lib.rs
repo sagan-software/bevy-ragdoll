@@ -9,6 +9,8 @@
 mod mock;
 #[cfg(feature = "rapier3d")]
 mod rapier;
+#[cfg(feature = "rapier3d")]
+pub mod stress;
 
 #[cfg(feature = "custom-backend")]
 pub use self::mock::run_custom_backend;

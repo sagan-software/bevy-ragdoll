@@ -33,6 +33,7 @@ visual = [
     "bevy/png",
     "bevy/x11",
 ]
+tracy = ["visual", "bevy/trace_tracy"]
 custom-backend = [
     "dep:bevy",
     "dep:clap",
@@ -109,6 +110,22 @@ required-features = ["rapier3d"]
 name = "From glTF Skein"
 description = "Import the TGF human rig and Skein body annotations from GLB."
 category = "Basics"
+wasm = true
+
+[[example]]
+name = "ragdoll_stress"
+path = "ragdoll_stress.rs"
+required-features = ["rapier3d"]
+
+[[test]]
+name = "stress_reports"
+path = "tests/stress_reports.rs"
+required-features = ["rapier3d"]
+
+[package.metadata.example.ragdoll_stress]
+name = "Ragdoll Stress"
+description = "Measure ragdoll body, joint, and fixed-step costs across stress scenarios."
+category = "Stress Tests"
 wasm = true
 
 [lints]
