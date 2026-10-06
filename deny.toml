@@ -70,6 +70,7 @@ feature-depth = 1
 # A list of advisory IDs to ignore. Note that ignored advisories will still
 # output a note when they are encountered.
 ignore = [
+    { id = "RUSTSEC-2024-0436", reason = "Rapier 0.35 pulls the unmaintained paste crate through simba; RustSec reports no safe upgrade. Reevaluate when the upstream dependency graph removes paste." },
     #"RUSTSEC-0000-0000",
     #{ id = "RUSTSEC-0000-0000", reason = "you can specify a reason the advisory is ignored" },
     #"a-crate-that-is-yanked@0.1.1", # you can also ignore yanked crate versions if you wish
@@ -210,6 +211,8 @@ deny = [
 # Certain crates/versions that will be skipped when doing duplicate detection.
 skip = [
     { crate = "foldhash@0.1.5", reason = "Bevy 0.19.1 requires this through petgraph and also uses foldhash 0.2.0." },
+    { crate = "heapless@0.8.0", reason = "Rapier 0.35 requires heapless 0.8.0 through rstar while Bevy 0.19.1 requires 0.9.3." },
+    { crate = "heapless@0.9.3", reason = "Bevy 0.19.1 requires heapless 0.9.3 through bevy_tasks while Rapier 0.35 requires 0.8.0." },
     { crate = "hashbrown@0.15.5", reason = "Bevy 0.19.1 requires this through petgraph while other Bevy dependencies use newer hashbrown versions." },
     { crate = "hashbrown@0.16.1", reason = "Bevy 0.19.1 requires this through bevy_platform while other Bevy dependencies use hashbrown 0.15.5 and 0.17.1." },
     { crate = "itertools@0.13.0", reason = "Criterion 0.8 requires this while Bevy Math uses itertools 0.14.0." },

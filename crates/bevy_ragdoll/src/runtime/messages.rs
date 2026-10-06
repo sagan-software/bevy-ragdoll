@@ -129,9 +129,10 @@ pub struct RagdollHit {
 /// response message.
 ///
 /// The backend normalizes valid directions, rejects non-finite or nonpositive
-/// distances, and returns the closest accepted hit. `filter` excludes one
-/// entity and its body representation from the query; no response is inferred
-/// from request order, so callers match by `request_id`.
+/// distances, and returns the closest accepted hit. `filter` excludes the exact
+/// entity and every ragdoll body it owns; passing a body entity excludes that
+/// body. No response is inferred from request order, so callers match by
+/// `request_id`.
 #[derive(Clone, Copy, Debug, Message, PartialEq, bevy::prelude::Reflect)]
 pub struct RagdollRaycast {
     /// Caller-chosen identity copied unchanged into exactly the response
@@ -150,9 +151,9 @@ pub struct RagdollRaycast {
     /// reports a miss. The message reader uses this member during the requested
     /// operation and preserves it when publishing a result.
     pub max_distance: f32,
-    /// Optional character entity excluded along with its ragdoll bodies when
-    /// supplied by the caller. The message reader uses this member during the
-    /// requested operation and preserves it when publishing a result.
+    /// Optional entity excluded together with every ragdoll body it owns. When
+    /// the caller supplies a body entity, the query excludes that body. The
+    /// message reader preserves this value when publishing the response.
     pub filter: Option<Entity>,
 }
 

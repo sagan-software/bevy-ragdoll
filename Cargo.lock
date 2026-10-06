@@ -1368,11 +1368,23 @@ dependencies = [
  "bevy",
  "bevy_ragdoll",
  "bevy_ragdoll_conformance",
+ "bevy_ragdoll_rapier3d",
  "bevy_rapier3d",
  "clap",
  "ron",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "bevy_ragdoll_rapier3d"
+version = "0.1.0-dev"
+dependencies = [
+ "bevy",
+ "bevy_ragdoll",
+ "bevy_ragdoll_conformance",
+ "bevy_rapier3d",
+ "num-traits",
 ]
 
 [[package]]
@@ -4443,10 +4455,12 @@ dependencies = [
  "foldhash 0.2.0",
  "glamx",
  "hashbrown 0.17.1",
+ "indexmap",
  "log",
  "num-derive",
  "num-traits",
  "ordered-float",
+ "rayon",
  "rstar",
  "simba",
  "slab",
@@ -4752,6 +4766,7 @@ dependencies = [
  "num-traits",
  "parry3d",
  "profiling",
+ "rayon",
  "serde",
  "simba",
  "static_assertions",
@@ -5099,6 +5114,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c99284beb21666094ba2b75bbceda012e610f5479dfcc2d6e2426f53197ffd95"
 dependencies = [
  "approx",
+ "libm",
  "num-complex",
  "num-traits",
  "paste",

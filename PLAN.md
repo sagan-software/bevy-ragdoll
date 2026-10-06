@@ -6,7 +6,7 @@
 | [x] | 2. Profile data model and import | Profile model, RON loader, Skein components and TGF GLB import implemented; all phase 2 gates pass. Coverage gaps are documented below and in the commit body. |
 | [x] | 3. Rapier powered-ragdoll spike | [Report](docs/spikes/rapier-powered.md); checks and coverage gap recorded below. |
 | [x] | 4. Core runtime | Runtime, mock backend, conformance tests and screenshots complete. Coverage gaps and reasons are recorded below. |
-| [ ] | 5. Rapier 3D backend | |
+| [x] | 5. Rapier 3D backend | Workspace gates, backend coverage, headless smoke run, and reviewed screenshots pass. Coverage gaps are recorded below. |
 | [ ] | 6. Performance | |
 | [ ] | 7. Active control | |
 | [ ] | 8. Human assets | |
@@ -276,3 +276,64 @@
   Nix Mesa selector reported a missing `GLIBC_ABI_GNU2_TLS` symbol against
   the system glibc. RADV VANGOGH rendered both images, and both runs exited
   successfully.
+
+## Phase 5 evidence
+
+- `nix develop -c cargo fmt --all -- --check` passed.
+- `nix develop -c cargo test --workspace` passed all workspace unit,
+  integration, and documentation tests: 164 unit and integration tests and
+  97 documentation tests passed. The asset-generator doctest and the stairs
+  physics test remain ignored for the documented reasons.
+- `nix develop -c cargo test -p bevy_ragdoll_examples --features rapier3d`
+  passed all 7 feature-gated example tests.
+- `nix develop -c cargo clippy --workspace --all-targets -- -D warnings`
+  passed. `nix develop -c cargo deny check` passed advisories, bans, licenses,
+  and sources.
+- `nix develop -c cargo llvm-cov -p bevy_ragdoll_rapier3d --summary-only`
+  passed 20 backend unit tests and 24 physics integration tests, with one
+  ignored stairs case. The backend line summary is 97.74% (25 of 1,105 lines
+  missed). LLVM reported two functions with mismatched coverage data.
+- The report maps these uncovered backend lines: `body.rs:156` skips an
+  added shape without the required body components; `body.rs:189` handles an
+  owner with no spawn-lift entry; `body.rs:606,632` are fallback panics after
+  shape assertions; `contact.rs:69,71` reject static-static pairs;
+  `query.rs:60,91,107` handle a missing Rapier context, a missing collider
+  mapping, and a pair endpoint mismatch. `plugin.rs:156` is a line-counter
+  miss in fixed-schedule validation. `joint.rs:13`, `plugin.rs:104`, and
+  `settings.rs:10` are declaration or derive lines. LLVM did not map one
+  missed `shape.rs` line or all remaining missed lines because of its
+  mismatched-function warning. The defensive missing-component and missing
+  context paths, impossible pair mismatch, and expected-shape fallback panics
+  have no direct behavioral tests.
+- The conformance source lines in the report are not a complete conformance
+  crate coverage run. This command selected the Rapier crate. The stair helper
+  lines remain unexecuted because the stairs test is ignored. With
+  `joint_friction` 0.05, the body slides 1.1 m and still moves at 4 cm/s
+  4.5 s after landing. At 0.1, it stops but tears joints in the determinism
+  drop test.
+- The coverage command does not measure `bevy_ragdoll_examples`. The 7
+  profile and CLI tests pass, and the four examples have reviewed screenshots,
+  but no example line-coverage report was collected. A separate instrumented
+  visual build was skipped to protect the SD-card free-space reserve.
+- `nix develop -c cargo run -p bevy_ragdoll_examples --example minimal
+  --features rapier3d -- --headless --exit-after 3` passed. I reviewed the
+  rendered screenshots [minimal](docs/screenshots/phase-05-minimal.png),
+  [windowed minimal](docs/screenshots/phase-05-minimal-windowed.png),
+  [from code](docs/screenshots/phase-05-from-code.png),
+  [from RON](docs/screenshots/phase-05-from-ron.png), and
+  [from glTF Skein](docs/screenshots/phase-05-from-gltf-skein.png). Each shows
+  the ragdoll at or after landing with the corresponding example label.
+- `nix develop -c cargo doc --workspace --no-deps` passed without warnings
+  after the broken `AddBackend` intra-doc link was changed to its crate path.
+- The final Markdown lint passed:
+
+  ```sh
+  PATH=/var/mnt/nixsd/Caches/cargo/bin:$PATH \
+    rumdl check --no-config README.md CHANGELOG.md PLAN.md \
+      assets/CREDITS.md docs/spikes/rapier-powered.md
+  ```
+
+- The exact Dylints `sagan-lints --fast` command passed after the final Rust
+  source edit. Its logs are in
+  `/var/mnt/nixsd/Caches/dylints/bevy-ragdoll`. GitHub creation,
+  authentication, and push remain deferred.

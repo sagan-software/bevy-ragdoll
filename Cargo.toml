@@ -3,6 +3,7 @@ resolver = "3"
 members = [
     "crates/bevy_ragdoll",
     "crates/bevy_ragdoll_conformance",
+    "crates/bevy_ragdoll_rapier3d",
     "examples",
     "benches",
 ]
@@ -27,6 +28,7 @@ criterion = "0.8"
 argh = "0.1"
 clap = { version = "4", features = ["derive"] }
 rand_chacha = "0.9"
+num-traits = "=0.2.19"
 
 [workspace.lints.rust]
 missing_docs = "warn"

@@ -223,6 +223,10 @@ fn integrate_dynamic_bodies(
 
     // Integrate only dynamic bodies; fixed and kinematic state is handled in separate paths.
     for (entity, kind, mass, mut velocity, mut transform, drive) in &mut bodies {
+        if *kind == BodyKind::Fixed {
+            // Frozen bodies retain their poses, so discard motion from dynamic mode.
+            *velocity = BodyVelocity::default();
+        }
         if *kind != BodyKind::Dynamic {
             continue;
         }
@@ -343,7 +347,9 @@ fn raycast_requests(
             }
             bodies
                 .iter()
-                .filter(|(_, _, _, owner)| Some(owner.0) != request.filter)
+                .filter(|(entity, _, _, owner)| {
+                    Some(*entity) != request.filter && Some(owner.0) != request.filter
+                })
                 .filter_map(|(entity, transform, shape, _)| {
                     ray_shape(
                         request.origin,

@@ -1,0 +1,28 @@
+[package]
+name = "bevy_ragdoll_rapier3d"
+description = "Rapier 3D physics backend for bevy-ragdoll"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[features]
+default = []
+parallel = ["bevy_rapier3d/parallel"]
+enhanced-determinism = ["bevy_rapier3d/enhanced-determinism"]
+debug-render = ["bevy_rapier3d/debug-render-3d"]
+
+[dependencies]
+bevy = { workspace = true, features = ["std"] }
+bevy_ragdoll = { path = "../bevy_ragdoll", default-features = false, features = ["3d"] }
+bevy_ragdoll_conformance = { path = "../bevy_ragdoll_conformance" }
+bevy_rapier3d = { workspace = true, default-features = false, features = ["dim3"] }
+num-traits = { workspace = true }
+
+[[test]]
+name = "conformance"
+path = "tests/conformance.rs"
+
+[lints]
+workspace = true

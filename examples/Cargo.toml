@@ -15,13 +15,24 @@ default = []
 rapier3d = [
     "dep:bevy",
     "dep:bevy_ragdoll",
+    "dep:bevy_ragdoll_rapier3d",
     "dep:bevy_rapier3d",
     "dep:clap",
     "dep:ron",
     "dep:serde",
     "dep:serde_json",
+    "bevy_ragdoll/gltf",
 ]
-visual = ["rapier3d", "bevy/3d", "bevy/png", "bevy/x11"]
+visual = [
+    "rapier3d",
+    "bevy/3d",
+    "bevy/bevy_text",
+    "bevy/bevy_ui",
+    "bevy/bevy_ui_render",
+    "bevy/default_font",
+    "bevy/png",
+    "bevy/x11",
+]
 custom-backend = [
     "dep:bevy",
     "dep:clap",
@@ -40,6 +51,7 @@ custom-backend = [
 bevy = { workspace = true, optional = true, features = ["std"] }
 bevy_ragdoll = { path = "../crates/bevy_ragdoll", default-features = false, features = ["3d", "serialize"], optional = true }
 bevy_ragdoll_conformance = { path = "../crates/bevy_ragdoll_conformance", optional = true }
+bevy_ragdoll_rapier3d = { path = "../crates/bevy_ragdoll_rapier3d", optional = true }
 bevy_rapier3d = { workspace = true, default-features = false, features = ["dim3"], optional = true }
 clap = { workspace = true, optional = true }
 ron = { workspace = true, optional = true }
@@ -47,14 +59,57 @@ serde = { workspace = true, optional = true }
 serde_json = { workspace = true, optional = true }
 
 [[example]]
-name = "spike_rapier_powered"
-path = "spike_rapier_powered.rs"
-required-features = ["rapier3d"]
-
-[[example]]
 name = "custom_backend"
 path = "custom_backend.rs"
 required-features = ["custom-backend"]
+
+[[example]]
+name = "minimal"
+path = "minimal.rs"
+doc-scrape-examples = true
+required-features = ["rapier3d"]
+
+[package.metadata.example.minimal]
+name = "Minimal"
+description = "Drop the TGF human ragdoll and inspect its landing and joints."
+category = "Basics"
+wasm = true
+
+[[example]]
+name = "from_code"
+path = "from_code.rs"
+doc-scrape-examples = true
+required-features = ["rapier3d"]
+
+[package.metadata.example.from_code]
+name = "From Code"
+description = "Build and run a pinned three-body chain from Rust."
+category = "Basics"
+wasm = true
+
+[[example]]
+name = "from_ron"
+path = "from_ron.rs"
+doc-scrape-examples = true
+required-features = ["rapier3d"]
+
+[package.metadata.example.from_ron]
+name = "From RON"
+description = "Load a validated human ragdoll profile from RON."
+category = "Basics"
+wasm = true
+
+[[example]]
+name = "from_gltf_skein"
+path = "from_gltf_skein.rs"
+doc-scrape-examples = true
+required-features = ["rapier3d"]
+
+[package.metadata.example.from_gltf_skein]
+name = "From glTF Skein"
+description = "Import the TGF human rig and Skein body annotations from GLB."
+category = "Basics"
+wasm = true
 
 [lints]
 workspace = true

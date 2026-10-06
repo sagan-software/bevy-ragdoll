@@ -1,7 +1,8 @@
 //! Reusable public checks shared by every backend conformance suite.
 //!
 //! Each check creates a minimal headless Bevy app with fixed time, inserts a
-//! two-body profile, and invokes one backend plugin through [`AddBackend`]. The
+//! two-body profile, and invokes one backend plugin through
+//! [`crate::contract::AddBackend`]. The
 //! functions assert observable behavior at the shared component and message
 //! boundary, so backend crates can run identical cases without naming
 //! engine-specific resources, query parameters, or solver types.
@@ -181,6 +182,35 @@ fn move_nested_kinematic_target(app: &mut App, character: Entity, root: Entity) 
         .x = 0.5;
 }
 
+/// Applies a mode change across PostUpdate publication and the next fixed step.
+fn publish_frozen_mode(app: &mut App, character: Entity) {
+    // Publish the root mode before the fixed backend consumes the body-kind change.
+    app.world_mut()
+        .get_entity_mut(character)
+        .expect("the character remains in the physics world")
+        .insert(RagdollMode::Frozen);
+    app.update();
+    app.update();
+}
+
+/// Builds invalid, empty, owner-filtered, and body-filtered ray requests.
+fn filtered_ray_requests(character: Entity, body: Entity) -> [RagdollRaycast; 4] {
+    // Use one constructor so every request shares its distance and identity rules.
+    let ray = |request_id, origin, direction, filter| RagdollRaycast {
+        request_id: RagdollRequestId::new(request_id),
+        origin,
+        direction,
+        max_distance: 4.0,
+        filter,
+    };
+    [
+        ray(101, Vec3::ZERO, Vec3::ZERO, None),
+        ray(102, Vec3::splat(100.0), Vec3::X, None),
+        ray(103, Vec3::new(-2.0, 0.5, 0.0), Vec3::X, Some(character)),
+        ray(104, Vec3::new(-2.0, 0.5, 0.0), Vec3::X, Some(body)),
+    ]
+}
+
 /// Checks that activation creates every profile body and each parent-child
 /// joint.
 ///
@@ -231,20 +261,26 @@ pub fn bodies_and_joints_exist_for_each_profile_entry(add_backend: AddBackend) {
 /// bevy_ragdoll_conformance::contract::an_impulse_changes_momentum_by_its_size(add_mock);
 /// ```
 pub fn an_impulse_changes_momentum_by_its_size(add_backend: AddBackend) {
-    // Measure initial mass and velocity before sending the one-step impulse message.
+    // Sum the whole character so internal joint impulses cannot change the measured momentum.
     let mut app = app(add_backend);
     let (character, _, _) = spawn_character(&mut app, RagdollMode::Dynamic);
-    let (body, _) = body_at(&body_entities(app.world_mut(), character), 0);
-    let mass = app
-        .world()
-        .get::<BodyMass>(body)
-        .expect("body has mass")
-        .mass;
-    let initial_velocity = app
-        .world()
-        .get::<BodyVelocity>(body)
-        .expect("body has velocity")
-        .linear;
+    let bodies = body_entities(app.world_mut(), character);
+    let (body, _) = body_at(&bodies, 0);
+    let initial_momentum = bodies
+        .iter()
+        .map(|(entity, _)| {
+            app.world()
+                .get::<BodyMass>(*entity)
+                .expect("body has mass")
+                .mass
+                * app
+                    .world()
+                    .get::<BodyVelocity>(*entity)
+                    .expect("body has velocity")
+                    .linear
+                    .x
+        })
+        .sum::<f32>();
     app.world_mut().write_message(RagdollImpulse {
         body,
         point: Vec3::ZERO,
@@ -252,14 +288,26 @@ pub fn an_impulse_changes_momentum_by_its_size(add_backend: AddBackend) {
     });
     // Read velocity after the backend completes the fixed integration step.
     app.update();
-    let final_velocity = app
-        .world()
-        .get::<BodyVelocity>(body)
-        .expect("backend reads velocity back")
-        .linear;
-
-    let momentum_change = mass * (final_velocity.x - initial_velocity.x);
-    assert!((momentum_change - 10.0).abs() <= 0.1);
+    let final_momentum = bodies
+        .iter()
+        .map(|(entity, _)| {
+            app.world()
+                .get::<BodyMass>(*entity)
+                .expect("body retains mass")
+                .mass
+                * app
+                    .world()
+                    .get::<BodyVelocity>(*entity)
+                    .expect("backend reads velocity back")
+                    .linear
+                    .x
+        })
+        .sum::<f32>();
+    let momentum_change = final_momentum - initial_momentum;
+    assert!(
+        (momentum_change - 10.0).abs() <= 0.1,
+        "momentum change {momentum_change} kg·m/s from a 10 N·s impulse"
+    );
 }
 
 /// Checks that each fixed step reads the new pose and velocity back into shared
@@ -384,6 +432,54 @@ pub fn frozen_bodies_do_not_move_under_impulses(add_backend: AddBackend) {
     assert_eq!(after, before);
 }
 
+/// Checks that switching an active ragdoll to frozen clears body velocity.
+///
+/// The test first applies momentum through the public impulse message, then
+/// changes the character mode and checks the backend's next readback.
+///
+/// # Examples
+///
+/// ```
+/// # use bevy::prelude::App;
+/// # use bevy_ragdoll_conformance::mock::MockBackendPlugin;
+/// # fn add_mock(app: &mut App) { app.add_plugins(MockBackendPlugin); }
+/// bevy_ragdoll_conformance::contract::freezing_a_dynamic_ragdoll_clears_velocity(add_mock);
+/// ```
+pub fn freezing_a_dynamic_ragdoll_clears_velocity(add_backend: AddBackend) {
+    // Apply momentum while the character still owns dynamic bodies.
+    let mut app = app(add_backend);
+    let (character, _, _) = spawn_character(&mut app, RagdollMode::Dynamic);
+    let (body, _) = body_at(&body_entities(app.world_mut(), character), 0);
+    let body_pose = app
+        .world()
+        .get::<BodyPhysicsPose>(body)
+        .expect("dynamic body has a physics pose")
+        .current;
+    // Apply the impulse while the body remains in dynamic mode.
+    app.world_mut().write_message(RagdollImpulse {
+        body,
+        point: body_pose.translation.into(),
+        impulse: Vec3::X * 10.0,
+    });
+
+    app.update();
+    let velocity = app
+        .world()
+        .get::<BodyVelocity>(body)
+        .expect("dynamic body has a velocity component");
+    assert!(velocity.linear.x > 0.1, "the impulse changes momentum");
+
+    // Publish frozen mode, then let the next fixed step clear stale velocity.
+    publish_frozen_mode(&mut app, character);
+
+    assert_eq!(
+        *app.world()
+            .get::<BodyVelocity>(body)
+            .expect("frozen body retains a velocity component"),
+        BodyVelocity::default()
+    );
+}
+
 /// Checks that a backend ray query reports the body entity it intersects.
 ///
 /// The request carries caller-owned identity and travels through shared request
@@ -428,6 +524,50 @@ pub fn raycast_reports_the_body_hit(add_backend: AddBackend) {
         .expect("the backend answers the ray request");
 
     assert_eq!(response.hit.and_then(|hit| hit.body), Some(expected_body));
+}
+
+/// Checks explicit misses for invalid, empty-space, and excluded-body rays.
+///
+/// The character filter excludes all of its owned bodies, and the body filter
+/// excludes the selected body entity.
+///
+/// # Examples
+///
+/// ```
+/// # use bevy::prelude::App;
+/// # use bevy_ragdoll_conformance::mock::MockBackendPlugin;
+/// # fn add_mock(app: &mut App) { app.add_plugins(MockBackendPlugin); }
+/// bevy_ragdoll_conformance::contract::invalid_and_filtered_raycasts_return_misses(add_mock);
+/// ```
+pub fn invalid_and_filtered_raycasts_return_misses(add_backend: AddBackend) {
+    // Create the owner and selected-body filters before subscribing to replies.
+    let mut app = app(add_backend);
+    let (character, _, _) = spawn_character(&mut app, RagdollMode::Dynamic);
+    let (body, _) = body_at(&body_entities(app.world_mut(), character), 0);
+    let mut cursor = app
+        .world()
+        .get_resource::<Messages<RagdollRaycastResponse>>()
+        .expect("RagdollPlugin registers raycast responses")
+        .get_cursor();
+    // Process all four rejection and filter cases in one fixed update.
+    for request in filtered_ray_requests(character, body) {
+        app.world_mut().write_message(request);
+    }
+
+    app.update();
+    // Read only replies belonging to this test's request-id interval.
+    let responses = cursor
+        .read(
+            app.world()
+                .get_resource::<Messages<RagdollRaycastResponse>>()
+                .expect("RagdollPlugin retains raycast responses"),
+        )
+        .filter(|response| (101..=104).contains(&response.request_id.get()))
+        .copied()
+        .collect::<Vec<_>>();
+
+    assert_eq!(responses.len(), 4);
+    assert!(responses.iter().all(|response| response.hit.is_none()));
 }
 
 /// Checks that despawning the character removes every physics body in its

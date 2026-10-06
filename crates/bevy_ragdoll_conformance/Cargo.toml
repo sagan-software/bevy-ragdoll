@@ -9,7 +9,7 @@ repository.workspace = true
 
 [dependencies]
 bevy = { workspace = true, features = ["std", "bevy_asset", "bevy_animation", "bevy_log"] }
-bevy_ragdoll = { path = "../bevy_ragdoll", default-features = false, features = ["3d"] }
+bevy_ragdoll = { path = "../bevy_ragdoll", default-features = false, features = ["3d", "gltf"] }
 
 [lints]
 workspace = true
