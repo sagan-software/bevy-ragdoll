@@ -367,7 +367,7 @@ fn ron_asset_loads_through_the_asset_server() {
             file_path: "../../assets".to_owned(),
             ..Default::default()
         })
-        .add_plugins(RagdollPlugin);
+        .add_plugins(RagdollPlugin::default());
     let handle = app
         .world()
         .resource::<AssetServer>()

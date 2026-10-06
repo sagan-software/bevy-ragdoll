@@ -4,7 +4,7 @@
 ///
 /// Profile validation requires finite endpoints, zero within the interval, and
 /// both bounds inside the inclusive `-PI..=PI` range before runtime use.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, bevy::prelude::Reflect)]
 #[cfg_attr(feature = "serialize", derive(serde::Deserialize, serde::Serialize))]
 #[cfg_attr(feature = "serialize", serde(deny_unknown_fields))]
 pub struct AngleRange {
@@ -56,7 +56,7 @@ impl AngleRange {
 ///
 /// Each range is measured in radians, includes zero, and stays within one
 /// half-turn after the containing profile validates its authoring data.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, bevy::prelude::Reflect)]
 #[cfg_attr(feature = "serialize", derive(serde::Deserialize, serde::Serialize))]
 #[cfg_attr(feature = "serialize", serde(deny_unknown_fields))]
 pub struct JointLimits {

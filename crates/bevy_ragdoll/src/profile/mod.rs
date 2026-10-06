@@ -1,9 +1,17 @@
 //! Validated ragdoll profiles and their authoring data.
+//!
+//! A [`RagdollProfile`] stores parent-first bodies, validated joints, derived
+//! contact exclusions, direct-child masks, and total mass. Construct profiles
+//! from [`ProfileSpec`] or [`ProfileBuilder`] so the public boundary checks
+//! topology, geometry, transforms, names, mass, and limits before a runtime or
+//! backend reads the data. `BodyIndex` preserves the checked profile order
+//! across crates.
 
 use std::collections::HashSet;
 use std::f32::consts::PI;
 
 use bevy::math::{Isometry3d, Quat, Vec3};
+use bevy::prelude::Component;
 
 mod body;
 mod builder;
@@ -26,7 +34,8 @@ pub use self::loader::{RagdollProfileLoader, RagdollProfileLoaderError};
 pub use self::mass::{Mass, MassError};
 pub use self::spec::{BodySpec, JointSpec, ProfileSpec, ShapeSpec};
 
-/// Maximum accepted body count because relationship masks reserve one bit per body.
+/// Maximum accepted body count because relationship masks reserve one bit per
+/// body.
 ///
 /// Profiles can contain body indexes from zero through sixty-three. The value
 /// bounds contact-mask storage and makes every body relationship fit in `u64`.
@@ -37,15 +46,17 @@ pub const MAX_BODIES: usize = 64;
 /// This profile stores parent-first bodies, their joints, contact exclusions,
 /// direct-child masks, and total mass. Construct it from [`ProfileSpec`] to
 /// validate the tree, geometry, mass, transforms, joint limits, and bone names.
-#[derive(bevy::asset::Asset, bevy::reflect::TypePath, Clone, Debug, PartialEq)]
+#[derive(bevy::asset::Asset, Clone, Debug, PartialEq, bevy::prelude::Reflect)]
 pub struct RagdollProfile {
-    /// Bodies preserve the profile's parent-first order for stable body indexes.
+    /// Bodies preserve the profile's parent-first order for stable body
+    /// indexes.
     bodies: Vec<Body>,
     /// Joints are stored in child-body order after tree validation succeeds.
     joints: Vec<Joint>,
     /// Each entry marks bodies excluded from contact with the indexed body.
     no_contact: Vec<u64>,
-    /// The finite positive sum of every validated body mass, measured in kilograms.
+    /// The finite positive sum of every validated body mass, measured in
+    /// kilograms.
     total_mass: Mass,
     /// Each entry marks the direct child bodies of the indexed body.
     children: Vec<u64>,
@@ -55,7 +66,9 @@ pub struct RagdollProfile {
 ///
 /// The value represents only body indexes in `0..MAX_BODIES`, so callers cannot
 /// construct an out-of-range mask position through the checked conversion.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(
+    Component, Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, bevy::prelude::Reflect,
+)]
 pub struct BodyIndex(u8);
 
 impl BodyIndex {
@@ -112,28 +125,24 @@ struct ProfilePrerequisites {
 }
 
 impl RagdollProfile {
-    /// Validates profile data, then derives masks used by runtime contact systems.
+    /// Validates profile data, then derives masks used by runtime contact
+    /// systems.
     ///
-    /// Validation checks the body tree, masses, shapes, transforms, joint limits,
-    /// torque bounds, and duplicate bone names in a stable error order. Contact
-    /// derivation takes O(n²) time and O(n) auxiliary space for at most 64 bodies.
+    /// Validation checks the body tree, masses, shapes, transforms, joint
+    /// limits, torque bounds, and duplicate bone names in a stable error order.
+    /// Contact derivation takes O(n²) time and O(n) auxiliary space for at most
+    /// 64 bodies.
     ///
     /// # Examples
     ///
     /// ```
-    /// use bevy::math::{Isometry3d, Vec3};
-    /// use bevy_ragdoll::{BodySpec, ProfileSpec, RagdollProfile, ShapeSpec};
+    /// use bevy::math::{Isometry3d, Vec3}; use bevy_ragdoll::{BodySpec,
+    /// ProfileSpec, RagdollProfile, ShapeSpec};
     ///
-    /// let spec = ProfileSpec {
-    ///     bodies: vec![BodySpec {
-    ///         bone: "pelvis".to_owned(),
-    ///         shape: ShapeSpec::Sphere { center: Vec3::ZERO, radius: 0.2 },
-    ///         mass: 8.0,
-    ///         rest: Isometry3d::IDENTITY,
-    ///     }],
-    ///     joints: Vec::new(),
-    /// };
-    /// let profile = RagdollProfile::new(spec)?;
+    /// let spec = ProfileSpec { bodies: vec![BodySpec { bone:
+    /// "pelvis".to_owned(), shape: ShapeSpec::Sphere { center: Vec3::ZERO,
+    /// radius: 0.2 }, mass: 8.0, rest: Isometry3d::IDENTITY, }], joints:
+    /// Vec::new(), }; let profile = RagdollProfile::new(spec)?;
     /// assert_eq!(profile.total_mass().kilograms(), 8.0);
     /// # Ok::<(), bevy_ragdoll::ProfileError>(())
     /// ```
@@ -153,7 +162,8 @@ impl RagdollProfile {
 }
 
 impl RagdollProfile {
-    /// Returns bodies in parent-first profile order for stable skeleton binding.
+    /// Returns bodies in parent-first profile order for stable skeleton
+    /// binding.
     ///
     /// Every body has a checked index, validated mass, valid collision shape,
     /// and rigid rest transform. The returned slice borrows the profile data.
@@ -163,15 +173,16 @@ impl RagdollProfile {
     /// ```
     /// # use bevy_ragdoll::RagdollProfile;
     /// # fn inspect(profile: &RagdollProfile) {
-    /// let bodies = profile.bodies();
-    /// assert!(bodies.len() <= bevy_ragdoll::MAX_BODIES);
+    /// let bodies = profile.bodies(); assert!(bodies.len() <=
+    /// bevy_ragdoll::MAX_BODIES);
     /// # }
     /// ```
     pub fn bodies(&self) -> &[Body] {
         &self.bodies
     }
 
-    /// Returns joints in child-body order after validation of the parent-first tree.
+    /// Returns joints in child-body order after validation of the parent-first
+    /// tree.
     ///
     /// Each joint connects one checked child index to an earlier parent index,
     /// and its frame, limits, and maximum torque passed profile validation.
@@ -181,8 +192,8 @@ impl RagdollProfile {
     /// ```
     /// # use bevy_ragdoll::RagdollProfile;
     /// # fn inspect(profile: &RagdollProfile) {
-    /// let joints = profile.joints();
-    /// assert!(joints.len() < profile.bodies().len());
+    /// let joints = profile.joints(); assert!(joints.len() <
+    /// profile.bodies().len());
     /// # }
     /// ```
     pub fn joints(&self) -> &[Joint] {
@@ -191,16 +202,16 @@ impl RagdollProfile {
 
     /// Returns the contact-exclusion bit mask for each body in profile order.
     ///
-    /// Bit `j` in entry `i` excludes body `j` from contact with body `i`;
-    /// joint neighbors and resting shapes within 0.01 metres set symmetric bits.
+    /// Bit `j` in entry `i` excludes body `j` from contact with body `i`; joint
+    /// neighbors and resting shapes within 0.01 metres set symmetric bits.
     ///
     /// # Examples
     ///
     /// ```
     /// # use bevy_ragdoll::RagdollProfile;
     /// # fn inspect(profile: &RagdollProfile) {
-    /// let masks = profile.no_contact_masks();
-    /// assert_eq!(masks.len(), profile.bodies().len());
+    /// let masks = profile.no_contact_masks(); assert_eq!(masks.len(),
+    /// profile.bodies().len());
     /// # }
     /// ```
     pub fn no_contact_masks(&self) -> &[u64] {
@@ -281,10 +292,12 @@ impl RagdollProfile {
 }
 
 impl RagdollProfile {
-    /// Lazily places rest transforms under `root` in parent-first profile order.
+    /// Lazily places rest transforms under `root` in parent-first profile
+    /// order.
     ///
     /// Each yielded isometry composes the root with one body's validated rest
-    /// frame. The iterator performs O(n) total work and uses O(1) auxiliary space.
+    /// frame. The iterator performs O(n) total work and uses O(1) auxiliary
+    /// space.
     ///
     /// # Examples
     ///
@@ -292,7 +305,8 @@ impl RagdollProfile {
     /// # use bevy::math::Isometry3d;
     /// # use bevy_ragdoll::RagdollProfile;
     /// # fn rest(profile: &RagdollProfile) {
-    /// let poses = profile.rest_poses(Isometry3d::IDENTITY).collect::<Vec<_>>();
+    /// let poses =
+    /// profile.rest_poses(Isometry3d::IDENTITY).collect::<Vec<_>>();
     /// assert_eq!(poses.len(), profile.bodies().len());
     /// # }
     /// ```
@@ -300,7 +314,8 @@ impl RagdollProfile {
         self.bodies.iter().map(move |body| root * body.rest())
     }
 
-    /// Measures a child's rotation around joint X, twist, and Z axes in radians.
+    /// Measures a child's rotation around joint X, twist, and Z axes in
+    /// radians.
     ///
     /// The method returns `None` for the root, a missing child or parent pose,
     /// or any non-finite, degenerate, or non-unit pose rotation.
@@ -311,8 +326,9 @@ impl RagdollProfile {
     /// # use bevy::math::Isometry3d;
     /// # use bevy_ragdoll::{BodyIndex, RagdollProfile};
     /// # fn angles(profile: &RagdollProfile, child: BodyIndex) {
-    /// let poses = profile.rest_poses(Isometry3d::IDENTITY).collect::<Vec<_>>();
-    /// let _angles = profile.joint_angles(child, &poses);
+    /// let poses =
+    /// profile.rest_poses(Isometry3d::IDENTITY).collect::<Vec<_>>(); let
+    /// _angles = profile.joint_angles(child, &poses);
     /// # }
     /// ```
     pub fn joint_angles(&self, child: BodyIndex, poses: &[Isometry3d]) -> Option<Vec3> {
@@ -331,7 +347,8 @@ impl RagdollProfile {
 impl TryFrom<&ProfileSpec> for ProfilePrerequisites {
     type Error = ProfileError;
 
-    /// Checks tree structure, mass, and shape before later joint validation stages.
+    /// Checks tree structure, mass, and shape before later joint validation
+    /// stages.
     fn try_from(spec: &ProfileSpec) -> Result<Self, Self::Error> {
         // Body count and joint references establish the legal profile index range.
         let joints_by_child = arrange_joints(spec.bodies.len(), &spec.joints)?;
@@ -350,7 +367,8 @@ impl TryFrom<&ProfileSpec> for ProfilePrerequisites {
 impl TryFrom<ProfileSpec> for ValidatedProfile {
     type Error = ProfileError;
 
-    /// Converts valid authoring data into checked runtime body and joint entries.
+    /// Converts valid authoring data into checked runtime body and joint
+    /// entries.
     fn try_from(spec: ProfileSpec) -> Result<Self, Self::Error> {
         // Preserve validation order: tree structure, masses, and body shapes come first.
         let prerequisites = ProfilePrerequisites::try_from(&spec)?;
@@ -418,7 +436,8 @@ fn arrange_joints(
     Ok(joints_by_child)
 }
 
-/// Checks the closed body-count range before profile-sized storage is allocated.
+/// Checks the closed body-count range before profile-sized storage is
+/// allocated.
 fn validate_body_count(body_count: usize) -> Result<(), ProfileError> {
     // Test the lower boundary before the upper bound so an empty profile is distinct.
     if body_count == 0 {
@@ -451,7 +470,8 @@ fn insert_joint(
     Ok(())
 }
 
-/// Checks each positive body mass and the finite total accumulated in profile order.
+/// Checks each positive body mass and the finite total accumulated in profile
+/// order.
 fn validate_masses(body_specs: &[BodySpec]) -> Result<(Vec<Mass>, Mass), ProfileError> {
     let mut masses = Vec::with_capacity(body_specs.len());
     let mut total_mass = 0.0_f32;
@@ -478,12 +498,14 @@ fn validate_masses(body_specs: &[BodySpec]) -> Result<(Vec<Mass>, Mass), Profile
     Ok((masses, total_mass))
 }
 
-/// Converts the accumulated kilogram value while retaining its final body context.
+/// Converts the accumulated kilogram value while retaining its final body
+/// context.
 fn validate_total_mass(kilograms: f32, last_body: BodyIndex) -> Result<Mass, ProfileError> {
     Mass::try_from(kilograms).map_err(|MassError| ProfileError::BadMass { body: last_body })
 }
 
-/// Rejects body entries with empty bone names, invalid rests, or invalid shapes.
+/// Rejects body entries with empty bone names, invalid rests, or invalid
+/// shapes.
 fn validate_body_shapes(body_specs: &[BodySpec]) -> Result<(), ProfileError> {
     // Names and rest frames fail through BadShape before any joint-data checks.
     for (index, body) in body_specs.iter().enumerate() {
@@ -534,7 +556,8 @@ fn validate_joint_limits_and_frames(
     Ok(())
 }
 
-/// Checks finite nonnegative motor torque after every joint geometry check passes.
+/// Checks finite nonnegative motor torque after every joint geometry check
+/// passes.
 fn validate_joint_torques(joints_by_child: &[Option<JointSpec>]) -> Result<(), ProfileError> {
     // Preserve child order so the first bad motor reports deterministically.
     for joint in joints_by_child.iter().skip(1).flatten() {
@@ -567,7 +590,8 @@ fn body_index(index: usize) -> Result<BodyIndex, ProfileError> {
     BodyIndex::try_from(index).map_err(|count| ProfileError::TooManyBodies(count.saturating_add(1)))
 }
 
-/// Derives contact exclusions and direct-child masks from validated relationships.
+/// Derives contact exclusions and direct-child masks from validated
+/// relationships.
 ///
 /// This scans every unordered body pair for resting contact, using O(n²) time
 /// and O(n) auxiliary mask storage with `n <= MAX_BODIES`.

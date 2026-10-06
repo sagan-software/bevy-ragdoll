@@ -8,7 +8,7 @@ use super::{AngleRange, BodyIndex, JointLimits};
 ///
 /// The child always follows its parent in profile order. Private fields keep
 /// malformed indexes and unvalidated limit combinations out of runtime access.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, bevy::prelude::Reflect)]
 pub struct Joint {
     /// The child body index.
     child: BodyIndex,

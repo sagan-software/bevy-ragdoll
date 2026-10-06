@@ -22,10 +22,24 @@ rapier3d = [
     "dep:serde_json",
 ]
 visual = ["rapier3d", "bevy/3d", "bevy/png", "bevy/x11"]
+custom-backend = [
+    "dep:bevy",
+    "dep:clap",
+    "dep:bevy_ragdoll",
+    "dep:bevy_ragdoll_conformance",
+    "bevy/3d",
+    "bevy/bevy_text",
+    "bevy/bevy_ui",
+    "bevy/bevy_ui_render",
+    "bevy/default_font",
+    "bevy/png",
+    "bevy/x11",
+]
 
 [dependencies]
 bevy = { workspace = true, optional = true, features = ["std"] }
 bevy_ragdoll = { path = "../crates/bevy_ragdoll", default-features = false, features = ["3d", "serialize"], optional = true }
+bevy_ragdoll_conformance = { path = "../crates/bevy_ragdoll_conformance", optional = true }
 bevy_rapier3d = { workspace = true, default-features = false, features = ["dim3"], optional = true }
 clap = { workspace = true, optional = true }
 ron = { workspace = true, optional = true }
@@ -36,6 +50,11 @@ serde_json = { workspace = true, optional = true }
 name = "spike_rapier_powered"
 path = "spike_rapier_powered.rs"
 required-features = ["rapier3d"]
+
+[[example]]
+name = "custom_backend"
+path = "custom_backend.rs"
+required-features = ["custom-backend"]
 
 [lints]
 workspace = true

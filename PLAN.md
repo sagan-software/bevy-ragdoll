@@ -5,7 +5,7 @@
 | [x] | 1. Repository, toolchain and CI | Local workspace and gates complete. GitHub creation, authentication, push and CI are deferred at the owner's direction. |
 | [x] | 2. Profile data model and import | Profile model, RON loader, Skein components and TGF GLB import implemented; all phase 2 gates pass. Coverage gaps are documented below and in the commit body. |
 | [x] | 3. Rapier powered-ragdoll spike | [Report](docs/spikes/rapier-powered.md); checks and coverage gap recorded below. |
-| [ ] | 4. Core runtime | |
+| [x] | 4. Core runtime | Runtime, mock backend, conformance tests and screenshots complete. Coverage gaps and reasons are recorded below. |
 | [ ] | 5. Rapier 3D backend | |
 | [ ] | 6. Performance | |
 | [ ] | 7. Active control | |
@@ -181,3 +181,98 @@
 - No matrix row met both the mean joint-error and pelvis-drift thresholds.
   The best mean error was 3.270 degrees at count 128. The best pelvis drift
   was 0.1936 m in the single-ragdoll 6 Hz motor run.
+
+## Phase 4 evidence
+
+- The phase 4 invariant scratchpad is at
+  `/tmp/bevy-ragdoll-phase04-invariants.md`.
+- The required failing public runtime test ran first:
+  `cargo test -p bevy_ragdoll --test runtime` exited 101 because runtime
+  components, backend modules, and the configurable `RagdollPlugin` do not
+  exist yet. This is the expected baseline failure.
+- `cargo test -p bevy_ragdoll_conformance --test conformance` exited 101
+  because the conformance crate has no `contract` or `mock` module yet. This
+  is the expected baseline failure.
+- `cargo fmt --all -- --check` passed after the runtime tests were added.
+  The first check requested one import-order change. `cargo fmt --all` fixed
+  it, and the exact check passed.
+- `cargo test --workspace` passed 61 library unit tests, 15 profile tests,
+  21 runtime integration tests, 8 conformance unit tests, and 7 conformance
+  tests. The profile suite has one intentional ignored asset-generator test.
+  Rustdoc passed 69 core examples and 8 conformance examples; one core
+  doctest remains intentionally ignored.
+- `cargo clippy --workspace --all-targets -- -D warnings` and
+  `cargo clippy --all-targets --all-features -- -D warnings` passed.
+  The first Clippy run found three test-code issues. The mock plugin's unit
+  constructor, a `Copy` clone, and a nested conditional were fixed before
+  both exact gates passed.
+- `cargo deny check` passed advisories, bans, licenses, and sources.
+  `cargo doc -p bevy_ragdoll --no-deps` passed.
+- Dylints from
+  `/home/deck/Code/github.com/sagan-software/dylints` passed `--fast` in
+  132.73 seconds. The full logs are in
+  `/var/mnt/nixsd/Caches/dylints/bevy-ragdoll-current`.
+- The coverage gate passed:
+  `cargo llvm-cov -p bevy_ragdoll -p bevy_ragdoll_conformance --text
+  --show-missing-lines --output-path
+  /var/mnt/nixsd/Build/bevy-ragdoll/phase4-coverage.txt`.
+  It passed all 61 library unit, 15 profile, 21 runtime, 8 conformance
+  unit, and 7 conformance tests. The target-pose capture and preservation
+  branches both have direct unit tests.
+- Remaining coverage lines have these reasons. Rust derive attributes in
+  profile, runtime, and Skein modules emit generated code without executable
+  source lines. `std::thread_local!` misses are outside this crate.
+  `gltf/rig/container.rs:159,162` convert `u32` to `usize`; failure is
+  unreachable on this 64-bit target. `profile/geometry/tests.rs:274` is a
+  test-only fallback panic. `runtime/capture.rs:46,49` cannot occur after
+  the query has required those components and the exclusive world borrow
+  begins. `runtime/skeleton.rs:209` cannot occur after successful map
+  construction while this system holds exclusive world access.
+  `runtime/skeleton.rs:586` cannot occur because profile validation checks
+  every joint index and body spawning returns one entity per body.
+- The phase text names a `RagdollQuery` trait. The architecture instead
+  defines backend-neutral raycast messages and `BodyContacts`, which the
+  contract runner can use without a backend-specific system parameter type.
+  The runtime follows the architecture contract; no query trait is needed.
+- `cargo build -p bevy_ragdoll_examples --example custom_backend
+  --features custom-backend` passed. The SD card had 83 GiB free before
+  the build.
+- Both `custom_backend` runs passed with `--exit-after 3 --screenshot`.
+  The headless run used:
+
+  ```sh
+  nix develop -c bash -c '
+    export VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/radeon_icd.x86_64.json
+    exec /lib64/ld-linux-x86-64.so.2 \
+      --library-path "${LD_LIBRARY_PATH}:/usr/lib:/usr/lib64" \
+      /var/mnt/nixsd/Build/bevy-ragdoll/debug/examples/custom_backend \
+      --headless --exit-after 3 \
+      --screenshot /var/mnt/nixsd/Build/bevy-ragdoll/screenshots/custom_backend_headless.png
+  '
+  ```
+
+  The windowed run used:
+
+  ```sh
+  nix develop -c bash -c '
+    export DISPLAY=:0 XAUTHORITY=/run/user/1000/xauth_wOWDgV \
+      VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/radeon_icd.x86_64.json
+    exec /lib64/ld-linux-x86-64.so.2 \
+      --library-path "${LD_LIBRARY_PATH}:/usr/lib:/usr/lib64" \
+      /var/mnt/nixsd/Build/bevy-ragdoll/debug/examples/custom_backend \
+      --exit-after 3 \
+      --screenshot /var/mnt/nixsd/Build/bevy-ragdoll/screenshots/custom_backend_windowed.png
+  '
+  ```
+
+  The headless screenshot is
+  [docs/screenshots/phase-04-custom-backend-headless.png](docs/screenshots/phase-04-custom-backend-headless.png).
+  The windowed screenshot is
+  [docs/screenshots/phase-04-custom-backend-windowed.png](docs/screenshots/phase-04-custom-backend-windowed.png).
+  I reviewed both images. Each shows the pelvis, chest, and head shapes at
+  the authored rest pose. The windowed capture also shows the mock-backend
+  label.
+- Runtime commands used the system Radeon ICD and host loader because the
+  Nix Mesa selector reported a missing `GLIBC_ABI_GNU2_TLS` symbol against
+  the system glibc. RADV VANGOGH rendered both images, and both runs exited
+  successfully.

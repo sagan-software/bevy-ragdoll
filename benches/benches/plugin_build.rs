@@ -10,7 +10,7 @@ fn plugin_build_time(criterion: &mut Criterion) {
     criterion.bench_function("ragdoll_plugin_build", |bencher| {
         bencher.iter(|| {
             let mut app = App::new();
-            app.add_plugins(RagdollPlugin);
+            app.add_plugins(RagdollPlugin::default());
             let _ = black_box(app);
         });
     });

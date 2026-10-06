@@ -1,0 +1,15 @@
+[package]
+name = "bevy_ragdoll_conformance"
+description = "Shared mock backend and backend conformance checks for bevy-ragdoll"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+bevy = { workspace = true, features = ["std", "bevy_asset", "bevy_animation", "bevy_log"] }
+bevy_ragdoll = { path = "../bevy_ragdoll", default-features = false, features = ["3d"] }
+
+[lints]
+workspace = true

@@ -4,7 +4,7 @@
 ///
 /// Construct this semantic value with [`TryFrom<f32>`], which rejects zero,
 /// negative, infinite, and NaN inputs before callers store or compare mass.
-#[derive(Clone, Copy, Debug, PartialEq, PartialOrd)]
+#[derive(Clone, Copy, Debug, PartialEq, PartialOrd, bevy::prelude::Reflect)]
 pub struct Mass(f32);
 
 /// The numeric value cannot represent a finite positive mass in kilograms.

@@ -46,7 +46,7 @@ pub struct BodySpec {
 ///
 /// Geometry is measured in metres, and profile validation rejects non-finite
 /// coordinates, non-positive dimensions, and invalid cuboid rotations.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, bevy::prelude::Reflect)]
 #[cfg_attr(feature = "serialize", derive(serde::Deserialize, serde::Serialize))]
 pub enum ShapeSpec {
     /// A capsule whose centre segment joins cap centres `a` and `b`; radius

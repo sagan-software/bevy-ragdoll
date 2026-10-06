@@ -9,7 +9,7 @@ use super::{BodyIndex, Mass, ShapeSpec};
 /// A `Body` stores the checked skeleton binding and collision geometry used by
 /// runtimes. Its fields remain private so invalid mass and relationship states
 /// cannot be created after profile construction.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, bevy::prelude::Reflect)]
 pub struct Body {
     /// The body's index in profile order.
     index: BodyIndex,

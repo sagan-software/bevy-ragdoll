@@ -1,6 +1,11 @@
 [workspace]
 resolver = "3"
-members = ["crates/bevy_ragdoll", "examples", "benches"]
+members = [
+    "crates/bevy_ragdoll",
+    "crates/bevy_ragdoll_conformance",
+    "examples",
+    "benches",
+]
 
 [workspace.package]
 version = "0.1.0-dev"

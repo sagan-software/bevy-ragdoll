@@ -902,6 +902,7 @@ dependencies = [
  "bevy_reflect",
  "bevy_render",
  "bevy_shader",
+ "bevy_sprite_render",
  "bevy_transform",
  "bevy_utils",
  "bytemuck",
@@ -1058,6 +1059,7 @@ dependencies = [
  "bevy_time",
  "bevy_transform",
  "bevy_ui",
+ "bevy_ui_render",
  "bevy_utils",
  "bevy_window",
  "bevy_winit",
@@ -1334,6 +1336,7 @@ name = "bevy_ragdoll"
 version = "0.1.0-dev"
 dependencies = [
  "bevy",
+ "bevy_ragdoll_conformance",
  "bevy_transform",
  "ron",
  "serde",
@@ -1351,11 +1354,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "bevy_ragdoll_conformance"
+version = "0.1.0-dev"
+dependencies = [
+ "bevy",
+ "bevy_ragdoll",
+]
+
+[[package]]
 name = "bevy_ragdoll_examples"
 version = "0.1.0-dev"
 dependencies = [
  "bevy",
  "bevy_ragdoll",
+ "bevy_ragdoll_conformance",
  "bevy_rapier3d",
  "clap",
  "ron",

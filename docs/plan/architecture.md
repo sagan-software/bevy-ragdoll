@@ -156,15 +156,12 @@ engine. It must:
    changes. Kinematic bodies take the target pose each step.
 7. In `RagdollFixedSystems::Read`, after the engine step: write
    `BodyPhysicsPose`, `BodyVelocity` and `BodyAtRest`.
-8. Provide queries through a `RagdollQuery` system parameter the backend
-   implements (a trait with an associated `SystemParam`, registered by the
-   backend plugin), so examples and the balance crate stay
-   backend-agnostic:
-   `cast_ray(origin, dir, max_distance, filter) -> Option<RayHit { entity, body: Option<Entity>, point, normal, distance }>`
-   and `contacts(body, out: &mut Vec<BodyContact { point, normal, other: Entity, other_is_static: bool }>)`.
-   If a trait-backed system parameter proves awkward, the fallback is a
-   `BodyContacts` component the backend fills in `Read` plus a
-   `RagdollRaycast` message/response pair; record the choice here.
+8. Provide backend-neutral queries through `RagdollRaycast` requests and
+   `RagdollRaycastResponse` messages, with `BodyContacts` filled in `Read`.
+   The contract runner receives only an `App` and a closure that adds a
+   backend plugin, so it cannot name a backend-specific associated
+   `SystemParam` type. The message and component boundary lets every backend
+   run the same query cases without runtime type registration.
 9. Despawn its engine objects when body entities despawn.
 10. Pass every test in `bevy_ragdoll_conformance` (contract tier and
     physics tier).
