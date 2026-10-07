@@ -433,24 +433,24 @@ struct StepTimer {
 }
 
 /// Picks a backend and runs the showcase.
-#[cfg_attr(
-    dylint_lib = "sagan_lints",
-    expect(
-        bevy_disallow_update_schedule,
-        reason = "input handling and UI react once per rendered frame, which is what Update is for"
-    )
-)]
-#[cfg_attr(
-    dylint_lib = "sagan_lints",
-    expect(
-        bevy_disallow_fixed_update_schedule,
-        reason = "the grab impulse must be written once per physics step, before the ragdoll Behaviour set"
-    )
-)]
 fn main() -> AppExit {
     let backend = Backend::from_environment();
-
     let mut app = App::new();
+    add_window(&mut app);
+    app.add_plugins((
+        RagdollPlugin::default(),
+        FrameTimeDiagnosticsPlugin::default(),
+    ))
+    .insert_resource(Time::<Fixed>::from_hz(60.0))
+    .insert_resource(ActiveBackend(backend));
+    backend.add_plugins(&mut app);
+    add_showcase_state(&mut app);
+    add_showcase_systems(&mut app);
+    app.run()
+}
+
+/// Adds Bevy's default plugins with a canvas-filling window and the scene colors.
+fn add_window(app: &mut App) {
     // Web servers answer 404 for the `.meta` files Bevy probes by default; the rigs have none.
     let assets = AssetPlugin {
         meta_check: bevy::asset::AssetMetaCheck::Never,
@@ -464,20 +464,18 @@ fn main() -> AppExit {
             ..default()
         }),
         ..default()
-    }))
-    .add_plugins((
-        RagdollPlugin::default(),
-        FrameTimeDiagnosticsPlugin::default(),
-    ))
-    .insert_resource(Time::<Fixed>::from_hz(60.0))
-    .insert_resource(ClearColor(Color::srgb(0.06, 0.07, 0.09)))
-    .insert_resource(GlobalAmbientLight {
-        color: Color::srgb(0.7, 0.8, 1.0),
-        brightness: 350.0,
-        ..default()
-    })
-    .insert_resource(ActiveBackend(backend))
-    .insert_resource(Orbit {
+    }));
+    app.insert_resource(ClearColor(Color::srgb(0.06, 0.07, 0.09)))
+        .insert_resource(GlobalAmbientLight {
+            color: Color::srgb(0.7, 0.8, 1.0),
+            brightness: 350.0,
+            ..default()
+        });
+}
+
+/// Inserts the panel, camera, pointer, and timing state, and registers it for reflection.
+fn add_showcase_state(app: &mut App) {
+    app.insert_resource(Orbit {
         yaw: 0.6,
         pitch: 0.38,
         distance: 17.0,
@@ -486,7 +484,6 @@ fn main() -> AppExit {
     .init_resource::<PointerState>()
     .init_resource::<StepTimer>()
     .init_resource::<BodyAssets>();
-    backend.add_plugins(&mut app);
     // Registration makes the example's state visible to reflection tools such as inspectors.
     app.register_type::<ActiveBackend>()
         .register_type::<Rigs>()
@@ -501,37 +498,64 @@ fn main() -> AppExit {
         .register_type::<Orbit>()
         .register_type::<PointerState>()
         .register_type::<StepTimer>();
-    app.add_systems(Startup, (setup_scene, setup_assets, load_rigs, spawn_panel))
-        .add_systems(
-            Update,
-            (
-                handle_buttons,
-                apply_params,
-                sync_population,
-                orbit_camera,
-                (press_pointer, read_pick, release_pointer).chain(),
-                fade_flashes,
-                update_panel,
-            ),
-        )
-        .add_systems(
-            PostUpdate,
-            (
-                restore_rest_pose
-                    .after(AnimationSystems)
-                    .before(RagdollSystems::CaptureTargets),
-                add_body_meshes
-                    .after(RagdollSystems::Bind)
-                    .before(TransformSystems::Propagate),
-            ),
-        )
-        .add_systems(FixedFirst, start_step_timer)
+}
+
+/// Adds the scene setup, input, rest-pose, mesh, timing, and grab systems.
+#[cfg_attr(
+    dylint_lib = "sagan_lints",
+    expect(
+        bevy_disallow_update_schedule,
+        reason = "input handling and UI react once per rendered frame, which is what Update is for"
+    )
+)]
+#[cfg_attr(
+    dylint_lib = "sagan_lints",
+    expect(
+        bevy_disallow_fixed_update_schedule,
+        reason = "the grab impulse must be written once per physics step, before the ragdoll Behaviour set"
+    )
+)]
+fn add_showcase_systems(app: &mut App) {
+    app.add_systems(
+        Startup,
+        (
+            setup_view,
+            setup_scene,
+            setup_assets,
+            load_rigs,
+            spawn_panel,
+        ),
+    )
+    .add_systems(
+        Update,
+        (
+            handle_buttons,
+            apply_params,
+            sync_population,
+            orbit_camera,
+            (press_pointer, read_pick, release_pointer).chain(),
+            fade_flashes,
+            update_panel,
+        ),
+    )
+    .add_systems(
+        PostUpdate,
+        (
+            restore_rest_pose
+                .after(AnimationSystems)
+                .before(RagdollSystems::CaptureTargets),
+            add_body_meshes
+                .after(RagdollSystems::Bind)
+                .before(TransformSystems::Propagate),
+        ),
+    );
+    // The fixed-step timer brackets every fixed schedule, physics included.
+    app.add_systems(FixedFirst, start_step_timer)
         .add_systems(FixedLast, finish_step_timer)
         .add_systems(
             FixedUpdate,
             pull_grabbed_body.before(RagdollFixedSystems::Behaviour),
-        )
-        .run()
+        );
 }
 
 /// Builds the humanoid skeleton and starts loading the glTF creatures.
@@ -544,14 +568,8 @@ fn load_rigs(mut commands: Commands<'_, '_>, assets: Res<'_, AssetServer>) {
     });
 }
 
-/// Spawns the camera, lights, checkered floor, and a few obstacles.
-fn setup_scene(
-    mut commands: Commands<'_, '_>,
-    backend: Res<'_, ActiveBackend>,
-    mut meshes: ResMut<'_, Assets<Mesh>>,
-    mut materials: ResMut<'_, Assets<StandardMaterial>>,
-    mut images: ResMut<'_, Assets<Image>>,
-) {
+/// Spawns the fogged camera and the shadow-casting sun.
+fn setup_view(mut commands: Commands<'_, '_>) {
     // The camera's fog color matches the clear color so the arena fades into the background.
     commands.spawn((
         Camera3d::default(),
@@ -580,7 +598,16 @@ fn setup_scene(
         .build(),
         Transform::from_xyz(-8.0, 14.0, 6.0).looking_at(Vec3::ZERO, Vec3::Y),
     ));
+}
 
+/// Spawns the checkered floor and a few obstacles with backend colliders.
+fn setup_scene(
+    mut commands: Commands<'_, '_>,
+    backend: Res<'_, ActiveBackend>,
+    mut meshes: ResMut<'_, Assets<Mesh>>,
+    mut materials: ResMut<'_, Assets<StandardMaterial>>,
+    mut images: ResMut<'_, Assets<Image>>,
+) {
     // The floor and obstacles carry the backend's static colliders.
     let floor_half = Vec3::new(ARENA_HALF_EXTENT, 0.25, ARENA_HALF_EXTENT);
     let floor = commands.spawn((
