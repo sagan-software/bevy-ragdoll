@@ -1,5 +1,17 @@
 # Phase 13: Jolt feasibility
 
+Status (2026-10-07): deferred. No Jolt binding builds for
+`wasm32-unknown-unknown`: the bindings compile Jolt C++ through CMake, and
+Jolt's own web build (JoltPhysics.js) uses Emscripten, which does not link
+with Rust's wasm output. No published Bevy 0.19 integration exists
+(`bevy_jolt` and `bevy_on_jolt` are unpublished and do not build on their
+own). `rolt` 0.3.1 binds Jolt 5.0.0, was last released in May 2024, and its
+JoltC `main` has no SwingTwist, Ragdoll or Skeleton functions. `oxijolt`
+1.0.1 (Jolt 5.6.0) has `SwingTwistConstraint`, motors and a ragdoll module,
+but its first release was 2026-10-04 and its CI tests only x86_64 Linux and
+Windows MSVC. If the owner funds this phase later, recheck `oxijolt`
+release activity first and prototype with it instead of `rolt`.
+
 Goal: a written, measured decision basis for a Jolt backend. This phase
 writes no backend unless the owner says so afterwards.
 

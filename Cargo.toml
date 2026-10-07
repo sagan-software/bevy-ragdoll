@@ -153,7 +153,12 @@ workspace = true
 
 [workspace]
 resolver = "3"
-members = [".", "crates/bevy_ragdoll_conformance", "crates/bevy_ragdoll_rapier3d"]
+members = [
+    ".",
+    "crates/bevy_ragdoll_avian3d",
+    "crates/bevy_ragdoll_conformance",
+    "crates/bevy_ragdoll_rapier3d",
+]
 
 [workspace.package]
 version = "0.1.0-dev"
@@ -165,10 +170,12 @@ repository = "https://github.com/sagan-software/bevy-ragdoll"
 [workspace.dependencies]
 # Local crates
 bevy_ragdoll = { path = ".", version = "0.1.0-dev", default-features = false }
+bevy_ragdoll_avian3d = { path = "crates/bevy_ragdoll_avian3d", version = "0.1.0-dev" }
 bevy_ragdoll_conformance = { path = "crates/bevy_ragdoll_conformance", version = "0.1.0-dev" }
 bevy_ragdoll_rapier3d = { path = "crates/bevy_ragdoll_rapier3d", version = "0.1.0-dev" }
 
 # crates.io
+avian3d = { version = "=0.7.0", default-features = false }
 bevy = { version = "=0.19.1", default-features = false }
 bevy_rapier3d = { version = "=0.36.0", default-features = false }
 clap = { version = "4.6", features = ["derive"] }
