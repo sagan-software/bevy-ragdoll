@@ -161,6 +161,7 @@ fn resolve_profile(
     if let Some(profile) = &ragdoll.profile {
         return Some(profile.clone());
     }
+    // Any missing input below returns `None`, and the next frame tries again.
     let skeleton = character_skeleton(world, character)?;
     let profile = generate_profile(world, character, &skeleton)?;
     store_profile(world, character, profile)
@@ -172,6 +173,7 @@ fn resolve_profile(
 fn character_skeleton(world: &World, character: Entity) -> Option<crate::auto::Skeleton> {
     let ragdoll = world.get::<Ragdoll>(character)?;
     let mass = ragdoll.mass;
+    // An unloaded overrides asset returns early instead of generating without it.
     let overrides = match &ragdoll.overrides {
         Some(handle) => Some(loaded_overrides(world, handle)?),
         None => None,
@@ -673,13 +675,13 @@ fn spawn_bodies(world: &mut World, character: Entity, profile: &RagdollProfile, 
 /// joint basis also inserts [`super::body::JointBasis`].
 fn attach_joints(world: &mut World, profile: &RagdollProfile, entities: &[Entity]) {
     // Skip joints whose parent or child entity is missing.
-    for joint in profile.joints() {
-        let (Some(child), Some(parent)) = (
-            entities.get(joint.child().get()).copied(),
-            entities.get(joint.parent().get()).copied(),
-        ) else {
-            continue;
-        };
+    let resolved = profile.joints().iter().filter_map(|joint| {
+        let child = entities.get(joint.child().get()).copied()?;
+        let parent = entities.get(joint.parent().get()).copied()?;
+        Some((joint, child, parent))
+    });
+    // The child body carries the joint, pointing back at its parent body.
+    for (joint, child, parent) in resolved {
         if let Ok(mut entity) = world.get_entity_mut(child) {
             entity.insert((
                 JointToParent {

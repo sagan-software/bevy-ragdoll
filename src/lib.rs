@@ -26,6 +26,13 @@
 #![cfg_attr(
     dylint_lib = "sagan_lints",
     expect(
+        repeated_cfg_gate,
+        reason = "each serialize gate guards a different serde-only item; one shared module would split the overrides and profile types"
+    )
+)]
+#![cfg_attr(
+    dylint_lib = "sagan_lints",
+    expect(
         public_surface_size,
         reason = "the root re-exports the profile vocabulary that examples, backends and tests import; moving it is a breaking change"
     )

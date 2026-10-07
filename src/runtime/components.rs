@@ -776,15 +776,16 @@ mod tests {
 
         // Body weights default to full strength, and lookups past the end return None.
         let default_weights = BodyWeights::default();
-        assert_eq!(
-            (default_weights.muscle(), default_weights.pin()),
-            (1.0, 1.0)
-        );
         // A one-entry override list has no second body.
         let overrides = RagdollBodyWeights::new(vec![BodyWeights::new(0.25, 0.75)]);
         assert_eq!(
-            (overrides.as_ref(), overrides.get(1)),
-            (&[BodyWeights::new(0.25, 0.75)][..], None)
+            (
+                default_weights.muscle(),
+                default_weights.pin(),
+                overrides.as_ref(),
+                overrides.get(1)
+            ),
+            (1.0, 1.0, &[BodyWeights::new(0.25, 0.75)][..], None)
         );
 
         // Blend stores the weight it is given.

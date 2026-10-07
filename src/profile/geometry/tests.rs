@@ -79,17 +79,6 @@ fn world_shapes_transform_and_compare_at_the_margin() {
     assert_eq!(within, [false, true, true, true, true, true]);
 }
 
-/// Returns `(p0, p1, q0, q1)` segment pairs whose distance differs from expected.
-fn segment_mismatches(cases: &[([Vec3; 4], f32)]) -> Vec<([Vec3; 4], f32)> {
-    cases
-        .iter()
-        .copied()
-        .filter(|([p0, p1, q0, q1], expected)| {
-            (segment_distance(*p0, *p1, *q0, *q1) - expected).abs() >= 1.0e-6
-        })
-        .collect()
-}
-
 /// Covers point-point, point-segment, parallel, interior, and endpoint cases.
 #[test]
 fn segment_distance_handles_degenerate_parallel_and_clamped_segments() {
@@ -130,7 +119,14 @@ fn segment_distance_handles_degenerate_parallel_and_clamped_segments() {
             2.0_f32.sqrt(),
         ),
     ];
-    assert_eq!(segment_mismatches(&cases), []);
+    // Collect every pair whose distance differs from the expected value.
+    let mismatches = cases
+        .into_iter()
+        .filter(|([p0, p1, q0, q1], expected)| {
+            (segment_distance(*p0, *p1, *q0, *q1) - expected).abs() >= 1.0e-6
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(mismatches, []);
 }
 
 /// Covers degenerate and clamped point-to-segment projections.

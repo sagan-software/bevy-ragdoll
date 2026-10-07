@@ -123,6 +123,7 @@ fn profile_lookups_cover_the_root_and_missing_bones() {
 
 /// Builds the test profile body by body through `ProfileBuilder`.
 fn built_profile() -> ProfileBuilder {
+    // Same bodies, masses and joint as `spec()`, added in profile order.
     let mut builder = ProfileBuilder::default();
     let root = builder
         .add_body(
