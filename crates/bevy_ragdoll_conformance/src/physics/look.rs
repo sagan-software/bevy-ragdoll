@@ -216,8 +216,8 @@ fn measure(scene: &mut PhysicsScene, height: fn(f32) -> f32, seconds: f32) -> Ru
         height,
         start,
         pelvis: body_index(profile, "pelvis"),
-        spine: body_index(profile, "spine_02"),
-        chest: body_index(profile, "spine_03"),
+        spine: body_index(profile, "spine_01"),
+        chest: body_index(profile, "spine_02"),
         head: body_index(profile, "head"),
         knees: [body_index(profile, "calf_l"), body_index(profile, "calf_r")],
     };
@@ -509,7 +509,7 @@ pub fn a_chest_hit_buckles_the_knees_and_stops(backend: PhysicsBackend) {
         flat_height,
         false,
         Vec3::ZERO,
-        &[("spine_03", Vec3::new(0.0, 0.0, -25.0))],
+        &[("spine_02", Vec3::new(0.0, 0.0, -25.0))],
         4.0,
     );
     // Read knee angles from first contact before evaluating horizontal motion.
@@ -553,7 +553,7 @@ pub fn a_running_death_stops_within_a_body_length(backend: PhysicsBackend) {
         flat_height,
         false,
         Vec3::new(0.0, 0.0, 5.0),
-        &[("spine_03", Vec3::new(0.0, 0.0, -25.0))],
+        &[("spine_02", Vec3::new(0.0, 0.0, -25.0))],
         4.0,
     );
     // Require contact before checking slide distance and rest delay.
@@ -590,7 +590,7 @@ pub fn a_body_shot_onto_stairs_stays_on_them(backend: PhysicsBackend) {
         stairs_height,
         true,
         Vec3::ZERO,
-        &[("spine_03", Vec3::new(0.0, 0.0, -25.0))],
+        &[("spine_02", Vec3::new(0.0, 0.0, -25.0))],
         5.0,
     );
     // Check stair contact and slide before the tighter final joint limit.
@@ -693,7 +693,7 @@ fn track_shot_motion(
 pub fn a_bullet_moves_a_downed_body_a_little(backend: PhysicsBackend) {
     // Knock the rig down before testing whether later hits remain local.
     let mut scene = look_scene(backend, Vec3::ZERO, false);
-    apply_hits(&mut scene, &[("spine_03", Vec3::new(0.0, 0.0, -25.0))]);
+    apply_hits(&mut scene, &[("spine_02", Vec3::new(0.0, 0.0, -25.0))]);
     // Let the chest hit settle before capturing each bullet baseline.
     for _ in 0..180 {
         scene.app.update();

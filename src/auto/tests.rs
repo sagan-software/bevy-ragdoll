@@ -108,14 +108,14 @@ fn reference_humanoid_gets_sixteen_named_bodies() {
     assert_eq!(
         bones,
         [
-            "pelvis", "spine_02", "spine_03", "head", "upperarm_l", "lowerarm_l", "hand_l",
-            "upperarm_r", "lowerarm_r", "hand_r", "thigh_l", "calf_l", "foot_l", "thigh_r",
-            "calf_r", "foot_r",
+            "pelvis", "spine_01", "spine_02", "upperarm_l", "lowerarm_l", "hand_l", "upperarm_r",
+            "lowerarm_r", "hand_r", "head", "thigh_l", "calf_l", "foot_l", "thigh_r", "calf_r",
+            "foot_r",
         ]
     );
-    assert!((profile.total_mass().kilograms() - 80.0).abs() < 1.0e-3);
+    assert!((profile.total_mass().kilograms() - 80.02).abs() < 1.0e-3);
     assert_eq!(count(&profile, BodyRole::Calf), 2);
-    assert_eq!(profile.body_with_role(BodyRole::Chest), profile.body_index("spine_03"));
+    assert_eq!(profile.body_with_role(BodyRole::Chest), profile.body_index("spine_02"));
 }
 
 #[test]
@@ -147,13 +147,19 @@ fn joint_torque_scales_with_total_mass() {
 }
 
 #[test]
-fn unnormalized_mass_comes_from_capsule_volume() {
-    let skeleton = Skeleton {
+fn humanoid_mass_follows_the_segment_table() {
+    let profile = generate(&Skeleton {
         mass: None,
         ..Skeleton::humanoid()
-    };
-    let profile = generate(&skeleton);
-    let body = &profile.bodies()[profile.body_index("thigh_l").unwrap().get()];
+    });
+    let mass = |bone: &str| profile.bodies()[profile.body_index(bone).unwrap().get()].mass().kilograms();
+    assert!((mass("thigh_l") / mass("calf_l") - 11.33 / 3.46).abs() < 1.0e-4);
+}
+
+#[test]
+fn unnormalized_mass_comes_from_capsule_volume() {
+    let profile = generate(&quadruped());
+    let body = &profile.bodies()[profile.body_index("leg_fl_1").unwrap().get()];
     let ShapeSpec::Capsule { a, b, radius } = body.shape() else {
         panic!("generated bodies are capsules");
     };
@@ -425,7 +431,7 @@ fn overrides_change_bodies_and_values() {
     let joint = profile.joint_of(head).unwrap();
     assert_eq!(joint.limits(), limits);
     assert_eq!(joint.max_torque(), 77.0);
-    assert!((profile.total_mass().kilograms() - 80.0).abs() < 1.0e-3);
+    assert!((profile.total_mass().kilograms() - 80.02).abs() < 1.0e-3);
 }
 
 #[test]

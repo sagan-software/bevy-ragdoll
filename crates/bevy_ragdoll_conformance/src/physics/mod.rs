@@ -728,7 +728,7 @@ pub fn an_impulse_gives_its_momentum(backend: PhysicsBackend) {
         RagdollMode::Dynamic,
     );
     // Apply the impulse at the chest centre to avoid adding torque.
-    let chest_index = body_index(&scene.profile, "spine_03");
+    let chest_index = body_index(&scene.profile, "spine_02");
     let chest = snapshots(scene.app.world_mut(), scene.character)
         .into_iter()
         .find(|body| body.index == chest_index)

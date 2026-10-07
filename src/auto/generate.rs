@@ -31,6 +31,7 @@ pub(super) fn generate(skeleton: &Skeleton) -> ProfileSpec {
         return ProfileSpec::default();
     }
     let tree = BodyTree::new(&rig, bodies);
+    let humanoid = rig.humanoid_slots().is_some();
     let roles = rig.roles(&tree);
     let segments = (0..tree.bones.len())
         .map(|body| rig.segment(&tree, &roles, body))
@@ -42,6 +43,9 @@ pub(super) fn generate(skeleton: &Skeleton) -> ProfileSpec {
         .zip(&segments)
         .map(|((bone, role), segment)| rig.body_spec(*bone, *role, segment))
         .collect::<Vec<_>>();
+    if humanoid {
+        rig.distribute_humanoid_mass(&tree, &roles, &mut body_specs);
+    }
     rig.normalize_mass(&tree, &mut body_specs);
     let total = body_specs.iter().map(|body| body.mass).sum::<f32>();
     let joints = (1..tree.bones.len())
@@ -408,15 +412,16 @@ impl<'a> Rig<'a> {
                 .max_by_key(|child| tree.subtree(*child).len()),
         };
         if let Some(child) = main_child {
-            let end = self.heads[tree.bones[child]];
-            if incoming.is_none() {
-                // The root reaches halfway toward its spine child.
-                return Segment {
-                    start,
-                    end: start.lerp(end, 0.5),
-                };
+            // End at the first bone toward the main child, so a merged neck
+            // ends the chest at the neck instead of the head.
+            let mut first = tree.bones[child];
+            while let Some(parent) = self.parents[first].filter(|parent| *parent != bone) {
+                first = parent;
             }
-            return Segment { start, end };
+            return Segment {
+                start,
+                end: self.heads[first],
+            };
         }
         // A leaf ends at its farthest merged bone, else at an estimated tip.
         let farthest = tree
@@ -429,12 +434,18 @@ impl<'a> Rig<'a> {
                 .and_then(Vec3::try_normalize)
                 .unwrap_or(Vec3::Y);
             let length = match roles[body] {
-                BodyRole::Head => 0.12 * self.size,
-                BodyRole::Hand => 0.1 * self.size,
+                BodyRole::Head => 0.077 * self.size,
+                BodyRole::Hand => 0.05 * self.size,
                 _ => incoming.map_or(0.1 * self.size, |link| 0.6 * link.length()),
             };
             start + direction * length.max(0.02 * self.size)
         });
+        // The skull starts above the head joint, where the neck ends.
+        let start = if roles[body] == BodyRole::Head && tree.children[body].is_empty() {
+            start + (end - start).normalize_or_zero() * 0.019 * self.size
+        } else {
+            start
+        };
         Segment { start, end }
     }
 
@@ -447,13 +458,8 @@ impl<'a> Rig<'a> {
             .radius
             .unwrap_or_else(|| default_radius(role, length, self.size))
             .max(0.005 * self.size);
-        // Shorten the segment so the caps stay between the joints.
-        let direction = segment.direction();
-        let inset = radius.min(length * 0.5);
-        let a = segment.start + direction * inset;
-        let b = segment.end - direction * inset;
-        let inner = a.distance(b);
-        let volume = PI * radius * radius * (inner + 4.0 / 3.0 * radius);
+        let (a, b) = (segment.start, segment.end);
+        let volume = PI * radius * radius * (length + 4.0 / 3.0 * radius);
         let local = source.rest.inverse();
         BodySpec {
             bone: source.name.clone(),
@@ -465,6 +471,37 @@ impl<'a> Rig<'a> {
             mass: source.overrides.mass.unwrap_or(volume * DENSITY),
             rest: source.rest,
             role: Some(role),
+        }
+    }
+
+    /// Returns the humanoid body slots when bone names match a convention.
+    fn humanoid_slots(&self) -> Option<Vec<(usize, BodyRole)>> {
+        let names = self
+            .skeleton
+            .bones
+            .iter()
+            .map(|bone| bone.name.as_str())
+            .collect::<Vec<_>>();
+        humanoid::detect(&Bones {
+            names: &names,
+            parents: &self.parents,
+            eligible: &self.named,
+        })
+    }
+
+    /// Redistributes automatic masses by the humanoid segment-mass table.
+    ///
+    /// The total stays the volume-derived total; overridden masses are kept.
+    fn distribute_humanoid_mass(&self, tree: &BodyTree, roles: &[BodyRole], bodies: &mut [BodySpec]) {
+        let explicit = |body: usize| self.skeleton.bones[tree.bones[body]].overrides.mass.is_some();
+        let free = (0..bodies.len()).filter(|body| !explicit(*body));
+        let (volume, share) = free.fold((0.0, 0.0), |(volume, share), body| {
+            (volume + bodies[body].mass, share + mass_share(roles[body]))
+        });
+        for (body, spec) in bodies.iter_mut().enumerate() {
+            if !explicit(body) {
+                spec.mass = volume * mass_share(roles[body]) / share;
+            }
         }
     }
 
@@ -506,7 +543,13 @@ impl<'a> Rig<'a> {
         let template = Template::of(role);
         let limits = source.overrides.limits.unwrap_or_else(|| {
             let axis = self.flex_axis(role, &segments[parent], &segments[child]);
-            template.limits(source.rest.rotation.inverse() * axis)
+            let away = self.abduction(role, &segments[child]);
+            let along = segments[child].direction();
+            // Rotating about local `axis` moves the tip toward `axis × along`.
+            template.limits(source.rest.rotation.inverse() * axis, |side_x| {
+                let local = if side_x { Vec3::X } else { Vec3::Z };
+                (source.rest.rotation * local).cross(along).dot(away)
+            })
         });
         JointSpec {
             child: child as u8,
@@ -517,6 +560,15 @@ impl<'a> Rig<'a> {
                 .overrides
                 .max_torque
                 .unwrap_or(template.torque * total_mass / REFERENCE_MASS),
+        }
+    }
+
+    /// Direction that moves a limb away from the body: arms up, legs outward.
+    fn abduction(&self, role: BodyRole, child: &Segment) -> Vec3 {
+        match role {
+            BodyRole::UpperArm => Vec3::Y,
+            BodyRole::Thigh => Vec3::X * (child.start.x - self.heads[0].x).signum(),
+            _ => Vec3::ZERO,
         }
     }
 
@@ -550,17 +602,35 @@ impl<'a> Rig<'a> {
 /// Torso radii scale with the skeleton size and limb radii with segment length.
 fn default_radius(role: BodyRole, length: f32, size: f32) -> f32 {
     match role {
-        BodyRole::Pelvis | BodyRole::Spine => 0.065 * size,
-        BodyRole::Chest => 0.075 * size,
-        BodyRole::Head => 0.055 * size,
-        BodyRole::Neck => 0.03 * size,
-        BodyRole::Thigh => 0.2 * length,
-        BodyRole::Calf => 0.14 * length,
-        BodyRole::Foot => 0.3 * length,
-        BodyRole::UpperArm => 0.18 * length,
-        BodyRole::LowerArm => 0.17 * length,
-        BodyRole::Hand => 0.4 * length,
+        BodyRole::Pelvis | BodyRole::Spine => 0.077 * size,
+        BodyRole::Chest => 0.09 * size,
+        BodyRole::Head => 0.064 * size,
+        BodyRole::Neck => 0.035 * size,
+        BodyRole::Thigh => 0.19 * length,
+        BodyRole::Calf => 0.1425 * length,
+        BodyRole::Foot => 0.304 * length,
+        BodyRole::UpperArm => 0.1786 * length,
+        BodyRole::LowerArm => 0.173 * length,
+        BodyRole::Hand => 0.5 * length,
         BodyRole::Tail | BodyRole::Other => 0.25 * length,
+    }
+}
+
+/// Share of total mass for a humanoid body role, from an 80 kg reference.
+fn mass_share(role: BodyRole) -> f32 {
+    match role {
+        BodyRole::Pelvis => 8.94,
+        BodyRole::Spine => 13.06,
+        BodyRole::Chest => 12.77,
+        BodyRole::Neck => 1.5,
+        BodyRole::Head => 5.55,
+        BodyRole::UpperArm => 2.17,
+        BodyRole::LowerArm => 1.3,
+        BodyRole::Hand => 0.49,
+        BodyRole::Thigh => 11.33,
+        BodyRole::Calf => 3.46,
+        BodyRole::Foot => 1.1,
+        BodyRole::Tail | BodyRole::Other => 1.0,
     }
 }
 
@@ -603,39 +673,53 @@ struct Template {
     flex: f32,
     /// Twist about the bone axis in both directions.
     twist: f32,
-    /// Side bend about the remaining axis in both directions.
-    side: f32,
+    /// Side bend toward the abduction direction (away from the body).
+    abduct: f32,
+    /// Side bend against the abduction direction.
+    adduct: f32,
     /// Maximum motor torque at the reference mass.
     torque: f32,
 }
 
 impl Template {
     /// Returns the template for a child body role.
+    #[allow(
+        clippy::approx_constant,
+        reason = "the table lists rounded tuned radians, not mathematical constants"
+    )]
     const fn of(role: BodyRole) -> Self {
-        let (extend, flex, twist, side, torque) = match role {
-            BodyRole::Spine => (0.35, 0.61, 0.35, 0.35, 200.0),
-            BodyRole::Chest => (0.35, 0.61, 0.44, 0.35, 150.0),
-            BodyRole::Neck | BodyRole::Head => (0.79, 0.87, 1.05, 0.61, 30.0),
-            BodyRole::UpperArm => (0.52, 1.57, 0.79, 1.05, 40.0),
-            BodyRole::LowerArm => (0.0, 2.44, 0.0, 0.0, 25.0),
-            BodyRole::Hand => (1.05, 1.05, 0.0, 0.5, 8.0),
-            BodyRole::Thigh => (0.35, 1.92, 0.52, 0.6, 150.0),
-            BodyRole::Calf => (0.0, 2.44, 0.0, 0.0, 80.0),
-            BodyRole::Foot => (0.79, 0.35, 0.0, 0.2, 25.0),
-            BodyRole::Tail => (0.5, 0.5, 0.2, 0.5, 20.0),
-            BodyRole::Pelvis | BodyRole::Other => (0.5, 0.5, 0.3, 0.5, 20.0),
+        // Radians rounded to six decimals. The Rapier conformance scenes are
+        // chaotic: exact degree conversions change their outcomes.
+        let (extend, flex, twist, abduct, adduct, torque) = match role {
+            BodyRole::Spine => (0.349_066, 0.610_865, 0.349_066, 0.349_066, 0.349_066, 200.0),
+            BodyRole::Chest => (0.349_066, 0.610_865, 0.436_332, 0.349_066, 0.349_066, 150.0),
+            BodyRole::Neck | BodyRole::Head => {
+                (0.785_398, 0.872_665, 1.047_198, 0.610_865, 0.610_865, 30.0)
+            }
+            BodyRole::UpperArm => (0.523_599, 1.570_796, 0.785_398, 1.308_997, 0.785_398, 40.0),
+            BodyRole::LowerArm => (0.0, 2.443_461, 0.0, 0.0, 0.0, 25.0),
+            BodyRole::Hand => (1.047_198, 1.047_198, 0.0, 0.0, 0.0, 8.0),
+            BodyRole::Thigh => (0.349_066, 1.919_862, 0.523_599, 0.785_398, 0.436_332, 150.0),
+            BodyRole::Calf => (0.0, 2.443_461, 0.0, 0.0, 0.0, 80.0),
+            BodyRole::Foot => (0.785_398, 0.349_066, 0.0, 0.0, 0.0, 25.0),
+            BodyRole::Tail => (0.5, 0.5, 0.2, 0.5, 0.5, 20.0),
+            BodyRole::Pelvis | BodyRole::Other => (0.5, 0.5, 0.3, 0.5, 0.5, 20.0),
         };
         Self {
             extend,
             flex,
             twist,
-            side,
+            abduct,
+            adduct,
             torque,
         }
     }
 
     /// Places the flex range on the child-local X or Z axis nearest `axis`.
-    fn limits(&self, axis: Vec3) -> JointLimits {
+    ///
+    /// `abduct_sign` is the sign of rotation about the other bend axis that
+    /// moves the child away from the body.
+    fn limits(&self, axis: Vec3, abduct_sign: impl Fn(bool) -> f32) -> JointLimits {
         let along_x = axis.x.abs() >= axis.z.abs();
         let sign = if along_x { axis.x } else { axis.z };
         let flex = if sign >= 0.0 {
@@ -649,9 +733,16 @@ impl Template {
                 max: self.extend,
             }
         };
-        let side = AngleRange {
-            min: -self.side,
-            max: self.side,
+        let side = if abduct_sign(!along_x) >= 0.0 {
+            AngleRange {
+                min: -self.adduct,
+                max: self.abduct,
+            }
+        } else {
+            AngleRange {
+                min: -self.abduct,
+                max: self.adduct,
+            }
         };
         let twist = AngleRange {
             min: -self.twist,

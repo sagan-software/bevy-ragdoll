@@ -73,7 +73,7 @@ struct PistolChestResponse {
 fn pistol_chest_baseline(scene: &mut PhysicsScene) -> PistolChestBaseline {
     // Resolve the profile bodies before requesting indexed backend snapshots.
     let pelvis_index = body_index(&scene.profile, "pelvis");
-    let chest_index = body_index(&scene.profile, "spine_03");
+    let chest_index = body_index(&scene.profile, "spine_02");
     // Copy the pre-hit values so later simulation updates cannot alter the baseline.
     let before = snapshots(scene.app.world_mut(), scene.character);
     let pelvis_pose = body_pose(&before, pelvis_index);
@@ -252,8 +252,8 @@ struct HeadshotResponse {
 /// Captures the head chain, applies an impulse, and samples nine fixed steps.
 fn measure_headshot_response(scene: &mut PhysicsScene) -> HeadshotResponse {
     // Resolve the head chain; spine_04 is the head's parent segment.
-    let neck_proxy_index = body_index(&scene.profile, "spine_03");
-    let upper_spine_index = body_index(&scene.profile, "spine_02");
+    let neck_proxy_index = body_index(&scene.profile, "spine_02");
+    let upper_spine_index = body_index(&scene.profile, "spine_01");
     let head_index = body_index(&scene.profile, "head");
     // Save relative poses before publishing the hit message.
     let before = snapshots(scene.app.world_mut(), scene.character);
@@ -352,7 +352,7 @@ fn standing_scene(backend: PhysicsBackend) -> PhysicsScene {
         },
     );
     let pelvis = body_index(&scene.profile, "pelvis");
-    let chest = body_index(&scene.profile, "spine_03");
+    let chest = body_index(&scene.profile, "spine_02");
     // Restrict world-space pins to the pelvis and chest bodies.
     scene
         .app

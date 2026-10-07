@@ -81,7 +81,7 @@ fn drop_and_check(
     );
     // Add the floor before the first physics step creates backend state.
     add_floor(&mut scene, backend, Vec3::new(51.2, 0.8, 51.2));
-    let chest_index = body_index(&scene.profile, "spine_03");
+    let chest_index = body_index(&scene.profile, "spine_02");
     let chest = snapshots(scene.app.world_mut(), scene.character)
         .into_iter()
         .find(|body| body.index == chest_index)
