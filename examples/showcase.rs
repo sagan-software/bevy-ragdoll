@@ -409,7 +409,12 @@ fn main() {
     let backend = Backend::from_environment();
 
     let mut app = App::new();
-    app.add_plugins(DefaultPlugins.set(WindowPlugin {
+    // Web servers answer 404 for the `.meta` files Bevy probes by default; the rigs have none.
+    let assets = AssetPlugin {
+        meta_check: bevy::asset::AssetMetaCheck::Never,
+        ..default()
+    };
+    app.add_plugins(DefaultPlugins.set(assets).set(WindowPlugin {
         primary_window: Some(Window {
             title: "bevy_ragdoll showcase".into(),
             resolution: (1440, 860).into(),
