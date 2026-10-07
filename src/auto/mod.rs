@@ -30,23 +30,31 @@ use crate::profile::{Mass, ProfileError, ProfileSpec, RagdollProfile};
 /// entity. Code can build it with [`Skeleton::from_positions`].
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Skeleton {
-    /// Bones in parent-first order; a parent index always precedes its child.
+    /// Bones in parent-first order. A parent index always precedes its child,
+    /// so the generator can resolve every parent in one forward pass.
     pub bones: Vec<SkeletonBone>,
-    /// Total ragdoll mass; `None` keeps the mass derived from body volume.
+    /// Total ragdoll mass. `None` keeps the mass that the generator derives
+    /// from body volume at the density of the human body.
     pub mass: Option<Mass>,
 }
 
 /// One skeleton bone with its rest pose and optional overrides.
+///
+/// The generator reads the name for roles, the parent for topology, and the
+/// rest pose for segment lengths and joint frames.
 #[derive(Clone, Debug, PartialEq)]
 pub struct SkeletonBone {
-    /// Bone name used to bind the generated body to the skeleton entity.
+    /// Bone name used to bind the generated body to the skeleton entity. The
+    /// generator also matches it against known names to assign body roles.
     pub name: String,
-    /// Index of the parent bone in [`Skeleton::bones`], absent for roots.
+    /// Index of the parent bone in [`Skeleton::bones`], or `None` for a root
+    /// bone. The index must be smaller than this bone's own index.
     pub parent: Option<usize>,
     /// Bone rest pose in skeleton space; the bone's local Y axis is expected to
     /// point along the bone, as in Blender exports.
     pub rest: Isometry3d,
-    /// Sparse per-bone overrides; the default keeps every generated value.
+    /// Sparse per-bone overrides from a [`RagdollBone`] component or a RON
+    /// file. The default value keeps every generated value for this bone.
     pub overrides: RagdollBone,
 }
 
@@ -97,7 +105,18 @@ impl Skeleton {
         skeleton
     }
 
-    /// Returns the index of the bone named `name`.
+    /// Returns the index of the bone named `name` in [`Skeleton::bones`], or
+    /// `None` when no bone has that exact name.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use bevy_ragdoll::Skeleton;
+    ///
+    /// let skeleton = Skeleton::humanoid();
+    /// assert_eq!(skeleton.bone_index("pelvis"), Some(0));
+    /// assert_eq!(skeleton.bone_index("tail"), None);
+    /// ```
     #[must_use]
     pub fn bone_index(&self, name: &str) -> Option<usize> {
         self.bones.iter().position(|bone| bone.name == name)
@@ -107,6 +126,16 @@ impl Skeleton {
     ///
     /// It faces +Z with +Y up and its feet on `y = 0`. Tests, benches and
     /// examples use it when no glTF asset is loaded.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use bevy_ragdoll::{RagdollProfile, Skeleton};
+    ///
+    /// let profile = RagdollProfile::from_skeleton(&Skeleton::humanoid())?;
+    /// assert_eq!(profile.bodies().len(), 16);
+    /// # Ok::<(), bevy_ragdoll::ProfileError>(())
+    /// ```
     #[must_use]
     pub fn humanoid() -> Self {
         const BONES: &[(&str, Option<&str>, [f32; 3])] = &[
@@ -146,12 +175,26 @@ impl Skeleton {
     ///
     /// Each bone entity gets a `Name` and a local `Transform`. A runtime
     /// [`crate::Ragdoll`] on `character` binds to these bones by name.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use bevy::prelude::{Commands, Transform};
+    /// use bevy_ragdoll::{Ragdoll, Skeleton};
+    ///
+    /// fn spawn_character(mut commands: Commands) {
+    ///     let character = commands.spawn((Transform::default(), Ragdoll::default())).id();
+    ///     Skeleton::humanoid().spawn(&mut commands, character);
+    /// }
+    /// # bevy::ecs::system::assert_is_system(spawn_character);
+    /// ```
     pub fn spawn(
         &self,
         commands: &mut bevy::prelude::Commands<'_, '_>,
         character: bevy::prelude::Entity,
     ) -> Vec<bevy::prelude::Entity> {
         use bevy::prelude::{ChildOf, Name, Transform};
+        // Bones are parent-first, so each parent entity exists before its children.
         let mut entities: Vec<bevy::prelude::Entity> = Vec::with_capacity(self.bones.len());
         for bone in &self.bones {
             let parent = bone.parent.filter(|parent| *parent < entities.len());
@@ -161,6 +204,7 @@ impl Skeleton {
                     self.bones[parent].rest.inverse() * bone.rest,
                 )
             });
+            // Children store their rest pose relative to the parent bone.
             let transform =
                 Transform::from_translation(local.translation.into()).with_rotation(local.rotation);
             let mut entity = commands.spawn((
@@ -168,6 +212,7 @@ impl Skeleton {
                 transform,
                 ChildOf(parent_entity),
             ));
+            // Only non-default overrides need a component; the generator treats absence as default.
             if bone.overrides != RagdollBone::default() {
                 entity.insert(bone.overrides);
             }
@@ -248,6 +293,16 @@ impl RagdollProfile {
     ///
     /// Returns [`ProfileError::Empty`] when no bone can carry a body, or any
     /// other validation error caused by an override value.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use bevy_ragdoll::{RagdollProfile, Skeleton};
+    ///
+    /// let profile = RagdollProfile::from_skeleton(&Skeleton::humanoid())?;
+    /// assert_eq!(profile.bodies()[0].bone(), "pelvis");
+    /// # Ok::<(), bevy_ragdoll::ProfileError>(())
+    /// ```
     pub fn from_skeleton(skeleton: &Skeleton) -> Result<Self, ProfileError> {
         Self::new(ProfileSpec::from(skeleton))
     }

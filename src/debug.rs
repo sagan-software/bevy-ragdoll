@@ -11,6 +11,9 @@ use crate::runtime::body::BodyShape;
 use crate::runtime::sets::RagdollSystems;
 
 /// Adds a colored mesh matching its collision shape to every new body.
+///
+/// Add it next to [`crate::RagdollPlugin`] to see generated bodies. Each body
+/// gets a child mesh in one of three colors chosen by its body index.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct RagdollDebugPlugin;
 
@@ -47,14 +50,17 @@ fn add_body_meshes(
         commands.entity(body).insert(Visibility::Inherited);
         commands.spawn((
             Mesh3d(meshes.add(mesh)),
-            MeshMaterial3d(materials.add(StandardMaterial {
-                base_color: PALETTE[index.get() % PALETTE.len()],
-                metallic: 0.02,
-                perceptual_roughness: 0.42,
-                ..Default::default()
-            })),
+            MeshMaterial3d(materials.add(material(PALETTE[index.get() % PALETTE.len()]))),
             transform,
             ChildOf(body),
         ));
     }
+}
+
+/// Returns the slightly glossy opaque material used for body meshes.
+fn material(color: Color) -> StandardMaterial {
+    let mut material = StandardMaterial::from(color);
+    material.metallic = 0.02;
+    material.perceptual_roughness = 0.42;
+    material
 }

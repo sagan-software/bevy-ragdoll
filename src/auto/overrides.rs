@@ -6,19 +6,26 @@ use bevy::prelude::{Component, ReflectComponent, ReflectDefault};
 
 use crate::profile::{BodyRole, JointLimits};
 
-/// How the generator treats one bone.
+/// How the profile generator treats one bone when it selects bodies.
+///
+/// The default lets the generator decide; the other variants force a body,
+/// merge the bone into its parent body, or drop the bone and its subtree.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, bevy::prelude::Reflect)]
 #[reflect(Default)]
 #[cfg_attr(feature = "serialize", derive(serde::Deserialize, serde::Serialize))]
 pub enum BoneBody {
-    /// The generator decides from names, length and topology.
+    /// The generator decides from the bone name, its length relative to the
+    /// character height, and its position in the skeleton topology.
     #[default]
     Auto,
-    /// The bone always gets its own body.
+    /// The bone always gets its own physics body, even when the generator
+    /// would merge it because it is short or has an unrecognized name.
     Body,
-    /// The bone never gets a body; its geometry joins the parent body.
+    /// The bone never gets a body. Its length and geometry join the body of
+    /// its nearest ancestor that does get one.
     Merge,
-    /// The bone and all its descendants are ignored.
+    /// The bone and all its descendants are ignored, so no body, joint, or
+    /// merged geometry comes from that part of the skeleton.
     Skip,
 }
 
@@ -34,17 +41,23 @@ pub enum BoneBody {
     serde(default, deny_unknown_fields)
 )]
 pub struct RagdollBone {
-    /// Whether this bone gets a body.
+    /// Whether this bone gets a body, merges into its parent body, or is
+    /// skipped together with its descendants; see [`BoneBody`].
     pub body: BoneBody,
-    /// Role used by hit reactions and recovery order.
+    /// Role used by hit reactions and recovery order. `None` keeps the role
+    /// that the generator derives from the bone name and topology.
     pub role: Option<BodyRole>,
-    /// Body mass in kilograms; it is kept when the total mass is normalized.
+    /// Body mass in kilograms. The generator keeps this mass when it scales
+    /// the other bodies to reach the total ragdoll mass.
     pub mass: Option<f32>,
-    /// Capsule radius in metres.
+    /// Capsule radius in metres. `None` keeps the radius that the generator
+    /// derives from the body role and segment length.
     pub radius: Option<f32>,
-    /// Limits of the joint between this body and its parent, in radians.
+    /// Limits of the joint between this body and its parent body, in
+    /// radians. `None` keeps the generated limits for the body role.
     pub limits: Option<JointLimits>,
-    /// Maximum motor torque of that joint in newton metres.
+    /// Maximum motor torque of that joint in newton metres. `None` keeps the
+    /// role torque scaled by the total ragdoll mass.
     pub max_torque: Option<f32>,
 }
 
@@ -70,14 +83,30 @@ pub struct RagdollBone {
     serde(default, deny_unknown_fields)
 )]
 pub struct RagdollOverrides {
-    /// Total ragdoll mass in kilograms.
+    /// Total ragdoll mass in kilograms. `None` keeps the mass that the
+    /// generator estimates from the skeleton height.
     pub mass: Option<f32>,
-    /// Overrides keyed by bone name or `prefix*` pattern.
+    /// Overrides keyed by exact bone name or by a `prefix*` pattern. The
+    /// [`RagdollOverrides::get`] method resolves which key applies.
     pub bones: BTreeMap<String, RagdollBone>,
 }
 
 impl RagdollOverrides {
     /// Returns the override that applies to `bone`, if any key matches.
+    ///
+    /// An exact key wins. Otherwise the longest matching `prefix*` key wins.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use bevy_ragdoll::{BoneBody, RagdollBone, RagdollOverrides};
+    ///
+    /// let mut overrides = RagdollOverrides::default();
+    /// let skip = RagdollBone { body: BoneBody::Skip, ..RagdollBone::default() };
+    /// overrides.bones.insert("tail_*".to_owned(), skip);
+    /// assert_eq!(overrides.get("tail_03"), Some(&skip));
+    /// assert_eq!(overrides.get("head"), None);
+    /// ```
     #[must_use]
     pub fn get(&self, bone: &str) -> Option<&RagdollBone> {
         if let Some(exact) = self.bones.get(bone) {
@@ -96,18 +125,26 @@ impl RagdollOverrides {
 }
 
 /// Loads [`RagdollOverrides`] from `.ragdoll.ron` files.
+///
+/// [`crate::RagdollPlugin`] registers this loader, so `AssetServer::load`
+/// returns overrides for any path that ends in `.ragdoll.ron`.
 #[cfg(feature = "serialize")]
 #[derive(Clone, Copy, Debug, Default, bevy::reflect::TypePath)]
 pub struct RagdollOverridesLoader;
 
 /// A `.ragdoll.ron` file could not be read or parsed.
+///
+/// The asset server reports this error and leaves the overrides handle
+/// without a loaded asset.
 #[cfg(feature = "serialize")]
 #[derive(Debug, thiserror::Error)]
 pub enum RagdollOverridesLoaderError {
-    /// The asset bytes could not be read.
+    /// The asset reader failed before all bytes of the overrides file were
+    /// read; the source carries the I/O error.
     #[error("could not read ragdoll overrides: {0}")]
     Io(#[from] std::io::Error),
-    /// The bytes are not valid overrides RON.
+    /// The bytes are not valid overrides RON; the source carries the
+    /// position and reason reported by the RON parser.
     #[error("could not parse ragdoll overrides: {0}")]
     Ron(#[from] ron::error::SpannedError),
 }
