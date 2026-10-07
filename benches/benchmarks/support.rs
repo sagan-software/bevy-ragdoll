@@ -143,9 +143,8 @@ pub enum BenchmarkSetupError {
 /// assert_eq!(profile.bodies().len(), 16);
 /// ```
 pub fn human_profile() -> RagdollProfile {
-    let source = include_str!("../../assets/profiles/tgf_human.ragdoll.ron");
-    let spec = ron::from_str(source).expect("checked-in TGF profile parses");
-    RagdollProfile::new(spec).expect("checked-in TGF profile validates")
+    RagdollProfile::from_skeleton(&bevy_ragdoll::Skeleton::humanoid())
+        .expect("the reference humanoid profile validates")
 }
 
 /// Builds a validated parent-first chain containing between one and 64 profile

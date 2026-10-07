@@ -10,7 +10,7 @@ publish = true
 
 [dependencies]
 bevy = { workspace = true, features = ["std", "bevy_asset", "bevy_animation", "bevy_log"] }
-bevy_ragdoll = { workspace = true, features = ["3d", "gltf"] }
+bevy_ragdoll = { workspace = true, features = ["3d"] }
 
 [lints]
 workspace = true

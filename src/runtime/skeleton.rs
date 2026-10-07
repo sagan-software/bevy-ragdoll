@@ -49,6 +49,9 @@ pub enum RagdollError {
     /// Activation keeps the character Animated because a wrapped ID would break
     /// oldest-first eviction order.
     IdentityExhausted,
+    /// The skeleton could not produce a valid generated profile.
+    #[error("ragdoll profile generation failed: {0}")]
+    InvalidSkeleton(String),
 }
 
 /// Next monotonic ragdoll identity used for deterministic age ordering.
@@ -118,10 +121,9 @@ fn synchronize_character(world: &mut World, character: Entity) {
     if world.get::<RagdollError>(character).is_some() {
         return;
     }
-    let Some(ragdoll) = world.get::<Ragdoll>(character) else {
+    let Some(profile_handle) = resolve_profile(world, character) else {
         return;
     };
-    let profile_handle = ragdoll.profile().clone();
     // Read mode and existing relationships before borrowing an asset for possible construction.
     let mode = world
         .get::<RagdollMode>(character)
@@ -141,6 +143,53 @@ fn synchronize_character(world: &mut World, character: Entity) {
         return;
     }
     synchronize_body_mode(world, character, mode, has_bodies, profile.as_ref());
+}
+
+/// Returns the character's profile, generating it from the skeleton first
+/// when the [`Ragdoll`] names none.
+///
+/// Generation waits until the character has descendants and its overrides
+/// asset, if any, has loaded. A skeleton that yields no valid profile stores
+/// [`RagdollError::InvalidSkeleton`].
+fn resolve_profile(
+    world: &mut World,
+    character: Entity,
+) -> Option<bevy::asset::Handle<RagdollProfile>> {
+    let ragdoll = world.get::<Ragdoll>(character)?;
+    if let Some(profile) = &ragdoll.profile {
+        return Some(profile.clone());
+    }
+    let mass = ragdoll.mass;
+    let overrides = match &ragdoll.overrides {
+        Some(handle) => Some(
+            world
+                .get_resource::<Assets<crate::auto::RagdollOverrides>>()?
+                .get(handle)?
+                .clone(),
+        ),
+        None => None,
+    };
+    let mut skeleton = crate::auto::skeleton_from_world(world, character, overrides.as_ref())?;
+    skeleton.mass = mass.or_else(|| {
+        overrides
+            .and_then(|overrides| overrides.mass)
+            .and_then(|kilograms| crate::profile::Mass::try_from(kilograms).ok())
+    });
+    let profile = match RagdollProfile::from_skeleton(&skeleton) {
+        Ok(profile) => profile,
+        Err(error) => {
+            bevy::log::warn!(%error, "ragdoll profile generation failed");
+            if let Ok(mut entity) = world.get_entity_mut(character) {
+                entity.insert(RagdollError::InvalidSkeleton(error.to_string()));
+            }
+            return None;
+        }
+    };
+    let handle = world
+        .get_resource_mut::<Assets<RagdollProfile>>()?
+        .add(profile);
+    world.get_mut::<Ragdoll>(character)?.profile = Some(handle.clone());
+    Some(handle)
 }
 
 /// Ensures the profile is bound before the requested mode can create body entities.

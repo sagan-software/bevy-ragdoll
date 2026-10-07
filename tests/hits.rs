@@ -108,16 +108,6 @@ fn explicit_profile_roles_override_bone_name_hints() {
     assert_eq!(profile.bodies()[0].role(), BodyRole::Tail);
 }
 
-#[test]
-/// Loads pre-role RON data and infers roles from its existing bone names.
-fn legacy_profile_ron_infers_body_roles() {
-    let spec: ProfileSpec = ron::from_str(include_str!("../assets/profiles/human.ragdoll.ron"))
-        .expect("the existing profile RON remains valid without role fields");
-    let profile = RagdollProfile::new(spec).expect("the human profile is valid");
-
-    assert_eq!(profile.bodies()[0].role(), BodyRole::Pelvis);
-    assert_eq!(profile.bodies()[1].role(), BodyRole::Spine);
-}
 
 /// Creates the core and mock backend with one fixed step per app update.
 fn app() -> App {

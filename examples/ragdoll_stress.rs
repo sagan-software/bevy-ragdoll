@@ -49,7 +49,7 @@ use bevy_ragdoll::runtime::components::{Ragdoll, RagdollBodyOf, RagdollDrive, Ra
 use bevy_ragdoll::runtime::hit::{HitProfile, HitSettings, LastHit};
 use bevy_ragdoll::runtime::messages::{HitKind, RagdollHit};
 use bevy_ragdoll::runtime::sets::{RagdollFixedSystems, RagdollSystems};
-use bevy_ragdoll::{BodyIndex, ProfileSpec, RagdollPlugin, RagdollProfile, ShapeSpec};
+use bevy_ragdoll::{BodyIndex, RagdollPlugin, RagdollProfile, ShapeSpec};
 use bevy_ragdoll_rapier3d::{RapierRagdollHooks, RapierRagdollPlugin};
 use bevy_rapier3d::plugin::{PhysicsSet, RapierPhysicsPlugin, TimestepMode};
 use bevy_rapier3d::prelude::{Collider, RigidBody};
@@ -96,11 +96,9 @@ fn run_stress() -> Result<(), Box<dyn Error>> {
     result
 }
 
-/// Parses and validates the embedded TGF human profile.
+/// Generates the human profile from the reference humanoid skeleton.
 fn load_profile() -> Result<RagdollProfile, Box<dyn Error>> {
-    let source = include_str!("../assets/profiles/tgf_human.ragdoll.ron");
-    let spec = ron::from_str::<ProfileSpec>(source)?;
-    Ok(RagdollProfile::new(spec)?)
+    Ok(RagdollProfile::from_skeleton(&bevy_ragdoll::Skeleton::humanoid())?)
 }
 
 // ---------------------------------------------------------------------------

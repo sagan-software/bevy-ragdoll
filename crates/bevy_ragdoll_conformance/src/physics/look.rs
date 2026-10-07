@@ -217,7 +217,7 @@ fn measure(scene: &mut PhysicsScene, height: fn(f32) -> f32, seconds: f32) -> Ru
         start,
         pelvis: body_index(profile, "pelvis"),
         spine: body_index(profile, "spine_02"),
-        chest: body_index(profile, "spine_04"),
+        chest: body_index(profile, "spine_03"),
         head: body_index(profile, "head"),
         knees: [body_index(profile, "calf_l"), body_index(profile, "calf_r")],
     };
@@ -439,7 +439,7 @@ fn look_run(
     result
 }
 
-/// Keeps the transient and final joint-limit tolerances from the TGF look checks.
+/// Keeps the transient and final joint-limit tolerances from the look checks.
 fn assert_joints(result: &Run) {
     // Keep transient impact tolerance separate from the tighter final tolerance.
     let joint_excess = result.joint_excess;
@@ -509,7 +509,7 @@ pub fn a_chest_hit_buckles_the_knees_and_stops(backend: PhysicsBackend) {
         flat_height,
         false,
         Vec3::ZERO,
-        &[("spine_04", Vec3::new(0.0, 0.0, -25.0))],
+        &[("spine_03", Vec3::new(0.0, 0.0, -25.0))],
         4.0,
     );
     // Read knee angles from first contact before evaluating horizontal motion.
@@ -520,7 +520,7 @@ pub fn a_chest_hit_buckles_the_knees_and_stops(backend: PhysicsBackend) {
         result.knees.iter().any(|knee| *knee <= -45.0),
         "knees {knees:?} at landing"
     );
-    // TGF references slide at most about 0.3 m; this measured 0.43 m.
+    // references slide at most about 0.3 m; this measured 0.43 m.
     let slide = result.slide;
     assert!(slide <= 0.5, "slid {slide} m after landing");
     let bounce = result.bounce;
@@ -553,7 +553,7 @@ pub fn a_running_death_stops_within_a_body_length(backend: PhysicsBackend) {
         flat_height,
         false,
         Vec3::new(0.0, 0.0, 5.0),
-        &[("spine_04", Vec3::new(0.0, 0.0, -25.0))],
+        &[("spine_03", Vec3::new(0.0, 0.0, -25.0))],
         4.0,
     );
     // Require contact before checking slide distance and rest delay.
@@ -571,9 +571,9 @@ pub fn a_running_death_stops_within_a_body_length(backend: PhysicsBackend) {
     assert_joints(&result);
 }
 
-/// Checks the body settles on the TGF stairs under a front chest shot.
+/// Checks the body settles on the stairs under a front chest shot.
 ///
-/// This remains ignored because the source TGF settings slide 1.1 m and creep
+/// This remains ignored because the source settings slide 1.1 m and creep
 /// 4 cm/s; raising friction to 0.1 made the determinism drop tear joints.
 ///
 /// # Examples
@@ -590,7 +590,7 @@ pub fn a_body_shot_onto_stairs_stays_on_them(backend: PhysicsBackend) {
         stairs_height,
         true,
         Vec3::ZERO,
-        &[("spine_04", Vec3::new(0.0, 0.0, -25.0))],
+        &[("spine_03", Vec3::new(0.0, 0.0, -25.0))],
         5.0,
     );
     // Check stair contact and slide before the tighter final joint limit.
@@ -693,7 +693,7 @@ fn track_shot_motion(
 pub fn a_bullet_moves_a_downed_body_a_little(backend: PhysicsBackend) {
     // Knock the rig down before testing whether later hits remain local.
     let mut scene = look_scene(backend, Vec3::ZERO, false);
-    apply_hits(&mut scene, &[("spine_04", Vec3::new(0.0, 0.0, -25.0))]);
+    apply_hits(&mut scene, &[("spine_03", Vec3::new(0.0, 0.0, -25.0))]);
     // Let the chest hit settle before capturing each bullet baseline.
     for _ in 0..180 {
         scene.app.update();

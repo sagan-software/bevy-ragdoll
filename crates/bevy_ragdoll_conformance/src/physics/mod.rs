@@ -1,6 +1,6 @@
 //! Backend-neutral physical behavior checks for ragdoll physics plugins.
 //!
-//! Each public check builds a headless app, adds the TGF human profile, and
+//! Each public check builds a headless app, adds the human profile, and
 //! reads only the shared ragdoll body components. The selected backend supplies
 //! its plugin and one function that adds a fixed collider from validated shape
 //! input, keeping Rapier types out of this conformance crate.
@@ -11,7 +11,7 @@ use bevy::prelude::{
     AnimationPlugin, App, ChildOf, Entity, MinimalPlugins, Name, Transform, TransformPlugin, World,
 };
 use bevy::time::{Fixed, Time, TimeUpdateStrategy};
-use bevy_ragdoll::profile::{BodyIndex, ProfileSpec};
+use bevy_ragdoll::profile::BodyIndex;
 use bevy_ragdoll::runtime::body::{BodyMass, BodyPhysicsPose, BodyShape, BodyVelocity};
 use bevy_ragdoll::runtime::components::{
     Ragdoll, RagdollBodyOf, RagdollDrive, RagdollMode, RagdollTargetPose,
@@ -102,7 +102,7 @@ impl PhysicsBackend {
     }
 }
 
-/// Builds the complete TGF physics baseline with scenario-specific boundary values.
+/// Builds the complete physics baseline with scenario-specific boundary values.
 pub(super) const fn scenario_settings(
     gravity: Vec3,
     is_ccd_enabled: bool,
@@ -141,7 +141,7 @@ pub(super) const fn scenario_settings(
     }
 }
 
-/// A headless physics app with one active TGF human ragdoll.
+/// A headless physics app with one active human ragdoll.
 struct PhysicsScene {
     /// App that owns the physics world and runtime components.
     app: App,
@@ -203,7 +203,7 @@ struct Bounds {
     gap: f32,
 }
 
-/// Ordinary fall tolerances copied from the TGF physics checks.
+/// Ordinary fall tolerances copied from the physics checks.
 const FALL: Bounds = Bounds {
     sink: 0.01,
     landing_angle: 5.0,
@@ -257,15 +257,10 @@ fn app(backend: PhysicsBackend, settings: RagdollPhysicsSettings) -> App {
     app
 }
 
-/// Loads the committed human ragdoll profile from its GLB rig.
+/// Generates the human ragdoll profile from the reference humanoid skeleton.
 fn human_profile() -> RagdollProfile {
-    let glb = std::fs::read(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/../../assets/rigs/tgf_human/tgf_human.glb"
-    ))
-    .expect("the TGF human rig GLB is present");
-    let spec = ProfileSpec::from_glb(&glb).expect("the TGF human GLB imports");
-    RagdollProfile::new(spec).expect("the TGF human profile validates")
+    RagdollProfile::from_skeleton(&bevy_ragdoll::Skeleton::humanoid())
+        .expect("the reference humanoid profile validates")
 }
 
 /// Converts a rigid isometry to a Bevy transform without introducing scale.
@@ -371,7 +366,7 @@ fn spawn_character(
         .add(profile.clone());
     app.world_mut()
         .spawn((
-            Name::new("tgf_human"),
+            Name::new("human"),
             Ragdoll::new(handle),
             RagdollMode::Animated,
             RagdollDrive::new(muscle, pin),
@@ -664,7 +659,7 @@ fn com_and_momentum(world: &mut World, character: Entity) -> (Vec3, Vec3, f32) {
     (weighted_position / total_mass, momentum, total_mass)
 }
 
-/// Checks free fall at both the default and TGF game gravity values.
+/// Checks free fall at both the default and game gravity values.
 ///
 /// The profile's mass-weighted centre of mass must fall one metre in the
 /// analytic free-fall time, within five percent, at 9.81 and 20 m/s².
@@ -677,7 +672,7 @@ fn com_and_momentum(world: &mut World, character: Entity) -> (Vec3, Vec3, f32) {
 /// register(a_ragdoll_falls_as_gravity_says);
 /// ```
 pub fn a_ragdoll_falls_as_gravity_says(backend: PhysicsBackend) {
-    // Exercise both the crate default and the authored TGF game acceleration.
+    // Exercise both the crate default and the authored game acceleration.
     for gravity in [9.81_f32, 20.0] {
         let settings = scenario_settings(Vec3::new(0.0, -gravity, 0.0), true, 0.5);
         let mut scene = scene(
@@ -733,7 +728,7 @@ pub fn an_impulse_gives_its_momentum(backend: PhysicsBackend) {
         RagdollMode::Dynamic,
     );
     // Apply the impulse at the chest centre to avoid adding torque.
-    let chest_index = body_index(&scene.profile, "spine_04");
+    let chest_index = body_index(&scene.profile, "spine_03");
     let chest = snapshots(scene.app.world_mut(), scene.character)
         .into_iter()
         .find(|body| body.index == chest_index)
@@ -820,7 +815,7 @@ fn spawn_animated_profile(app: &mut App, profile: &RagdollProfile) -> Entity {
     let character = app
         .world_mut()
         .spawn((
-            Name::new("tgf_human"),
+            Name::new("human"),
             Ragdoll::new(handle),
             transform(Isometry3d::IDENTITY),
         ))
@@ -848,7 +843,7 @@ fn named_bone_entity(world: &mut World, bone_name: &str) -> Entity {
 
 /// Confirms frozen profile bodies keep their initial poses for thirty steps.
 ///
-/// The TGF frozen state holds the pelvis at its authored pose while Rapier
+/// The frozen state holds the pelvis at its authored pose while Rapier
 /// advances the fixed schedule.
 ///
 /// # Examples
@@ -1137,7 +1132,7 @@ pub fn pinned_pelvis_stands_for_ten_seconds(backend: PhysicsBackend) {
 
 #[cfg(test)]
 mod tests {
-    //! Checks profile-shape measurements and TGF stair coordinate conversion.
+    //! Checks profile-shape measurements and stair coordinate conversion.
 
     use bevy::math::{Isometry3d, Quat, Vec3};
     use bevy::prelude::Entity;
@@ -1150,9 +1145,9 @@ mod tests {
     use bevy_ragdoll::profile::BodyIndex;
     use bevy_ragdoll::runtime::settings::RagdollPhysicsSettings;
 
-    /// Scenario overrides retain every other explicit TGF default.
+    /// Scenario overrides retain every other explicit default.
     #[test]
-    fn scenario_settings_keeps_the_complete_tgf_baseline() {
+    fn scenario_settings_keeps_the_complete_human_baseline() {
         // Select non-default gravity, CCD, and spawn lift to exercise each input.
         let gravity = Vec3::new(0.0, -20.0, 0.0);
         let settings = scenario_settings(gravity, false, 0.25);
@@ -1257,7 +1252,7 @@ mod tests {
         assert_eq!(local_center(cuboid), center);
     }
 
-    /// ET bounds convert to metres with TGF's XZY coordinate mapping.
+    /// ET bounds convert to metres with reference's XZY coordinate mapping.
     #[test]
     fn et_box_maps_axis_order_and_scale() {
         let (shape, pose) = et_box([0.0, 2.0, -4.0], [8.0, 6.0, 0.0]);

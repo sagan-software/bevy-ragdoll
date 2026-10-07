@@ -19,8 +19,6 @@ mod error;
 mod geometry;
 mod joint;
 mod limits;
-#[cfg(feature = "serialize")]
-mod loader;
 mod mass;
 mod role;
 mod spec;
@@ -30,8 +28,6 @@ pub use self::builder::ProfileBuilder;
 pub use self::error::{JointAxis, ProfileError};
 pub use self::joint::Joint;
 pub use self::limits::{AngleRange, JointLimits};
-#[cfg(feature = "serialize")]
-pub use self::loader::{RagdollProfileLoader, RagdollProfileLoaderError};
 pub use self::mass::{Mass, MassError};
 pub use self::role::BodyRole;
 pub use self::spec::{BodySpec, JointSpec, ProfileSpec, ShapeSpec};
@@ -290,6 +286,25 @@ impl RagdollProfile {
     /// ```
     pub fn joint_of(&self, body: BodyIndex) -> Option<&Joint> {
         self.joints.iter().find(|joint| joint.child() == body)
+    }
+
+    /// Finds the first body with `role` in profile order.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use bevy_ragdoll::{BodyRole, RagdollProfile, Skeleton};
+    ///
+    /// let profile = RagdollProfile::from_skeleton(&Skeleton::humanoid())?;
+    /// let head = profile.body_with_role(BodyRole::Head).map(|body| profile.bodies()[body.get()].bone());
+    /// assert_eq!(head, Some("head"));
+    /// # Ok::<(), bevy_ragdoll::ProfileError>(())
+    /// ```
+    pub fn body_with_role(&self, role: BodyRole) -> Option<BodyIndex> {
+        self.bodies
+            .iter()
+            .find(|body| body.role() == role)
+            .map(Body::index)
     }
 }
 

@@ -91,13 +91,14 @@ fn initialize_resources(app: &mut App, fixed_schedule: InternedScheduleLabel) {
     app.insert_resource(RagdollFixedSchedule {
         label: fixed_schedule,
     });
+    #[cfg(feature = "serialize")]
+    app.init_asset_loader::<crate::auto::RagdollOverridesLoader>();
     app.init_asset::<RagdollProfile>()
+        .init_asset::<crate::auto::RagdollOverrides>()
         .init_resource::<RagdollPhysicsSettings>()
         .init_resource::<HitSettings>()
         .init_resource::<RagdollBudget>()
         .init_resource::<RagdollIdCounter>();
-    #[cfg(feature = "serialize")]
-    app.init_asset_loader::<crate::profile::RagdollProfileLoader>();
 }
 
 /// Registers request and response message types with Bevy's world.
@@ -117,8 +118,8 @@ fn register_reflected_types(app: &mut App) {
     register_runtime_types(app);
 }
 
-/// Registers profile assets and Skein authoring annotations for editor
-/// inspection.
+/// Registers profile assets and the per-bone override component, so editors
+/// and glTF extras tools such as Skein can insert `RagdollBone`.
 ///
 /// The profile entries are registered before runtime components that reference
 /// profile body indexes or shape data, preserving nested reflection support for
@@ -133,9 +134,8 @@ fn register_profile_types(app: &mut App) {
         .register_type::<crate::profile::Mass>()
         .register_type::<crate::profile::BodyRole>()
         .register_type::<crate::profile::BodyIndex>()
-        .register_type::<crate::skein::RagdollBody>()
-        .register_type::<crate::skein::AngleRange>()
-        .register_type::<crate::skein::RagdollJoint>();
+        .register_type::<crate::auto::RagdollBone>()
+        .register_type::<crate::auto::RagdollOverrides>();
 }
 
 /// Registers backend-neutral body and capability values for backend plugin

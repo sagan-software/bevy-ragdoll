@@ -1,6 +1,6 @@
 //! Hit reactions on an actively driven ragdoll.
 //!
-//! The TGF human rig is imported from GLB. Every body follows a procedural idle
+//! The rig is the reference humanoid skeleton with a generated profile. Every body follows a procedural idle
 //! pose at full muscle strength, and the pelvis and chest are pinned to their
 //! animated targets. A rifle hit lands on the chest shortly after startup.
 //!
@@ -30,7 +30,7 @@ use bevy_ragdoll::runtime::messages::{
 use bevy_ragdoll::runtime::pin::PinTargets;
 use bevy_ragdoll::runtime::sets::RagdollSystems;
 use bevy_ragdoll::{
-    Body, BodyIndex, BodyRole, ProfileSpec, RagdollPlugin, RagdollProfile, ShapeSpec,
+    Body, BodyIndex, BodyRole, RagdollPlugin, RagdollProfile, ShapeSpec,
 };
 use bevy_ragdoll_rapier3d::{RapierRagdollHooks, RapierRagdollPlugin};
 use bevy_rapier3d::plugin::{RapierPhysicsPlugin, TimestepMode};
@@ -54,8 +54,7 @@ const WEAK: Color = Color::srgb(0.93, 0.57, 0.3);
 
 /// Loads the rig profile and runs the windowed example.
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let spec = ProfileSpec::from_glb(include_bytes!("../assets/rigs/tgf_human/tgf_human.glb"))?;
-    let profile = RagdollProfile::new(spec)?;
+    let profile = RagdollProfile::from_skeleton(&bevy_ragdoll::Skeleton::humanoid())?;
     App::new()
         .add_plugins(DefaultPlugins.set(WindowPlugin {
             primary_window: Some(Window {
@@ -181,23 +180,14 @@ fn body_index(position: usize) -> BodyIndex {
     BodyIndex::try_from(position).expect("validated profiles fit the body limit")
 }
 
-/// Returns whether a body is pinned: the pelvis and chest, or `spine_04` on the TGF rig.
+/// Returns whether a body is pinned: the pelvis and chest.
 fn is_core(body: &Body) -> bool {
     matches!(body.role(), BodyRole::Pelvis | BodyRole::Chest)
-        || body.bone().eq_ignore_ascii_case("spine_04")
 }
 
-/// Returns the profile position of the chest, or of `spine_04` on the TGF rig.
+/// Returns the profile position of the chest.
 fn chest_position(profile: &RagdollProfile) -> Option<usize> {
-    let bodies = profile.bodies();
-    bodies
-        .iter()
-        .position(|body| body.role() == BodyRole::Chest)
-        .or_else(|| {
-            bodies
-                .iter()
-                .position(|body| body.bone().eq_ignore_ascii_case("spine_04"))
-        })
+    profile.body_with_role(BodyRole::Chest).map(BodyIndex::get)
 }
 
 /// Starts every body at full strength and pins only the core bodies.
@@ -655,18 +645,16 @@ fn update_hud(
 }
 
 #[cfg(test)]
-/// Tests the pin and selection rules against the embedded TGF rig.
+/// Tests the pin and selection rules against the reference humanoid.
 mod tests {
     use super::*;
 
-    /// Loads the embedded TGF profile.
+    /// Generates the reference humanoid profile.
     fn profile() -> RagdollProfile {
-        let bytes = include_bytes!("../assets/rigs/tgf_human/tgf_human.glb");
-        RagdollProfile::new(ProfileSpec::from_glb(bytes).expect("GLB parses"))
-            .expect("profile validates")
+        RagdollProfile::from_skeleton(&bevy_ragdoll::Skeleton::humanoid()).expect("profile validates")
     }
 
-    /// Every body starts at full strength, and the pelvis and `spine_04` are pinned.
+    /// Every body starts at full strength, and the pelvis and chest are pinned.
     #[test]
     fn core_bodies_are_pinned_at_full_strength() {
         let profile = profile();
@@ -679,9 +667,9 @@ mod tests {
         let pelvis = bodies
             .iter()
             .position(|body| body.role() == BodyRole::Pelvis);
-        let spine = bodies.iter().position(|body| body.bone() == "spine_04");
+        let spine = bodies.iter().position(|body| body.role() == BodyRole::Chest);
         for position in [pelvis, spine] {
-            assert!(pins.is_targeted(body_index(position.expect("TGF rig has the body"))));
+            assert!(pins.is_targeted(body_index(position.expect("the humanoid has the body"))));
         }
     }
 
