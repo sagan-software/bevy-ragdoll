@@ -13,17 +13,17 @@ repository.workspace = true
 bench = false
 
 [features]
-default = ["3d", "gltf", "serialize"]
+default = ["3d", "serialize", "debug"]
 3d = []
 2d = []
-gltf = ["serialize", "dep:serde_json"]
+# Shape meshes for physics bodies through `RagdollDebugPlugin`.
+debug = ["bevy/bevy_pbr"]
 serialize = ["dep:ron", "dep:serde", "bevy/serialize"]
 
 [dependencies]
 bevy = { workspace = true, features = ["std", "bevy_asset", "bevy_animation", "bevy_log"] }
 ron = { workspace = true, optional = true }
 serde = { workspace = true, optional = true }
-serde_json = { workspace = true, optional = true }
 thiserror.workspace = true
 
 [dev-dependencies]
@@ -50,12 +50,11 @@ serde_json.workspace = true
 
 [[example]]
 name = "minimal"
-required-features = ["serialize"]
 doc-scrape-examples = true
 
 [package.metadata.example.minimal]
 name = "Minimal"
-description = "Drop the TGF human ragdoll and inspect its landing and joints."
+description = "Drop the reference humanoid ragdoll and inspect its landing and joints."
 category = "Basics"
 wasm = true
 
@@ -70,24 +69,12 @@ category = "Basics"
 wasm = true
 
 [[example]]
-name = "from_ron"
-required-features = ["serialize"]
+name = "from_gltf"
 doc-scrape-examples = true
 
-[package.metadata.example.from_ron]
-name = "From RON"
-description = "Load a validated human ragdoll profile from RON."
-category = "Basics"
-wasm = true
-
-[[example]]
-name = "from_gltf_skein"
-required-features = ["gltf"]
-doc-scrape-examples = true
-
-[package.metadata.example.from_gltf_skein]
-name = "From glTF Skein"
-description = "Import the TGF human rig and Skein body annotations from GLB."
+[package.metadata.example.from_gltf]
+name = "From glTF"
+description = "Generate ragdolls from skinned glTF creatures with no authored files."
 category = "Basics"
 wasm = true
 
@@ -113,7 +100,6 @@ wasm = true
 
 [[example]]
 name = "hit_reactions"
-required-features = ["gltf"]
 doc-scrape-examples = true
 
 [package.metadata.example.hit_reactions]
@@ -124,7 +110,6 @@ wasm = true
 
 [[example]]
 name = "partial_ragdoll"
-required-features = ["gltf"]
 doc-scrape-examples = true
 
 [package.metadata.example.partial_ragdoll]

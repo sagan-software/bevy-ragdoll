@@ -15,7 +15,7 @@ use crate::shape::collider_for_shape;
 /// Finds a shared upward correction for bodies overlapping fixed world geometry.
 ///
 /// The adapter checks each body at 1 cm intervals up to the configured bound,
-/// matching TGF's spawn-lift policy. A body with no clear position in range
+/// matching the reference spawn-lift policy. A body with no clear position in range
 /// contributes no lift; the largest successful correction moves the whole rig.
 pub(crate) fn spawn_lift(
     context: &RapierContext<'_>,
@@ -23,7 +23,7 @@ pub(crate) fn spawn_lift(
     max_spawn_lift: f32,
     ragdoll_colliders: &Query<'_, '_, (), With<RagdollBodyOf>>,
 ) -> f32 {
-    // Quantize the configured bound to TGF's centimetre search positions.
+    // Quantize the configured bound to centimetre search positions.
     let steps = lift_steps(max_spawn_lift);
     // Exclude ragdoll bodies so profiles do not push one another during spawn correction.
     let is_world_collider = |entity| ragdoll_colliders.get(entity).is_err();
@@ -84,7 +84,7 @@ fn shape_is_intersecting_fixed(
     is_intersecting
 }
 
-/// Converts a finite lift bound to TGF's rounded centimetre count.
+/// Converts a finite lift bound to a rounded centimetre count.
 fn lift_steps(max_spawn_lift: f32) -> usize {
     if max_spawn_lift.is_finite() && max_spawn_lift > 0.0 {
         let rounded_steps = (max_spawn_lift / 0.01).round();

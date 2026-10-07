@@ -1,6 +1,6 @@
 //! A partial ragdoll: driven legs under a loose upper body.
 //!
-//! The TGF human rig is imported from GLB. The pelvis and legs follow a
+//! The rig is the reference humanoid skeleton with a generated profile. The pelvis and legs follow a
 //! procedural idle pose at full muscle strength and are pinned to their
 //! animated targets. The upper body keeps 10% muscle strength and no pin, so
 //! the balls launched at the chest every two seconds knock it around while
@@ -19,7 +19,7 @@ use bevy_ragdoll::runtime::components::{
 use bevy_ragdoll::runtime::pin::PinTargets;
 use bevy_ragdoll::runtime::sets::RagdollSystems;
 use bevy_ragdoll::{
-    Body, BodyIndex, BodyRole, ProfileSpec, RagdollPlugin, RagdollProfile, ShapeSpec,
+    Body, BodyIndex, BodyRole, RagdollPlugin, RagdollProfile, ShapeSpec,
 };
 use bevy_ragdoll_rapier3d::{RapierRagdollHooks, RapierRagdollPlugin};
 use bevy_rapier3d::plugin::{RapierPhysicsPlugin, TimestepMode};
@@ -27,8 +27,7 @@ use bevy_rapier3d::prelude::{Collider, Damping, Restitution, RigidBody, Velocity
 
 /// Loads the rig profile and runs the windowed example.
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let spec = ProfileSpec::from_glb(include_bytes!("../assets/rigs/tgf_human/tgf_human.glb"))?;
-    let profile = RagdollProfile::new(spec)?;
+    let profile = RagdollProfile::from_skeleton(&bevy_ragdoll::Skeleton::humanoid())?;
     App::new()
         .add_plugins(DefaultPlugins.set(WindowPlugin {
             primary_window: Some(Window {
@@ -321,10 +320,7 @@ fn launch_balls(
     if !timer.0.tick(time.delta()).just_finished() {
         return;
     }
-    // The TGF rig has no chest role; `spine_04` is its upper torso.
-    let chest = rig.0.bodies().iter().position(|body| {
-        body.role() == BodyRole::Chest || body.bone().eq_ignore_ascii_case("spine_04")
-    });
+    let chest = rig.0.body_with_role(BodyRole::Chest).map(BodyIndex::get);
     let Some((_, chest)) = bodies.iter().find(|(index, _)| Some(index.get()) == chest) else {
         return;
     };
@@ -366,16 +362,14 @@ fn despawn_old_balls(
 }
 
 #[cfg(test)]
-/// Tests the lower-body control split against the embedded TGF rig.
+/// Tests the lower-body control split against the reference humanoid.
 mod tests {
     use super::*;
 
     /// The pelvis and legs are pinned at full strength; every other body is loose.
     #[test]
     fn lower_body_is_driven_and_upper_body_is_loose() {
-        let bytes = include_bytes!("../assets/rigs/tgf_human/tgf_human.glb");
-        let profile = RagdollProfile::new(ProfileSpec::from_glb(bytes).expect("GLB parses"))
-            .expect("profile validates");
+        let profile = RagdollProfile::from_skeleton(&bevy_ragdoll::Skeleton::humanoid()).expect("profile validates");
         let (weights, pins) = ragdoll_controls(&profile);
         let mut legs = 0;
         for (position, body) in profile.bodies().iter().enumerate() {
@@ -386,6 +380,6 @@ mod tests {
             let expected = if lower { (1.0, 1.0) } else { (0.1, 0.0) };
             assert_eq!((weight.muscle(), weight.pin()), expected);
         }
-        assert!(legs >= 4, "the TGF profile includes both legs");
+        assert!(legs >= 4, "the humanoid includes both legs");
     }
 }

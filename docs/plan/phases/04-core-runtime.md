@@ -7,9 +7,7 @@ passes the contract tier of a new conformance suite.
 
 Read first: [../architecture.md](../architecture.md) in full,
 [../reference/algorithms.md](../reference/algorithms.md) sections 2 to 7,
-the owner's notes on the phase 3 spike in `PLAN.md`, TGF
-`crates/tgf-glue/src/ragdoll/skeleton.rs` and `mod.rs`,
-`crates/tgf-game/src/combat/ragdoll/pool.rs`. Bevy references:
+the owner's notes on the phase 3 spike in `PLAN.md`. Bevy references:
 `examples/animation/animated_mesh.rs` (scene-ready observer),
 `examples/ecs/relationships.rs`, `examples/movement/physics_in_fixed_timestep.rs`
 in `~/Code/github.com/bevyengine/bevy`.
@@ -27,7 +25,7 @@ in `~/Code/github.com/bevyengine/bevy`.
    `components.rs`, `body.rs`, `drive.rs`, `sets.rs`, `messages.rs`,
    `events.rs`, `budget.rs`, `skeleton.rs`, `capture.rs`, `writeback.rs`,
    `backend.rs` (`BackendCapabilities`, `RagdollQuery`), `settings.rs`
-   (`RagdollPhysicsSettings` with TGF defaults).
+   (`RagdollPhysicsSettings` with the defaults in algorithms.md).
 3. `RagdollPlugin { fixed_schedule: InternedScheduleLabel }` with
    `Default` (FixedUpdate). It stores the label in a resource that backend
    plugins read, configures the `PostUpdate` sets after `AnimationSystems`
@@ -76,7 +74,7 @@ in `~/Code/github.com/bevyengine/bevy`.
 
 Runtime (`tests/runtime.rs`, mock backend):
 
-- `binding_finds_every_body_bone` on the TGF rig scene; and
+- `binding_finds_every_body_bone` on the human rig scene; and
   `binding_reports_a_missing_bone` on a renamed bone.
 - `animated_mode_has_no_body_entities`; `dynamic_mode_spawns_one_entity_per_body`;
   `returning_to_animated_despawns_bodies`.

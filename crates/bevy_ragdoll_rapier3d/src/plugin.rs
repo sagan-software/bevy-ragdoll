@@ -101,7 +101,7 @@ fn configure_rapier_thread_pool(
     }
 }
 
-/// Elapsed fixed-step age used to apply TGF's delayed limp-body sleep policy.
+/// Elapsed fixed-step age used to apply the delayed limp-body sleep policy.
 #[derive(Resource, Default, bevy::prelude::Reflect)]
 struct RapierSleepTimers {
     /// Active ragdoll age in seconds, keyed by the owning character entity.

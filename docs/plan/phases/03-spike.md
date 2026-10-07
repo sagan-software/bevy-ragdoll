@@ -1,13 +1,13 @@
 # Phase 3: Rapier powered-ragdoll spike
 
-Goal: prove, before the core API is fixed, that the TGF human rig on
+Goal: prove, before the core API is fixed, that the 16-body human profile on
 bevy_rapier3d can follow a moving target pose with joint motors and with
 the torque drive, stand with a pelvis pin, and do it cheaply. The owner
 reviews the result before phase 4 starts.
 
 Read first: [../reference/physics-api.md](../reference/physics-api.md)
 part A, [../reference/algorithms.md](../reference/algorithms.md) sections
-1 to 4, TGF `crates/tgf-ragdoll/src/world.rs`.
+1 to 4.
 
 ## Steps
 
@@ -15,8 +15,8 @@ part A, [../reference/algorithms.md](../reference/algorithms.md) sections
    Create `examples/spike_rapier_powered.rs`. It is throwaway: it may
    build Rapier entities directly from the `RagdollProfile` without the
    core runtime. Phase 5 deletes it.
-2. Spawn the TGF human profile standing on a ground cuboid: one entity per
-   body (capsule from the profile shape, mass with TGF's inertia floor
+2. Spawn the human profile standing on a ground cuboid: one entity per
+   body (capsule from the profile shape, mass with an inertia floor of
    0.08 m), one `ImpulseJoint` with a `GenericJoint` per joint (locked
    linear axes, per-axis limits, locked `0..0` axes, contacts disabled),
    pairs in `no_contact` filtered with `CollisionGroups` or a hooks

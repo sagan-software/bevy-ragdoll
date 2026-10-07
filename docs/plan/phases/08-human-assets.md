@@ -21,15 +21,11 @@ step 7 (hinge sign), Bevy's `examples/animation/animated_mesh.rs` and
    `assets/characters/ual_human/ual1.glb` and `ual2.glb`. Both contain the
    65-bone skeleton and a skinned `Mannequin` mesh; clips from either file
    play on the other because the bone name paths match.
-2. Write `ual_human.ragdoll.ron` by mapping the TGF profile onto the UAL
-   skeleton with a test-only helper (`tests/ual_profile.rs`, ignored test
-   `generate_ual_profile` that writes the file):
-   - 16 bodies, bone map identical except TGF `spine_04` to UAL
-     `spine_03` and `head` to `Head`;
-   - keep TGF masses, radii, limits and torques;
-   - capsule endpoints from the UAL bone's head to its main child's head,
-     inset by the radius, with TGF's capsule length ratio;
-   - rest frames from the UAL bind pose.
+2. Generate the UAL human's profile with `Ragdoll::default()`. Its UE4
+   mannequin bone names select the humanoid layout (16 bodies). Capsule
+   endpoints run from each bone's head to its main child's head, inset by
+   the radius; rest frames come from the UAL bind pose. Put any tuning in
+   a short RON overrides file, `assets/characters/ual_human/overrides.ron`.
 3. Check every hinge with the rest-pose bend rule and the clips: sample
    `Idle_Loop`, `Walk_Loop`, `Jog_Fwd_Loop`, `Hit_Chest`, `Hit_Head`,
    `Death01`, `LayToIdle`, `Hit_Knockback` every 1/30 s and measure each
@@ -45,9 +41,9 @@ step 7 (hinge sign), Bevy's `examples/animation/animated_mesh.rs` and
 5. Examples on the UAL human (Rapier):
    - `toggle_ragdoll`, `powered_follow`, `death_fall`, `blend_to_animation`
      as described in [../reference/examples.md](../reference/examples.md);
-   - `hit_reactions` moves from the TGF rig to the UAL human.
+   - `hit_reactions` moves from the capsule rig to the UAL human.
 6. Stress example: `--creature human` now means the UAL human playing
-   `Idle_Loop` with one shared `AnimationGraph` handle; keep the TGF rig as
+   `Idle_Loop` with one shared `AnimationGraph` handle; keep the capsule rig as
    `--creature capsules`. Rerun the sweep and commit the new baseline.
 
 ## Tests

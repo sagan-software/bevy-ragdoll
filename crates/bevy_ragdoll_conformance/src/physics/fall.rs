@@ -59,7 +59,7 @@ pub(super) fn simulation_steps(seconds: f32) -> usize {
     usize::try_from(rounded_steps).expect("physics scenario duration fits addressable memory")
 }
 
-/// Drops and measures the TGF human rig for one backend-neutral scenario.
+/// Drops and measures the human rig for one backend-neutral scenario.
 fn drop_and_check(
     backend: PhysicsBackend,
     seconds: f32,
@@ -81,7 +81,7 @@ fn drop_and_check(
     );
     // Add the floor before the first physics step creates backend state.
     add_floor(&mut scene, backend, Vec3::new(51.2, 0.8, 51.2));
-    let chest_index = body_index(&scene.profile, "spine_04");
+    let chest_index = body_index(&scene.profile, "spine_03");
     let chest = snapshots(scene.app.world_mut(), scene.character)
         .into_iter()
         .find(|body| body.index == chest_index)
@@ -188,7 +188,7 @@ fn assert_drop_bounds(measurements: &DropMeasurements, bounds: Bounds) {
 /// Drops the rig onto a flat plane and verifies that it lands without separating.
 ///
 /// The rig starts 1.5 m above the floor with a 30 N·s chest push. It must settle
-/// within the TGF limits for sink, transient and final joint error, gap, and
+/// within the limits for sink, transient and final joint error, gap, and
 /// final-frame motion.
 ///
 /// # Examples

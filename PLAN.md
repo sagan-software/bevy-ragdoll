@@ -3,7 +3,7 @@
 | Complete | Phase | Evidence |
 | --- | --- | --- |
 | [x] | 1. Repository, toolchain and CI | Local workspace and gates complete. The public GitHub repository exists, and `main` has been pushed. |
-| [x] | 2. Profile data model and import | Profile model, RON loader, Skein components and TGF GLB import implemented; all phase 2 gates pass. Coverage gaps are documented below and in the commit body. |
+| [x] | 2. Profile data model and import | Profile model, builder and RON loader implemented; all phase 2 gates pass. Automatic generation and sparse overrides later replaced the Skein components and GLB import. Coverage gaps are documented below and in the commit body. |
 | [x] | 3. Rapier powered-ragdoll spike | [Report](docs/spikes/rapier-powered.md); checks and coverage gap recorded below. |
 | [x] | 4. Core runtime | Runtime, mock backend, conformance tests and screenshots complete. Coverage gaps and reasons are recorded below. |
 | [x] | 5. Rapier 3D backend | Workspace gates, backend coverage, headless smoke run, and reviewed screenshots pass. Coverage gaps are recorded below. |

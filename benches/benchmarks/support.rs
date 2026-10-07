@@ -1,7 +1,7 @@
 //! This module constructs repeatable profile inputs and bound skeletons for
 //! benchmark setup.
 //!
-//! The checked-in TGF human and seeded synthetic chains provide deterministic
+//! The generated reference human and seeded synthetic chains provide deterministic
 //! body and joint data. `core_app` prepares capture and writeback populations,
 //! while `rapier_app` adds physics resources and a floor. App constructors
 //! reject missing profile storage and invalid joint parent ordering before
@@ -125,7 +125,7 @@ pub enum BenchmarkSetupError {
     BodyEntityAccess(#[from] bevy::ecs::world::error::EntityMutableFetchError),
 }
 
-/// Loads and validates the checked-in TGF human profile used by benchmark
+/// Generates the reference human profile used by benchmark
 /// fixtures.
 ///
 /// The checked-in RON file supplies the named 16-body rig used for capture,
@@ -143,9 +143,8 @@ pub enum BenchmarkSetupError {
 /// assert_eq!(profile.bodies().len(), 16);
 /// ```
 pub fn human_profile() -> RagdollProfile {
-    let source = include_str!("../../assets/profiles/tgf_human.ragdoll.ron");
-    let spec = ron::from_str(source).expect("checked-in TGF profile parses");
-    RagdollProfile::new(spec).expect("checked-in TGF profile validates")
+    RagdollProfile::from_skeleton(&bevy_ragdoll::Skeleton::humanoid())
+        .expect("the reference humanoid profile validates")
 }
 
 /// Builds a validated parent-first chain containing between one and 64 profile

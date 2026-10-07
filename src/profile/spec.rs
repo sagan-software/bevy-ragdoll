@@ -128,3 +128,41 @@ pub struct JointSpec {
     /// nonnegative before a backend creates the corresponding constraint.
     pub max_torque: f32,
 }
+
+impl ShapeSpec {
+    /// Returns a render mesh of this shape and its transform in the body frame.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use bevy::math::Vec3;
+    /// use bevy_ragdoll::ShapeSpec;
+    ///
+    /// let (_mesh, transform) = ShapeSpec::Sphere { center: Vec3::X, radius: 0.1 }.mesh();
+    /// assert_eq!(transform.translation, Vec3::X);
+    /// ```
+    pub fn mesh(&self) -> (bevy::mesh::Mesh, bevy::transform::components::Transform) {
+        use bevy::math::primitives::{Capsule3d, Cuboid, Sphere};
+        use bevy::transform::components::Transform;
+        match *self {
+            Self::Capsule { a, b, radius } => (
+                Capsule3d::new(radius, a.distance(b)).into(),
+                Transform::from_translation((a + b) * 0.5).with_rotation(Quat::from_rotation_arc(
+                    Vec3::Y,
+                    (b - a).try_normalize().unwrap_or(Vec3::Y),
+                )),
+            ),
+            Self::Sphere { center, radius } => {
+                (Sphere::new(radius).into(), Transform::from_translation(center))
+            }
+            Self::Cuboid {
+                center,
+                rotation,
+                half_extents,
+            } => (
+                Cuboid::from_size(half_extents * 2.0).into(),
+                Transform::from_translation(center).with_rotation(rotation),
+            ),
+        }
+    }
+}

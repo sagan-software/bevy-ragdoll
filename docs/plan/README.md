@@ -60,8 +60,6 @@ Open these when a phase points at them:
   shows, and how to check it.
 - [reference/assets.md](reference/assets.md): licensed asset sources,
   download URLs, bone names, clips, attribution.
-- [reference/tgf-port-map.md](reference/tgf-port-map.md): which TGF code to
-  port, from where, and what to leave behind.
 
 ## Rules for every phase
 

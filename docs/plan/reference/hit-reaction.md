@@ -34,7 +34,7 @@ Everything in sections 2 to 7 is implemented in `bevy_ragdoll_balance`
 (phases 9 and 10), except the strength drop and recovery of 2.3 and 2.4,
 which live in the core's hit module (phase 7) so games without balance get
 flinches too. The motor defaults quoted below (4 Hz, critically damped,
-joint friction 0.05) are TGF's tuned values, ported into the core.
+joint friction 0.05) are tuned values from an earlier game project.
 
 ## 1. How practical systems are built
 
@@ -1027,7 +1027,7 @@ Joint motors (acceleration-based, per axis):
 
 ```
 omega_m  = 2 pi f,  stiffness = omega_m^2 * muscle,  damping = 2 zeta omega_m * sqrt(muscle)
-f = 4 Hz (core default, from TGF), zeta = 1.0
+f = 4 Hz (core default), zeta = 1.0
 => at muscle 1: stiffness 632 s^-2, damping 50.3 s^-1
 ```
 

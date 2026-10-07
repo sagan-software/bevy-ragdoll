@@ -23,12 +23,12 @@ library API instead. The "Check" line names the behaviour to see.
 
 ## Basics (phase 4 to 7)
 
-- `minimal`: the TGF test rig as capsules, dropped as a limp ragdoll on a
+- `minimal`: the reference humanoid skeleton as capsules, dropped as a limp ragdoll on a
   plane. Check: lands, no joint separation, settles.
 - `from_code`: a three-body chain built with `ProfileBuilder`. Check: hangs
   from a pinned root and swings.
-- `from_ron`: the human profile loaded from `assets/profiles/human.ragdoll.ron`.
-- `from_gltf_skein`: the TGF rig GLB with Skein components.
+- `from_gltf`: `assets/rigs/humanoid.glb` with `Ragdoll::default()` and one
+  `RagdollBone` override. Check: the generated profile drops and settles.
 - `toggle_ragdoll`: an animated character walking in a circle; `R` toggles
   `Dynamic` and back with a blend. Check: no pop entering or leaving.
 
@@ -73,8 +73,7 @@ library API instead. The "Check" line names the behaviour to see.
   automatic versus tuned profile. Check: each lands and settles without
   exploding; powered idle holds the pose.
 - `auto_profile`: loads any glTF given as an argument, generates a profile,
-  draws the capsules, and drops it. `--save <path.ragdoll.ron>` writes the
-  spec.
+  draws the capsules, and drops it.
 
 ## 2D (phase 14)
 
