@@ -161,25 +161,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     #[cfg(not(target_arch = "wasm32"))]
     let args = Args::parse();
 
-    let step = Duration::from_secs_f64(1.0 / FIXED_HZ);
-
     let mut app = App::new();
-    if args.headless {
-        app.add_plugins((
-            MinimalPlugins.set(ScheduleRunnerPlugin::run_loop(Duration::ZERO)),
-            AssetPlugin::default(),
-            TransformPlugin,
-        ));
-    } else {
-        app.add_plugins(DefaultPlugins)
-            .add_systems(Startup, setup_view)
-            .add_systems(
-                PostUpdate,
-                add_body_meshes
-                    .after(RagdollSystems::Bind)
-                    .before(TransformSystems::Propagate),
-            );
-    }
+    add_presentation(&mut app, args.headless);
     app.insert_resource(Run {
         args,
         skeleton: Skeleton::humanoid(),
@@ -187,29 +170,56 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         steps: Vec::new(),
         frame_start: None,
         step_start: None,
-    })
-    // Advance time by exactly one fixed step per frame, however long the frame takes.
-    .insert_resource(TimeUpdateStrategy::ManualDuration(step))
-    .insert_resource(Time::<Fixed>::from_hz(FIXED_HZ))
-    .insert_resource(TimestepMode::Fixed {
-        dt: step.as_secs_f32(),
-        substeps: 1,
-    })
-    .add_plugins((
-        RagdollPlugin::default(),
-        RapierPhysicsPlugin::<RapierRagdollHooks<'_, '_>>::default().in_fixed_schedule(),
-        RapierRagdollPlugin,
-    ))
-    .add_systems(Startup, spawn_ragdolls)
-    .add_systems(First, start_frame)
-    .add_systems(Last, (finish_frame, finish_run).chain())
-    .add_systems(FixedFirst, start_step)
-    .add_systems(FixedLast, finish_step);
+    });
+    add_simulation(&mut app);
 
     match app.run() {
         AppExit::Success => Ok(()),
         AppExit::Error(code) => Err(format!("stress run failed with exit code {code}").into()),
     }
+}
+
+/// Adds a window with body meshes, or only the headless core plugins.
+fn add_presentation(app: &mut App, headless: bool) {
+    if headless {
+        app.add_plugins((
+            MinimalPlugins.set(ScheduleRunnerPlugin::run_loop(Duration::ZERO)),
+            AssetPlugin::default(),
+            TransformPlugin,
+        ));
+        return;
+    }
+    app.add_plugins(DefaultPlugins)
+        .add_systems(Startup, setup_view)
+        .add_systems(
+            PostUpdate,
+            add_body_meshes
+                .after(RagdollSystems::Bind)
+                .before(TransformSystems::Propagate),
+        );
+}
+
+/// Adds the ragdoll runtime, Rapier, the scenario, and the timing systems.
+fn add_simulation(app: &mut App) {
+    let step = Duration::from_secs_f64(1.0 / FIXED_HZ);
+    // Advance time by exactly one fixed step per frame, however long the frame takes.
+    app.insert_resource(TimeUpdateStrategy::ManualDuration(step))
+        .insert_resource(Time::<Fixed>::from_hz(FIXED_HZ))
+        .insert_resource(TimestepMode::Fixed {
+            dt: step.as_secs_f32(),
+            substeps: 1,
+        })
+        .add_plugins((
+            RagdollPlugin::default(),
+            RapierPhysicsPlugin::<RapierRagdollHooks<'_, '_>>::default().in_fixed_schedule(),
+            RapierRagdollPlugin,
+        ));
+    // Frame timers bracket each update; step timers bracket each fixed step.
+    app.add_systems(Startup, spawn_ragdolls)
+        .add_systems(First, start_frame)
+        .add_systems(Last, (finish_frame, finish_run).chain())
+        .add_systems(FixedFirst, start_step)
+        .add_systems(FixedLast, finish_step);
 }
 
 /// Spawns the floor and the ragdolls for the selected scenario.
