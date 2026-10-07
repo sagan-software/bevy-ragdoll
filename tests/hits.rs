@@ -1,4 +1,8 @@
 //! Public hit-control behavior at the core runtime boundary.
+//!
+//! The tests write `RagdollHit` messages against the conformance mock backend
+//! and check muscle and pin weights, streaks, recovery, velocity limits, and
+//! the impulses the runtime publishes for a backend to apply.
 
 use bevy::asset::{AssetPlugin, Assets};
 use bevy::ecs::message::Messages;
@@ -990,7 +994,9 @@ fn small_hit_does_not_continue_past_the_addressed_body() {
 /// Returns every buffered impulse through a fresh cursor, so the result does
 /// not depend on which of the two update buffers holds the messages.
 fn published_impulses(world: &World) -> Vec<RagdollImpulse> {
-    let messages = world.resource::<Messages<RagdollImpulse>>();
+    let Some(messages) = world.get_resource::<Messages<RagdollImpulse>>() else {
+        return Vec::new();
+    };
     messages.get_cursor().read(messages).copied().collect()
 }
 

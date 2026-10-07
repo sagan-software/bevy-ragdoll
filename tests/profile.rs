@@ -1,4 +1,8 @@
 //! Public profile, generator, builder, and asset-loader behavior.
+//!
+//! The tests build profiles through every public entry point and check that
+//! validation rejects malformed shapes, joints, and limits while valid input
+//! keeps its bodies, joints, masses, and rest poses.
 
 #![cfg(feature = "serialize")]
 

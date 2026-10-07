@@ -1,4 +1,8 @@
 //! Loads the Blender-generated creature GLBs headlessly and generates profiles.
+//!
+//! Each rig under `assets/rigs` goes through the real glTF loader and scene
+//! spawn, so these tests catch naming or hierarchy changes in the generated
+//! assets that code-built skeletons would miss.
 
 use bevy::animation::AnimationPlugin;
 use bevy::asset::{AssetPlugin, Assets};

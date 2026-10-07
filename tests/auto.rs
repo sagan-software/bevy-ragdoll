@@ -1,4 +1,8 @@
 //! `Ragdoll::default()` generates a profile from the character's skeleton.
+//!
+//! These tests spawn code-built skeletons under a headless app and check the
+//! generated bodies, masses, roles, and overrides, including the cases where
+//! generation must wait for an asset or report an invalid skeleton.
 
 use bevy::asset::{AssetPlugin, Assets};
 use bevy::prelude::{App, Entity, MinimalPlugins, Transform};
@@ -90,8 +94,9 @@ fn bone_components_and_override_assets_change_the_profile() {
     let head = skeleton.bone_index("head").unwrap();
     skeleton.bones[head].overrides.role = Some(BodyRole::Other);
     let ragdoll = Ragdoll {
+        profile: None,
+        mass: None,
         overrides: Some(overrides),
-        ..Default::default()
     };
     let character = spawn(&mut app, ragdoll, &skeleton);
     app.update();
@@ -106,8 +111,9 @@ fn bone_components_and_override_assets_change_the_profile() {
 fn an_unloaded_override_asset_delays_generation() {
     let mut app = app();
     let ragdoll = Ragdoll {
+        profile: None,
+        mass: None,
         overrides: Some(bevy::asset::Handle::default()),
-        ..Default::default()
     };
     let character = spawn(&mut app, ragdoll, &Skeleton::humanoid());
     app.update();

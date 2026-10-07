@@ -1,4 +1,8 @@
 //! Public runtime behavior with the shared conformance mock backend.
+//!
+//! The tests drive characters through mode changes, binding, budgets, pins,
+//! settling, and writeback in a headless app, so they cover the core runtime
+//! without depending on a real physics engine.
 
 use std::sync::{
     Arc,
@@ -510,7 +514,9 @@ fn blend_zero_shows_animation_and_one_shows_physics_with_halfway_between() {
             body_pose.previous = physics_pose;
             body_pose.current = physics_pose;
         }
-        app.world_mut().run_schedule(bevy::app::PostUpdate);
+        app.world_mut()
+            .try_run_schedule(bevy::app::PostUpdate)
+            .expect("the ragdoll plugin installs PostUpdate");
 
         let actual_x = app
             .world()
