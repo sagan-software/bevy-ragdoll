@@ -19,9 +19,9 @@ use bevy::prelude::Resource;
 pub enum EvictPolicy {
     /// Freeze the longest-running dynamic ragdoll before activating the new
     /// character.
-    #[default]
     /// Stable activation identities determine which dynamic character leaves
     /// simulation when the configured count is exceeded.
+    #[default]
     FreezeOldest,
 }
 

@@ -39,17 +39,18 @@ use super::settings::RagdollPhysicsSettings;
 pub enum RagdollError {
     /// A required profile bone name was not found among descendants of the
     /// character entity.
-    #[error("ragdoll profile bone `{0}` was not found in the skeleton")]
     /// Activation stores the exact profile name so an application can repair
     /// its skeleton before retrying.
+    #[error("ragdoll profile bone `{0}` was not found in the skeleton")]
     MissingBone(String),
     /// The monotonic identity counter reached its maximum and cannot assign a
     /// unique character ID.
-    #[error("ragdoll identity space is exhausted")]
     /// Activation keeps the character Animated because a wrapped ID would break
     /// oldest-first eviction order.
+    #[error("ragdoll identity space is exhausted")]
     IdentityExhausted,
-    /// The skeleton could not produce a valid generated profile.
+    /// The skeleton could not produce a valid generated profile; the message
+    /// names the profile validation error so the rig can be corrected.
     #[error("ragdoll profile generation failed: {0}")]
     InvalidSkeleton(String),
 }
@@ -156,40 +157,60 @@ fn resolve_profile(
     character: Entity,
 ) -> Option<bevy::asset::Handle<RagdollProfile>> {
     let ragdoll = world.get::<Ragdoll>(character)?;
+    // An explicit profile wins; generation only fills an empty slot.
     if let Some(profile) = &ragdoll.profile {
         return Some(profile.clone());
     }
     let mass = ragdoll.mass;
+    // Returning `None` while the overrides asset loads retries on a later frame.
     let overrides = match &ragdoll.overrides {
-        Some(handle) => Some(
-            world
-                .get_resource::<Assets<crate::auto::RagdollOverrides>>()?
-                .get(handle)?
-                .clone(),
-        ),
+        Some(handle) => Some(loaded_overrides(world, handle)?),
         None => None,
     };
     let mut skeleton = crate::auto::skeleton_from_world(world, character, overrides.as_ref())?;
+    // The component's mass beats the overrides file, which beats volume-derived mass.
     skeleton.mass = mass.or_else(|| {
         overrides
             .and_then(|overrides| overrides.mass)
             .and_then(|kilograms| crate::profile::Mass::try_from(kilograms).ok())
     });
-    let profile = match RagdollProfile::from_skeleton(&skeleton) {
-        Ok(profile) => profile,
-        Err(error) => {
-            bevy::log::warn!(%error, "ragdoll profile generation failed");
-            if let Ok(mut entity) = world.get_entity_mut(character) {
-                entity.insert(RagdollError::InvalidSkeleton(error.to_string()));
-            }
-            return None;
-        }
-    };
+    let profile = generate_profile(world, character, &skeleton)?;
+    // Storing the handle on the component makes later frames take the explicit path.
     let handle = world
         .get_resource_mut::<Assets<RagdollProfile>>()?
         .add(profile);
     world.get_mut::<Ragdoll>(character)?.profile = Some(handle.clone());
     Some(handle)
+}
+
+/// Returns the loaded overrides asset, or `None` while it is still loading.
+fn loaded_overrides(
+    world: &World,
+    handle: &bevy::asset::Handle<crate::auto::RagdollOverrides>,
+) -> Option<crate::auto::RagdollOverrides> {
+    world
+        .get_resource::<Assets<crate::auto::RagdollOverrides>>()?
+        .get(handle)
+        .cloned()
+}
+
+/// Builds a profile from `skeleton`, or records [`RagdollError::InvalidSkeleton`]
+/// on the character and returns `None`.
+fn generate_profile(
+    world: &mut World,
+    character: Entity,
+    skeleton: &crate::auto::Skeleton,
+) -> Option<RagdollProfile> {
+    match RagdollProfile::from_skeleton(skeleton) {
+        Ok(profile) => Some(profile),
+        Err(error) => {
+            bevy::log::warn!(%error, "ragdoll profile generation failed");
+            if let Ok(mut entity) = world.get_entity_mut(character) {
+                entity.insert(RagdollError::InvalidSkeleton(error.to_string()));
+            }
+            None
+        }
+    }
 }
 
 /// Ensures the profile is bound before the requested mode can create body entities.

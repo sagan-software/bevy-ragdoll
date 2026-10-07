@@ -160,9 +160,11 @@ mod tests {
     #[test]
     fn velocity_limits_clamp_only_excess_speed() {
         let output = BodyDriveOutput {
+            pin_force: Vec3::ZERO,
+            pin_torque: Vec3::ZERO,
+            joint_torque: Vec3::ZERO,
             max_linear_speed: Some(10.0),
             max_angular_speed: Some(20.0),
-            ..Default::default()
         };
         let mut velocity = BodyVelocity {
             linear: Vec3::X * 12.0,
@@ -194,9 +196,11 @@ mod tests {
     #[test]
     fn velocity_limits_validate_public_caps() {
         let output = BodyDriveOutput {
+            pin_force: Vec3::ZERO,
+            pin_torque: Vec3::ZERO,
+            joint_torque: Vec3::ZERO,
             max_linear_speed: Some(f32::NAN),
             max_angular_speed: Some(-1.0),
-            ..Default::default()
         };
         let mut velocity = BodyVelocity {
             linear: Vec3::X,
@@ -209,8 +213,11 @@ mod tests {
         assert_eq!(velocity.angular, Vec3::Y);
 
         let zero_limit = BodyDriveOutput {
+            pin_force: Vec3::ZERO,
+            pin_torque: Vec3::ZERO,
+            joint_torque: Vec3::ZERO,
+            max_linear_speed: None,
             max_angular_speed: Some(0.0),
-            ..Default::default()
         };
         zero_limit.clamp_velocity(&mut velocity);
         assert_eq!(velocity.angular, Vec3::ZERO);

@@ -241,15 +241,15 @@ fn box_sat_checks_cross_product_axes() {
                             let second =
                                 Obb::new(Vec3::new(x, y, z), rotation, Vec3::new(2.0, 0.2, 0.15));
                             let delta = second.center - first.center;
-                            let face_separation = first
+                            let is_face_separated = first
                                 .axes
                                 .into_iter()
                                 .chain(second.axes)
                                 .any(|axis| is_separating_axis(first, second, delta, axis));
-                            if face_separation {
+                            if is_face_separated {
                                 continue;
                             }
-                            let edge_separation = first.axes.into_iter().any(|first_axis| {
+                            let is_edge_separated = first.axes.into_iter().any(|first_axis| {
                                 second.axes.into_iter().any(|second_axis| {
                                     is_separating_axis(
                                         first,
@@ -259,7 +259,7 @@ fn box_sat_checks_cross_product_axes() {
                                     )
                                 })
                             });
-                            if edge_separation {
+                            if is_edge_separated {
                                 assert!(!is_obb_intersection(first, second));
                                 return;
                             }

@@ -299,7 +299,8 @@ impl RagdollProfile {
         self.joints.iter().find(|joint| joint.child() == body)
     }
 
-    /// Finds the first body with `role` in profile order.
+    /// Finds the first body with `role` in profile order, so callers can
+    /// address a chest or head without knowing the rig's bone names.
     ///
     /// # Examples
     ///

@@ -48,17 +48,20 @@ impl Strength {
     super::hit::LastHit
 )]
 pub struct Ragdoll {
-    /// Profile used for body creation. `None` generates one from the skeleton
-    /// and stores its handle here.
+    /// Profile used for body creation. `None` makes the runtime generate one
+    /// from the skeleton under the character and store the new handle here.
     pub profile: Option<bevy::asset::Handle<RagdollProfile>>,
-    /// Total mass for a generated profile; `None` derives mass from volume.
+    /// Total mass in kilograms for a generated profile; `None` derives each
+    /// body's mass from its collider volume and a uniform density.
     pub mass: Option<crate::profile::Mass>,
-    /// Sparse overrides for a generated profile, usually a `.ragdoll.ron` file.
+    /// Sparse per-bone overrides for a generated profile, usually loaded from a
+    /// `.ragdoll.ron` file; `None` keeps every generated value.
     pub overrides: Option<bevy::asset::Handle<crate::auto::RagdollOverrides>>,
 }
 
 impl Ragdoll {
-    /// Uses a prebuilt profile instead of generating one.
+    /// Uses a prebuilt profile instead of generating one from the skeleton, for
+    /// rigs whose bodies were authored in code or loaded from an asset.
     ///
     /// # Examples
     ///
@@ -70,10 +73,11 @@ impl Ragdoll {
     /// assert!(ragdoll.profile.is_some());
     /// ```
     #[must_use]
-    pub fn new(profile: bevy::asset::Handle<RagdollProfile>) -> Self {
+    pub const fn new(profile: bevy::asset::Handle<RagdollProfile>) -> Self {
         Self {
             profile: Some(profile),
-            ..Self::default()
+            mass: None,
+            overrides: None,
         }
     }
 }
@@ -89,9 +93,9 @@ impl Ragdoll {
 pub enum RagdollMode {
     /// Animation drives all bones and the runtime keeps no physics body
     /// entities for this character.
-    #[default]
     /// The character follows animation, owns no physics body entities, and
     /// remains the fallback after binding failure.
+    #[default]
     Animated,
     /// Physics bodies follow animation targets without force integration and
     /// remain queryable. The runtime creates queryable bodies that follow
