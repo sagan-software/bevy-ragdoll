@@ -27,7 +27,7 @@ jobs:
       - uses: DeterminateSystems/nix-installer-action@v23
       - uses: DeterminateSystems/magic-nix-cache-action@v15
       - run: >-
-          nix develop -c cargo run --example ragdoll_stress --features rapier3d --
+          nix develop -c cargo run --example ragdoll_stress --
           --headless --scenario pile --count 4 --duration 2 --warmup 0
           --report stress-smoke.json
       - run: >-
