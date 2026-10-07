@@ -171,11 +171,13 @@ mod tests {
     /// Builds a zero-gravity Avian app that advances 1/60 s per update.
     fn joint_test_app() -> App {
         let mut app = App::new();
+        // Remove gravity so only the applied torque moves the child.
         app.add_plugins((MinimalPlugins, TransformPlugin, PhysicsPlugins::default()));
         app.insert_resource(Gravity(Vec3::ZERO));
         app.insert_resource(TimeUpdateStrategy::ManualDuration(Duration::from_secs_f64(
             1.0 / 60.0,
         )));
+        // Finish plugin setup so the first update steps physics.
         app.finish();
         app.cleanup();
         app

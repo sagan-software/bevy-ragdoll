@@ -516,6 +516,18 @@ mod tests {
             .id()
     }
 
+    /// Runs the kind, sleep, and kinematic target systems once and applies
+    /// their deferred commands.
+    fn run_kinematic_systems(world: &mut World) {
+        let mut system: KinematicUpdateState = SystemState::new(world);
+        // The test world always holds the settings resource.
+        if let Ok((roots, bodies, targets, drivers, settings)) = system.get_mut(world) {
+            apply_body_kinds_and_sleeping(bodies, drivers, settings);
+            apply_kinematic_targets(roots, targets);
+        }
+        system.apply(world);
+    }
+
     /// Missing roots and targets keep kinematic bodies at their current transforms.
     #[test]
     fn kinematic_updates_skip_missing_roots_and_target_poses() {
@@ -535,15 +547,7 @@ mod tests {
         // One body has a valid owner and one names a root without targets.
         let body = spawn_kinematic(&mut world, owner, index);
         let orphan = spawn_kinematic(&mut world, missing_root, index);
-        // Run both systems once and apply their deferred commands.
-        let mut system: KinematicUpdateState = SystemState::new(&mut world);
-        let (roots, bodies, targets, drivers, settings) = system
-            .get_mut(&mut world)
-            .expect("the settings resource remains available");
-
-        apply_body_kinds_and_sleeping(bodies, drivers, settings);
-        apply_kinematic_targets(roots, targets);
-        system.apply(&mut world);
+        run_kinematic_systems(&mut world);
 
         // Neither body moves, and the limp owner's body may sleep again.
         assert_eq!(world.get::<Transform>(body), Some(&Transform::IDENTITY));
