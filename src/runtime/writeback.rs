@@ -265,6 +265,7 @@ mod tests {
     /// Public interpolation helpers clamp weights below zero and above one.
     #[test]
     fn interpolation_clamps_out_of_range_weights() {
+        // Weights outside 0..=1 would extrapolate past the two physics poses.
         let previous = Isometry3d::IDENTITY;
         let current = Isometry3d::new(Vec3::new(2.0, 0.0, 0.0), Quat::from_rotation_z(1.0));
 
@@ -276,6 +277,7 @@ mod tests {
             interpolate_translation(Vec3::ZERO, Vec3::X * 2.0, 2.0),
             Vec3::X * 2.0
         );
+        // Whole poses clamp the same way as translations.
         assert_eq!(interpolate_physics_pose(previous, current, -1.0), previous);
         assert_eq!(interpolate_physics_pose(previous, current, 2.0), current);
     }
@@ -284,6 +286,7 @@ mod tests {
     #[test]
     fn writeback_requires_fixed_time() {
         let mut world = World::new();
+// A world without Time<Fixed> has no overstep to interpolate with, so writeback returns early.
 
         writeback(&mut world);
     }
@@ -293,6 +296,7 @@ mod tests {
     #[test]
     fn body_pose_lookup_handles_missing_and_out_of_range_components() {
         let mut world = World::new();
+        // Bodies without an index or with an out-of-range index must be skipped.
         let character = world.spawn_empty().id();
         world.spawn(RagdollBodyOf(character));
         world.spawn((RagdollBodyOf(character), body_index(1)));
@@ -304,6 +308,7 @@ mod tests {
                 current: Isometry3d::from_translation(Vec3::splat(20.0)),
             },
         ));
+        // The valid body 0 interpolates halfway between its two poses.
         world.spawn((
             RagdollBodyOf(character),
             body_index(0),
@@ -316,6 +321,7 @@ mod tests {
         let poses = body_poses(&world, character, 1, 0.5);
 
         assert_eq!(poses, [Some(Isometry3d::from_translation(Vec3::X))]);
+        // An unknown character yields one empty slot per requested body.
         assert_eq!(
             body_poses(&world, Entity::PLACEHOLDER, 2, 0.5),
             [None, None]
@@ -327,6 +333,7 @@ mod tests {
     #[test]
     fn world_pose_composes_transforms_and_skips_missing_transforms() {
         let mut world = World::new();
+        // The parent is rotated a quarter turn, so the child's +X offset maps to +Y.
         let parent = world
             .spawn(
                 Transform::from_xyz(3.0, 1.0, 0.0)
@@ -336,12 +343,14 @@ mod tests {
         let child = world
             .spawn((ChildOf(parent), Transform::from_xyz(1.0, 0.0, 0.0)))
             .id();
+        // An entity without a Transform contributes identity and inherits its parent pose.
         let no_transform = world.spawn(ChildOf(parent)).id();
 
         let child_pose = world_pose(&world, child);
         let parent_pose = world_pose(&world, parent);
         let no_transform_pose = world_pose(&world, no_transform);
 
+        // The composed child pose and the transform-less child pose are both checked.
         assert!(
             child_pose
                 .translation
@@ -360,6 +369,7 @@ mod tests {
     fn writeback_skips_inactive_and_unbound_characters() {
         let mut world = World::new();
         world.insert_resource(Time::<Fixed>::from_hz(60.0));
+        // An Animated character and an unbound Dynamic character both have nothing to write back.
         world.spawn((
             Ragdoll::new(Handle::<RagdollProfile>::default()),
             RagdollMode::Animated,
@@ -369,6 +379,7 @@ mod tests {
             RagdollMode::Dynamic,
         ));
 
+        // Writeback must finish without touching either character.
         writeback(&mut world);
     }
 }
