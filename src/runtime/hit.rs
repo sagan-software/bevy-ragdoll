@@ -556,22 +556,46 @@ fn apply_strength_drop(
             .copied()
             .flatten()
             .unwrap_or_default();
-        let current = weights.get(position).unwrap_or_default();
-        let base = weights.base(position);
         let drop = MAXIMUM_STRENGTH_DROP * severity * drop_streak * falloff;
-        let muscle = role
-            .muscle_floor()
-            .max(current.muscle().min(base.muscle() * (1.0 - drop)));
-        // Reduce pin only at the directly addressed body position.
-        let pin = if *body_index == target {
-            current.pin() * (1.0 - PIN_DROP_PER_SEVERITY * severity)
+        let pin_drop = if *body_index == target {
+            PIN_DROP_PER_SEVERITY * severity
         } else {
-            current.pin()
+            0.0
         };
+        let dropped = dropped_weights(
+            weights.get(position).unwrap_or_default(),
+            weights.base(position),
+            role,
+            drop,
+            pin_drop,
+        );
 
         // Store current values while preserving the authored recovery baseline.
-        weights.set_current(*body_index, BodyWeights::new(muscle, pin));
+        weights.set_current(*body_index, dropped);
     }
+}
+
+/// Returns `current` after a muscle drop toward `base` and a pin drop.
+///
+/// Muscle never rises above `current` or falls below the role floor. A zero
+/// `pin_drop` leaves pin unchanged; only the directly hit body loses pin.
+fn dropped_weights(
+    current: BodyWeights,
+    base: BodyWeights,
+    role: BodyRole,
+    drop: f32,
+    pin_drop: f32,
+) -> BodyWeights {
+    let muscle = role
+        .muscle_floor()
+        .max(current.muscle().min(base.muscle() * (1.0 - drop)));
+    // Skip the multiply for untouched bodies so their pin stays bit-identical.
+    let pin = if pin_drop == 0.0 {
+        current.pin()
+    } else {
+        current.pin() * (1.0 - pin_drop)
+    };
+    BodyWeights::new(muscle, pin)
 }
 
 /// Remaining impulse and world-space application point while walking to the root.
@@ -874,37 +898,9 @@ mod tests {
         let mut world = World::new();
         let first_owner = world.spawn(RagdollBodies::default()).id();
         let second_owner = world.spawn(RagdollBodies::default()).id();
-        let first_body = world
-            .spawn((
-                BodyIndex::try_from(0).expect("zero is a valid body index"),
-                BodyRole::Pelvis,
-                RagdollBodyOf(first_owner),
-            ))
-            .id();
-        let second_body = world
-            .spawn((
-                BodyIndex::try_from(1).expect("one is a valid body index"),
-                BodyRole::Spine,
-                RagdollBodyOf(first_owner),
-                JointToParent {
-                    parent: first_body,
-                    frame: bevy::math::Isometry3d::IDENTITY,
-                    limits: crate::profile::JointLimits {
-                        x: crate::profile::AngleRange { min: 0.0, max: 0.0 },
-                        twist: crate::profile::AngleRange { min: 0.0, max: 0.0 },
-                        z: crate::profile::AngleRange { min: 0.0, max: 0.0 },
-                    },
-                    max_torque: 1.0,
-                },
-            ))
-            .id();
-        let foreign_body = world
-            .spawn((
-                BodyIndex::try_from(0).expect("zero is a valid body index"),
-                BodyRole::Pelvis,
-                RagdollBodyOf(second_owner),
-            ))
-            .id();
+        let first_body = spawn_pelvis(&mut world, first_owner);
+        let second_body = spawn_spine_child(&mut world, first_owner, first_body);
+        let foreign_body = spawn_pelvis(&mut world, second_owner);
         // Collect the tree the way process_hits does, from the owner's relationship.
         let related_bodies = world
             .get::<RagdollBodies>(first_owner)
@@ -916,9 +912,10 @@ mod tests {
         let tree = HitImpulseTree::collect(first_owner, &related_bodies, &body_query);
 
         // Only the first owner's two bodies are in the tree, in index order.
-        assert_eq!(tree.body_count, 2);
-        assert_eq!(tree.body(0), Some(first_body));
-        assert_eq!(tree.body(1), Some(second_body));
+        assert_eq!(
+            (tree.body_count, tree.body(0), tree.body(1)),
+            (2, Some(first_body), Some(second_body))
+        );
         assert_ne!(tree.body(0), Some(foreign_body));
     }
 
@@ -940,62 +937,24 @@ mod tests {
     /// Skips hit state changes when the body owner lacks required character state.
     #[test]
     fn process_hits_skips_a_body_with_missing_character_state() {
-        // Run process_hits alone so the test controls every input message.
-        let mut app = App::new();
-        app.add_message::<RagdollHit>()
-            .add_message::<RagdollImpulse>()
-            .insert_resource(Time::<Fixed>::from_hz(60.0))
-            .add_systems(PostUpdate, super::process_hits);
+        let mut app = hit_app();
 
         // The owner lacks RagdollMode and RagdollBodies, so it is not a valid character.
         let owner = app
             .world_mut()
             .spawn((RagdollBodyWeights::default(), LastHit::default()))
             .id();
-        let body = app
-            .world_mut()
-            .spawn((
-                BodyIndex::try_from(0).expect("zero is a valid body index"),
-                BodyRole::Spine,
-                RagdollBodyOf(owner),
-            ))
-            .id();
-        app.world_mut().write_message(RagdollHit {
-            body,
-            point: bevy::math::Vec3::ZERO,
-            impulse: bevy::math::Vec3::X * 20.0,
-            kind: HitKind::Impact,
-        });
-
-        app.update();
+        let body = spawn_spine_body(&mut app, owner);
+        send_hit(&mut app, body);
 
         // The hit is ignored: no history, no weight change, and no impulse.
-        assert_eq!(
-            app.world()
-                .get::<LastHit>(owner)
-                .expect("owner retains its hit history")
-                .last_at(),
-            None
-        );
-        assert_eq!(
-            app.world()
-                .get::<RagdollBodyWeights>(owner)
-                .expect("owner retains its body weights")
-                .as_ref(),
-            &[]
-        );
-        assert_eq!(published_impulses(app.world()), []);
+        assert_eq!(hit_outcome(&app, owner), (None, Vec::new(), Vec::new()));
     }
 
     /// Ignores an out-of-range index introduced through mutable reflection.
     #[test]
     fn process_hits_skips_an_out_of_range_reflected_body_index() {
-        // Run process_hits alone so the test controls every input message.
-        let mut app = App::new();
-        app.add_message::<RagdollHit>()
-            .add_message::<RagdollImpulse>()
-            .insert_resource(Time::<Fixed>::from_hz(60.0))
-            .add_systems(PostUpdate, super::process_hits);
+        let mut app = hit_app();
 
         let owner = app
             .world_mut()
@@ -1005,14 +964,7 @@ mod tests {
                 LastHit::default(),
             ))
             .id();
-        let body = app
-            .world_mut()
-            .spawn((
-                BodyIndex::try_from(0).expect("zero is a valid body index"),
-                BodyRole::Spine,
-                RagdollBodyOf(owner),
-            ))
-            .id();
+        let body = spawn_spine_body(&mut app, owner);
         // Reflection can write an index past MAX_BODIES that normal construction rejects.
         {
             let mut index = app
@@ -1023,42 +975,19 @@ mod tests {
                 .get_field_mut::<u8>(0)
                 .expect("reflection exposes the tuple field") = u8::MAX;
         }
-        app.world_mut().write_message(RagdollHit {
-            body,
-            point: bevy::math::Vec3::ZERO,
-            impulse: bevy::math::Vec3::X * 20.0,
-            kind: HitKind::Impact,
-        });
-
-        app.update();
+        send_hit(&mut app, body);
 
         // The hit is ignored: no history, no weight change, and no impulse.
         assert_eq!(
-            app.world()
-                .get::<LastHit>(owner)
-                .expect("owner retains its hit history")
-                .last_at(),
-            None
+            hit_outcome(&app, owner),
+            (None, vec![BodyWeights::default()], Vec::new())
         );
-        assert_eq!(
-            app.world()
-                .get::<RagdollBodyWeights>(owner)
-                .expect("owner retains its body weights")
-                .as_ref(),
-            &[BodyWeights::default()]
-        );
-        assert_eq!(published_impulses(app.world()), []);
     }
 
     /// Rejects a hit when another body occupies its validated index.
     #[test]
     fn process_hits_skips_duplicate_body_indexes() {
-        // Run process_hits alone so the test controls every input message.
-        let mut app = App::new();
-        app.add_message::<RagdollHit>()
-            .add_message::<RagdollImpulse>()
-            .insert_resource(Time::<Fixed>::from_hz(60.0))
-            .add_systems(PostUpdate, super::process_hits);
+        let mut app = hit_app();
 
         let owner = app
             .world_mut()
@@ -1068,45 +997,16 @@ mod tests {
                 LastHit::default(),
             ))
             .id();
-        let hit_body = app
-            .world_mut()
-            .spawn((
-                BodyIndex::try_from(0).expect("zero is a valid body index"),
-                BodyRole::Spine,
-                RagdollBodyOf(owner),
-            ))
-            .id();
+        let hit_body = spawn_spine_body(&mut app, owner);
         // A second body with the same index makes the body tree ambiguous.
-        app.world_mut().spawn((
-            BodyIndex::try_from(0).expect("zero is a valid body index"),
-            BodyRole::Spine,
-            RagdollBodyOf(owner),
-        ));
-        app.world_mut().write_message(RagdollHit {
-            body: hit_body,
-            point: bevy::math::Vec3::ZERO,
-            impulse: bevy::math::Vec3::X * 20.0,
-            kind: HitKind::Impact,
-        });
-
-        app.update();
+        spawn_spine_body(&mut app, owner);
+        send_hit(&mut app, hit_body);
 
         // The hit is ignored: no history, no weight change, and no impulse.
         assert_eq!(
-            app.world()
-                .get::<LastHit>(owner)
-                .expect("owner retains its hit history")
-                .last_at(),
-            None
+            hit_outcome(&app, owner),
+            (None, vec![BodyWeights::default()], Vec::new())
         );
-        assert_eq!(
-            app.world()
-                .get::<RagdollBodyWeights>(owner)
-                .expect("owner retains its body weights")
-                .as_ref(),
-            &[BodyWeights::default()]
-        );
-        assert_eq!(published_impulses(app.world()), []);
     }
 
     /// Stops safely when impulse-tree data or the remaining vector is invalid.
@@ -1207,6 +1107,94 @@ mod tests {
 
     /// Returns every buffered impulse through a fresh cursor, so the result does
     /// not depend on which of the two update buffers holds the messages.
+    /// Spawns a pelvis body at index zero owned by `owner`.
+    fn spawn_pelvis(world: &mut World, owner: bevy::prelude::Entity) -> bevy::prelude::Entity {
+        world
+            .spawn((
+                BodyIndex::try_from(0).expect("zero is a valid body index"),
+                BodyRole::Pelvis,
+                RagdollBodyOf(owner),
+            ))
+            .id()
+    }
+
+    /// Spawns a spine body at index one with a locked joint to `parent`.
+    fn spawn_spine_child(
+        world: &mut World,
+        owner: bevy::prelude::Entity,
+        parent: bevy::prelude::Entity,
+    ) -> bevy::prelude::Entity {
+        let locked = crate::profile::AngleRange { min: 0.0, max: 0.0 };
+        world
+            .spawn((
+                BodyIndex::try_from(1).expect("one is a valid body index"),
+                BodyRole::Spine,
+                RagdollBodyOf(owner),
+                JointToParent {
+                    parent,
+                    frame: bevy::math::Isometry3d::IDENTITY,
+                    limits: crate::profile::JointLimits {
+                        x: locked,
+                        twist: locked,
+                        z: locked,
+                    },
+                    max_torque: 1.0,
+                },
+            ))
+            .id()
+    }
+
+    /// Builds an app that runs only `process_hits`, so the test controls every message.
+    fn hit_app() -> App {
+        let mut app = App::new();
+        app.add_message::<RagdollHit>()
+            .add_message::<RagdollImpulse>()
+            .insert_resource(Time::<Fixed>::from_hz(60.0))
+            .add_systems(PostUpdate, super::process_hits);
+        app
+    }
+
+    /// Spawns a spine body at index zero owned by `owner`.
+    fn spawn_spine_body(app: &mut App, owner: bevy::prelude::Entity) -> bevy::prelude::Entity {
+        app.world_mut()
+            .spawn((
+                BodyIndex::try_from(0).expect("zero is a valid body index"),
+                BodyRole::Spine,
+                RagdollBodyOf(owner),
+            ))
+            .id()
+    }
+
+    /// Sends a 20 kg m/s impact at `body` and runs one update.
+    fn send_hit(app: &mut App, body: bevy::prelude::Entity) {
+        app.world_mut().write_message(RagdollHit {
+            body,
+            point: bevy::math::Vec3::ZERO,
+            impulse: bevy::math::Vec3::X * 20.0,
+            kind: HitKind::Impact,
+        });
+        app.update();
+    }
+
+    /// Returns the owner's last hit time, its body weights and the published impulses.
+    fn hit_outcome(
+        app: &App,
+        owner: bevy::prelude::Entity,
+    ) -> (Option<Duration>, Vec<BodyWeights>, Vec<RagdollImpulse>) {
+        let last_at = app
+            .world()
+            .get::<LastHit>(owner)
+            .expect("owner retains its hit history")
+            .last_at();
+        let weights = app
+            .world()
+            .get::<RagdollBodyWeights>(owner)
+            .expect("owner retains its body weights")
+            .as_ref()
+            .to_vec();
+        (last_at, weights, published_impulses(app.world()))
+    }
+
     fn published_impulses(world: &World) -> Vec<RagdollImpulse> {
         let Some(messages) = world.get_resource::<bevy::ecs::message::Messages<RagdollImpulse>>()
         else {

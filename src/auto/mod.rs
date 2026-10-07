@@ -189,6 +189,13 @@ impl Skeleton {
     /// }
     /// # bevy::ecs::system::assert_is_system(spawn_character);
     /// ```
+    #[cfg_attr(
+        dylint_lib = "sagan_lints",
+        expect(
+            bevy_borrowed_reborrowable,
+            reason = "taking Commands by value would break the published spawn signature and every caller"
+        )
+    )]
     pub fn spawn(
         &self,
         commands: &mut bevy::prelude::Commands<'_, '_>,
