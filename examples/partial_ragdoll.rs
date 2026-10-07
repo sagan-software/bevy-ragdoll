@@ -46,6 +46,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .insert_resource(ClearColor(Color::srgb(0.055, 0.075, 0.095)))
         .insert_resource(Rig(profile))
         .insert_resource(LaunchTimer(Timer::from_seconds(2.0, TimerMode::Repeating)))
+        .register_type::<Rig>()
+        .register_type::<IdleTarget>()
+        .register_type::<LaunchTimer>()
+        .register_type::<Ball>()
         .add_systems(Startup, (setup_scene, spawn_ragdoll))
         .add_plugins(RagdollDebugPlugin)
         .add_systems(
@@ -63,11 +67,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 /// The validated profile shared by the ragdoll and the ball launcher.
-#[derive(Resource)]
+#[derive(Resource, Reflect)]
 struct Rig(RagdollProfile);
 
 /// A skeleton bone that sways around its rest rotation to give the drive a target.
-#[derive(Component)]
+#[derive(Component, Reflect)]
 struct IdleTarget {
     /// Profile position, used to offset the sway phase.
     index: usize,
@@ -78,11 +82,11 @@ struct IdleTarget {
 }
 
 /// Fires every two seconds to launch a ball; `Space` pauses it.
-#[derive(Resource)]
+#[derive(Resource, Reflect)]
 struct LaunchTimer(Timer);
 
 /// A launched ball, removed when its lifetime ends.
-#[derive(Component)]
+#[derive(Component, Reflect)]
 struct Ball {
     /// Time left before the ball is removed.
     lifetime: Timer,

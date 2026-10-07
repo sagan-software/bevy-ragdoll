@@ -74,6 +74,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .insert_resource(ClearColor(Color::srgb(0.055, 0.075, 0.095)))
         .insert_resource(Rig(profile))
         .init_resource::<Controls>()
+        .register_type::<Rig>()
+        .register_type::<IdleTarget>()
+        .register_type::<Controls>()
+        .register_type::<MuscleBar>()
+        .register_type::<Readout>()
         .add_systems(Startup, (setup_scene, spawn_ragdoll, spawn_hud))
         .add_plugins(RagdollDebugPlugin)
         .add_systems(
@@ -98,11 +103,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 /// The validated profile shared by the ragdoll, HUD, and hit systems.
-#[derive(Resource)]
+#[derive(Resource, Reflect)]
 struct Rig(RagdollProfile);
 
 /// A skeleton bone that sways around its rest rotation to give the drive a target.
-#[derive(Component)]
+#[derive(Component, Reflect)]
 struct IdleTarget {
     /// Profile position, used to offset the sway phase.
     index: usize,
@@ -113,7 +118,7 @@ struct IdleTarget {
 }
 
 /// The strength channel edited by the arrow keys.
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Reflect)]
 enum Channel {
     /// The joint motor multiplier.
     Muscle,
@@ -122,7 +127,7 @@ enum Channel {
 }
 
 /// The user's current hit and strength selections.
-#[derive(Resource)]
+#[derive(Resource, Reflect)]
 struct Controls {
     /// Preset selected by the number keys.
     profile: HitProfile,
@@ -161,11 +166,11 @@ impl Controls {
 }
 
 /// Marks the HUD bar that shows one body's muscle strength.
-#[derive(Component)]
+#[derive(Component, Reflect)]
 struct MuscleBar(usize);
 
 /// Marks the HUD text that shows the selected hit and strength.
-#[derive(Component)]
+#[derive(Component, Reflect)]
 struct Readout;
 
 /// Converts a profile position to a body index.

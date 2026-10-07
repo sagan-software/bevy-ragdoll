@@ -65,7 +65,7 @@ const PALETTE: [Color; 6] = [
 ];
 
 /// Physics engines the showcase can run on. Switching restarts the app.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Reflect)]
 #[cfg_attr(not(target_arch = "wasm32"), derive(clap::ValueEnum))]
 enum Backend {
     /// Rapier through `bevy_ragdoll_rapier3d`.
@@ -184,20 +184,21 @@ impl Backend {
 }
 
 /// The running backend.
-#[derive(Resource, Clone, Copy)]
+#[derive(Resource, Clone, Copy, Reflect)]
 struct ActiveBackend(Backend);
 
 /// Skeletons the crowd is built from. Each `Ragdoll` generates its profile from its skeleton.
-#[derive(Resource)]
+#[derive(Resource, Reflect)]
 struct Rigs {
     /// The reference humanoid, spawned from code.
+    #[reflect(ignore)]
     humanoid: Skeleton,
     /// Skinned glTF creatures with no authored ragdoll data: a quadruped and a seven-legged alien.
     creatures: [Handle<WorldAsset>; 2],
 }
 
 /// Values the panel edits.
-#[derive(Resource)]
+#[derive(Resource, Reflect)]
 struct Params {
     /// Target number of ragdolls.
     count: usize,
@@ -237,7 +238,7 @@ impl Params {
 }
 
 /// A panel value the user can step up or down.
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Reflect)]
 enum Param {
     /// `Params::count`.
     Count,
@@ -314,7 +315,7 @@ impl Param {
 }
 
 /// A panel button and what it does.
-#[derive(Component, Clone, Copy)]
+#[derive(Component, Clone, Copy, Reflect)]
 enum Action {
     /// Steps a parameter down (`-1`) or up (`+1`).
     Step(Param, i8),
@@ -327,23 +328,23 @@ enum Action {
 }
 
 /// Marks the text showing one parameter's value.
-#[derive(Component)]
+#[derive(Component, Reflect)]
 struct ParamValue(Param);
 
 /// Marks the performance readout text.
-#[derive(Component)]
+#[derive(Component, Reflect)]
 struct MetricsText;
 
 /// Marks a character root and records its spawn order for coloring.
-#[derive(Component)]
+#[derive(Component, Reflect)]
 struct Character(usize);
 
 /// A skeleton bone and its local rest rotation, restored each frame as the drive target.
-#[derive(Component)]
+#[derive(Component, Reflect)]
 struct RestRotation(Quat);
 
 /// Remaining seconds of a body's hit highlight; holds the body's normal material.
-#[derive(Component)]
+#[derive(Component, Reflect)]
 struct HitFlash {
     /// Seconds left before the normal material returns.
     remaining: f32,
@@ -352,7 +353,7 @@ struct HitFlash {
 }
 
 /// Meshes and materials shared by every ragdoll.
-#[derive(Resource, Default)]
+#[derive(Resource, Default, Reflect)]
 struct BodyAssets {
     /// One mesh per distinct collider shape, keyed by its debug text, built on first use.
     meshes: HashMap<String, (Handle<Mesh>, Transform)>,
@@ -363,7 +364,7 @@ struct BodyAssets {
 }
 
 /// Camera orbit around a focus point.
-#[derive(Resource)]
+#[derive(Resource, Reflect)]
 struct Orbit {
     /// Rotation about the vertical axis, in radians.
     yaw: f32,
@@ -374,7 +375,7 @@ struct Orbit {
 }
 
 /// Mouse state for click-to-hit and drag-to-throw.
-#[derive(Resource, Default)]
+#[derive(Resource, Default, Reflect)]
 struct PointerState {
     /// Cursor position when the left button went down.
     press: Option<Vec2>,
@@ -389,7 +390,7 @@ struct PointerState {
 }
 
 /// A body picked by the cursor.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Reflect)]
 struct Target {
     /// The picked ragdoll body.
     body: Entity,
@@ -404,9 +405,10 @@ struct Target {
 }
 
 /// Fixed-step timing, accumulated over the frames between panel updates.
-#[derive(Resource, Default)]
+#[derive(Resource, Default, Reflect)]
 struct StepTimer {
     /// Start of the fixed step in progress.
+    #[reflect(ignore)]
     started: Option<Instant>,
     /// Summed fixed-step seconds since the last readout.
     total: f32,
@@ -457,6 +459,20 @@ fn main() -> AppExit {
     .init_resource::<StepTimer>()
     .init_resource::<BodyAssets>();
     backend.add_plugins(&mut app);
+    // Registration makes the example's state visible to reflection tools such as inspectors.
+    app.register_type::<ActiveBackend>()
+        .register_type::<Rigs>()
+        .register_type::<Params>()
+        .register_type::<Action>()
+        .register_type::<ParamValue>()
+        .register_type::<MetricsText>()
+        .register_type::<Character>()
+        .register_type::<RestRotation>()
+        .register_type::<HitFlash>()
+        .register_type::<BodyAssets>()
+        .register_type::<Orbit>()
+        .register_type::<PointerState>()
+        .register_type::<StepTimer>();
     app.add_systems(Startup, (setup_scene, setup_assets, load_rigs, spawn_panel))
         .add_systems(
             Update,
