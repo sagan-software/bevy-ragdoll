@@ -33,9 +33,11 @@ mod contact;
 mod joint;
 mod plugin;
 mod query;
+mod settings;
 mod shape;
 mod spawn;
 
 pub use self::contact::{AvianRagdollHooks, RagdollPairQuery, ragdoll_filter_pairs};
 pub use self::plugin::{AVIAN_CAPABILITIES, AvianRagdollPlugin};
+pub use self::settings::AvianRagdollSettings;
 pub use self::shape::collider_for_shape;
