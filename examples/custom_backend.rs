@@ -63,6 +63,7 @@ fn setup_scene(
 
 /// Builds the pelvis, chest, and head chain in code.
 fn build_profile() -> Result<RagdollProfile, ProfileError> {
+    // Three stacked bodies: pelvis, chest, and head.
     let mut builder = ProfileBuilder::default();
     let pelvis = builder.add_body(
         "pelvis",
@@ -93,6 +94,7 @@ fn build_profile() -> Result<RagdollProfile, ProfileError> {
         4.0,
         Isometry3d::from_translation(Vec3::new(0.0, 2.35, 0.0)),
     )?;
+    // One symmetric limit set for both joints keeps the example short.
     let bend = AngleRange {
         min: -0.6,
         max: 0.6,
@@ -102,6 +104,7 @@ fn build_profile() -> Result<RagdollProfile, ProfileError> {
         twist: bend,
         z: bend,
     };
+    // Each joint names its child first, then its parent.
     builder.add_joint(
         chest,
         pelvis,

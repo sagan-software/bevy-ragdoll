@@ -43,6 +43,7 @@ fn main() -> AppExit {
 
 /// Builds the pelvis, chest, and head chain in code.
 fn build_profile() -> Result<RagdollProfile, ProfileError> {
+    // Pelvis, chest, and head stacked along Y.
     let mut builder = ProfileBuilder::default();
     let pelvis = builder.add_body(
         "pelvis",
@@ -73,6 +74,7 @@ fn build_profile() -> Result<RagdollProfile, ProfileError> {
         4.0,
         Isometry3d::from_translation(Vec3::new(0.0, 2.36, 0.0)),
     )?;
+    // One symmetric limit set for both joints keeps the example short.
     let bend = AngleRange {
         min: -0.7,
         max: 0.7,
@@ -161,21 +163,14 @@ fn setup_scene(
 /// The ragdoll runtime binds each body to the bone with the same `Name`.
 fn spawn_skeleton(commands: &mut Commands<'_, '_>, character: Entity, profile: &RagdollProfile) {
     let bodies = profile.bodies();
-    let mut parents = vec![None; bodies.len()];
-    for joint in profile.joints() {
-        if let Some(slot) = parents.get_mut(joint.child().get()) {
-            *slot = Some(joint.parent().get());
-        }
-    }
     // Profiles list parents before children, so each parent bone already exists.
     let mut bones = Vec::<Entity>::with_capacity(bodies.len());
-    for (index, body) in bodies.iter().enumerate() {
+    for body in bodies {
         let rest = body.rest();
         // The parent's bone entity and rest pose, when this body has a parent.
-        let parent = parents
-            .get(index)
-            .copied()
-            .flatten()
+        let parent = profile
+            .joint_of(body.index())
+            .map(|joint| joint.parent().get())
             .and_then(|parent| Some((*bones.get(parent)?, bodies.get(parent)?.rest())));
         let (parent, transform) = match parent {
             None => (

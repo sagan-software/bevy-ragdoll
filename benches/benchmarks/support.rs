@@ -246,7 +246,8 @@ pub(crate) fn chain_spec(body_count: usize, seed: u64) -> ProfileSpec {
 /// # Examples
 ///
 /// ```
-/// use bevy_ragdoll_benches::support::{BENCH_SEED, PopulationMode, core_app, human_profile};
+/// use bevy_ragdoll_benches::support::{BENCH_SEED, PopulationMode, core_app,
+/// human_profile};
 ///
 /// let app = core_app(human_profile(), 1, PopulationMode::Capture, BENCH_SEED)?;
 /// assert!(app.world().entities().len() > 1);
@@ -283,7 +284,8 @@ pub(crate) fn core_app(
 /// # Examples
 ///
 /// ```
-/// use bevy_ragdoll_benches::support::{BENCH_SEED, PopulationMode, human_profile, rapier_app};
+/// use bevy_ragdoll_benches::support::{BENCH_SEED, PopulationMode, human_profile,
+/// rapier_app};
 ///
 /// let app = rapier_app(human_profile(), 1, PopulationMode::Limp, BENCH_SEED)?;
 /// assert!(app.world().entities().len() > 1);

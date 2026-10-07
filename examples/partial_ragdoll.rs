@@ -2,7 +2,8 @@
 //!
 //! The rig is the reference humanoid skeleton with a generated profile.
 //! The pelvis and legs follow a procedural idle pose at full muscle strength
-//! and are pinned to their animated targets. The upper body keeps 10% muscle strength and no pin, so
+//! and are pinned to their animated targets. The upper body keeps 10% muscle
+//! strength and no pin, so
 //! the balls launched at the chest every two seconds knock it around while
 //! the legs keep standing.
 //!
@@ -46,6 +47,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .insert_resource(ClearColor(Color::srgb(0.055, 0.075, 0.095)))
         .insert_resource(Rig(profile))
         .insert_resource(LaunchTimer(Timer::from_seconds(2.0, TimerMode::Repeating)))
+        .register_type::<Rig>()
+        .register_type::<IdleTarget>()
+        .register_type::<LaunchTimer>()
+        .register_type::<Ball>()
         .add_systems(Startup, (setup_scene, spawn_ragdoll))
         .add_plugins(RagdollDebugPlugin)
         .add_systems(
@@ -63,11 +68,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 /// The validated profile shared by the ragdoll and the ball launcher.
-#[derive(Resource)]
+#[derive(Resource, Reflect)]
 struct Rig(RagdollProfile);
 
 /// A skeleton bone that sways around its rest rotation to give the drive a target.
-#[derive(Component)]
+#[derive(Component, Reflect)]
 struct IdleTarget {
     /// Profile position, used to offset the sway phase.
     index: usize,
@@ -78,11 +83,11 @@ struct IdleTarget {
 }
 
 /// Fires every two seconds to launch a ball; `Space` pauses it.
-#[derive(Resource)]
+#[derive(Resource, Reflect)]
 struct LaunchTimer(Timer);
 
 /// A launched ball, removed when its lifetime ends.
-#[derive(Component)]
+#[derive(Component, Reflect)]
 struct Ball {
     /// Time left before the ball is removed.
     lifetime: Timer,
@@ -98,6 +103,7 @@ const fn is_lower_body(body: &Body) -> bool {
 
 /// Drives and pins the lower body at full strength and leaves the upper body loose.
 fn ragdoll_controls(profile: &RagdollProfile) -> (RagdollBodyWeights, PinTargets) {
+    // Legs get full muscle and pins; everything above the pelvis stays loose.
     let mut weights = Vec::with_capacity(profile.bodies().len());
     let mut pins = PinTargets::none();
     for (position, body) in profile.bodies().iter().enumerate() {
@@ -108,6 +114,7 @@ fn ragdoll_controls(profile: &RagdollProfile) -> (RagdollBodyWeights, PinTargets
             weights.push(BodyWeights::new(0.1, 0.0));
         }
     }
+    // Pins apply only to the lower-body bodies chosen above.
     (RagdollBodyWeights::new(weights), pins)
 }
 
@@ -169,6 +176,7 @@ fn spawn_ragdoll(
     rig: Res<'_, Rig>,
 ) {
     let profile = &rig.0;
+    // Weights and pins decide which half of the body stays driven.
     let (weights, pins) = ragdoll_controls(profile);
     let character = commands
         .spawn((
@@ -182,24 +190,17 @@ fn spawn_ragdoll(
         ))
         .id();
 
-    // Each joint links a child body to its parent; bodies without a joint are roots.
+    // Bodies without a joint are roots and hang from the character entity.
     let bodies = profile.bodies();
-    let mut parents = vec![None; bodies.len()];
-    for joint in profile.joints() {
-        if let Some(slot) = parents.get_mut(joint.child().get()) {
-            *slot = Some(joint.parent().get());
-        }
-    }
 
     // Profiles list parents before children, so each parent bone already exists.
     let mut bones = Vec::with_capacity(bodies.len());
     for (index, body) in bodies.iter().enumerate() {
         let rest = body.rest();
         // The parent's bone entity and rest pose, when this body has a parent.
-        let parent = parents
-            .get(index)
-            .copied()
-            .flatten()
+        let parent = profile
+            .joint_of(body.index())
+            .map(|joint| joint.parent().get())
             .and_then(|parent| Some((*bones.get(parent)?, bodies.get(parent)?.rest())));
         let (parent, transform) = match parent {
             Some((parent, parent_rest)) => {
@@ -236,6 +237,7 @@ fn animate_idle_targets(
     time: Res<'_, Time>,
     mut bones: Query<'_, '_, (&IdleTarget, &mut Transform)>,
 ) {
+    // Every bone sways; the weak upper-body muscles follow it only loosely.
     for (bone, mut transform) in &mut bones {
         let phase = f32::from(u8::try_from(bone.index % 9).unwrap_or_default()) * 0.47;
         let amplitude = match bone.role {
@@ -271,6 +273,7 @@ fn launch_balls(
     mut meshes: ResMut<'_, Assets<Mesh>>,
     mut materials: ResMut<'_, Assets<StandardMaterial>>,
 ) {
+    // Launch one ball each time the repeating timer fires.
     if !timer.0.tick(time.delta()).just_finished() {
         return;
     }
@@ -278,6 +281,7 @@ fn launch_balls(
     let Some((_, chest)) = bodies.iter().find(|(index, _)| Some(index.get()) == chest) else {
         return;
     };
+    // Fire from in front of the chest, slightly upward, toward -Z.
     let direction = Vec3::new(0.0, 0.04, -1.0).normalize();
     commands.spawn((
         RigidBody::Dynamic,

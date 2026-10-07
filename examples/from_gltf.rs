@@ -44,6 +44,7 @@ fn setup(
     mut meshes: ResMut<'_, Assets<Mesh>>,
     mut materials: ResMut<'_, Assets<StandardMaterial>>,
 ) {
+    // A static floor for the creatures to land on.
     commands.spawn((
         RigidBody::Fixed,
         Collider::cuboid(8.0, 0.1, 8.0),
@@ -51,6 +52,7 @@ fn setup(
         Mesh3d(meshes.add(Plane3d::default().mesh().size(16.0, 16.0))),
         MeshMaterial3d(materials.add(Color::srgb(0.11, 0.15, 0.19))),
     ));
+    // Camera and light frame all three rigs side by side.
     commands.spawn((
         Camera3d::default(),
         Transform::from_xyz(0.0, 2.2, 5.5).looking_at(Vec3::new(0.0, 0.7, 0.0), Vec3::Y),
@@ -63,6 +65,7 @@ fn setup(
         },
         Transform::from_xyz(-4.0, 7.0, 5.0).looking_at(Vec3::ZERO, Vec3::Y),
     ));
+    // Each rig is a skinned glTF scene; `Ragdoll::default()` builds its profile from the bones.
     for (x, rig) in [(-2.0, "humanoid"), (0.0, "quadruped"), (2.0, "alien")] {
         commands.spawn((
             WorldAssetRoot(
@@ -83,6 +86,7 @@ fn drop_on_space(
     if !keys.just_pressed(KeyCode::Space) {
         return;
     }
+    // Going limp makes every body plan collapse under its own weight.
     for (mut mode, mut drive) in &mut ragdolls {
         *mode = RagdollMode::Dynamic;
         drive.set(0.0, 0.0);

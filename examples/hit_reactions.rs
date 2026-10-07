@@ -6,6 +6,7 @@
 //! lands on the chest shortly after startup.
 //!
 //! Controls:
+//!
 //! - Left click: hit the body under the cursor.
 //! - `1` to `7`: select pistol, rifle, shotgun, punch, kick, heavy, or explosion.
 //! - `-` and `=`: decrease or increase the hit impulse.
@@ -74,6 +75,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .insert_resource(ClearColor(Color::srgb(0.055, 0.075, 0.095)))
         .insert_resource(Rig(profile))
         .init_resource::<Controls>()
+        .register_type::<Rig>()
+        .register_type::<IdleTarget>()
+        .register_type::<Controls>()
+        .register_type::<MuscleBar>()
+        .register_type::<Readout>()
         .add_systems(Startup, (setup_scene, spawn_ragdoll, spawn_hud))
         .add_plugins(RagdollDebugPlugin)
         .add_systems(
@@ -98,11 +104,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 /// The validated profile shared by the ragdoll, HUD, and hit systems.
-#[derive(Resource)]
+#[derive(Resource, Reflect)]
 struct Rig(RagdollProfile);
 
 /// A skeleton bone that sways around its rest rotation to give the drive a target.
-#[derive(Component)]
+#[derive(Component, Reflect)]
 struct IdleTarget {
     /// Profile position, used to offset the sway phase.
     index: usize,
@@ -113,7 +119,7 @@ struct IdleTarget {
 }
 
 /// The strength channel edited by the arrow keys.
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Reflect)]
 enum Channel {
     /// The joint motor multiplier.
     Muscle,
@@ -122,7 +128,7 @@ enum Channel {
 }
 
 /// The user's current hit and strength selections.
-#[derive(Resource)]
+#[derive(Resource, Reflect)]
 struct Controls {
     /// Preset selected by the number keys.
     profile: HitProfile,
@@ -161,11 +167,11 @@ impl Controls {
 }
 
 /// Marks the HUD bar that shows one body's muscle strength.
-#[derive(Component)]
+#[derive(Component, Reflect)]
 struct MuscleBar(usize);
 
 /// Marks the HUD text that shows the selected hit and strength.
-#[derive(Component)]
+#[derive(Component, Reflect)]
 struct Readout;
 
 /// Converts a profile position to a body index.
@@ -197,7 +203,8 @@ fn ragdoll_controls(profile: &RagdollProfile) -> (RagdollBodyWeights, PinTargets
     (weights, pins)
 }
 
-/// Returns the next body after `current`; pin editing skips bodies without pin targets.
+/// Returns the next body after `current`; pin editing skips bodies without pin
+/// targets.
 fn next_body(current: usize, count: usize, channel: Channel, pins: PinTargets) -> usize {
     (1..=count)
         .map(|offset| (current + offset) % count)
@@ -256,6 +263,7 @@ fn spawn_ragdoll(
     rig: Res<'_, Rig>,
 ) {
     let profile = &rig.0;
+    // Full strength everywhere, with only the core bodies pinned.
     let (weights, pins) = ragdoll_controls(profile);
     let character = commands
         .spawn((
@@ -269,24 +277,17 @@ fn spawn_ragdoll(
         ))
         .id();
 
-    // Each joint links a child body to its parent; bodies without a joint are roots.
+    // Bodies without a joint are roots and hang from the character entity.
     let bodies = profile.bodies();
-    let mut parents = vec![None; bodies.len()];
-    for joint in profile.joints() {
-        if let Some(slot) = parents.get_mut(joint.child().get()) {
-            *slot = Some(joint.parent().get());
-        }
-    }
 
     // Profiles list parents before children, so each parent bone already exists.
     let mut bones = Vec::with_capacity(bodies.len());
     for (index, body) in bodies.iter().enumerate() {
         let rest = body.rest();
         // The parent's bone entity and rest pose, when this body has a parent.
-        let parent = parents
-            .get(index)
-            .copied()
-            .flatten()
+        let parent = profile
+            .joint_of(body.index())
+            .map(|joint| joint.parent().get())
             .and_then(|parent| Some((*bones.get(parent)?, bodies.get(parent)?.rest())));
         let (parent, transform) = match parent {
             Some((parent, parent_rest)) => {
@@ -323,6 +324,7 @@ fn animate_idle_targets(
     time: Res<'_, Time>,
     mut bones: Query<'_, '_, (&IdleTarget, &mut Transform)>,
 ) {
+    // Limbs sway more than the core so the drive has visible work to do.
     for (bone, mut transform) in &mut bones {
         let phase = f32::from(u8::try_from(bone.index % 9).unwrap_or_default()) * 0.47;
         let amplitude = match bone.role {
@@ -351,6 +353,7 @@ fn label(text: &str, size: f32, color: Color) -> impl Bundle {
 
 /// Spawns the panel with the hit readout, one muscle bar per body, and key help.
 fn spawn_hud(mut commands: Commands<'_, '_>, rig: Res<'_, Rig>) {
+    // A dark panel in the top-right corner holds the readout and one bar per body.
     let panel = commands
         .spawn((
             Node {
@@ -371,6 +374,7 @@ fn spawn_hud(mut commands: Commands<'_, '_>, rig: Res<'_, Rig>) {
         ChildOf(panel),
     ));
     commands.spawn((label("", 13.0, Color::WHITE), Readout, ChildOf(panel)));
+    // One labelled strength bar per profile body.
     for (index, body) in rig.0.bodies().iter().enumerate() {
         let row = commands
             .spawn((
@@ -413,6 +417,7 @@ fn spawn_hud(mut commands: Commands<'_, '_>, rig: Res<'_, Rig>) {
             ChildOf(track),
         ));
     }
+    // Key help sits at the bottom of the panel.
     commands.spawn((
         label(
             "1-7 select hit | click rig | M muscle | P pin\nTab next body | Up/Down strength | -/= impulse",
@@ -431,24 +436,28 @@ fn adjust_controls(
     mut controls: ResMut<'_, Controls>,
     mut ragdolls: Query<'_, '_, (&mut RagdollBodyWeights, &PinTargets)>,
 ) {
+    // Number keys pick a preset and clear any custom impulse.
     for (key, profile) in PRESETS {
         if keys.just_pressed(key) {
             controls.profile = profile;
             controls.magnitude_override = None;
         }
     }
+    // Minus and equals nudge the impulse in 1 kg*m/s steps.
     for (key, delta) in [(KeyCode::Minus, -1.0), (KeyCode::Equal, 1.0)] {
         if keys.just_pressed(key) {
             let magnitude = controls.magnitude(&settings) + delta;
             controls.magnitude_override = Some(magnitude.clamp(0.0, 300.0));
         }
     }
+    // M and P choose which strength the arrow keys edit.
     if keys.just_pressed(KeyCode::KeyM) {
         controls.channel = Channel::Muscle;
     }
     if keys.just_pressed(KeyCode::KeyP) {
         controls.channel = Channel::Pin;
     }
+    // The remaining keys edit the single ragdoll's weights.
     let Ok((mut weights, pins)) = ragdolls.single_mut() else {
         return;
     };
@@ -456,6 +465,7 @@ fn adjust_controls(
         controls.body = next_body(controls.body, rig.0.bodies().len(), controls.channel, *pins);
     }
 
+    // Arrow keys change the selected strength by 0.1.
     let step = if keys.just_pressed(KeyCode::ArrowUp) {
         0.1
     } else if keys.just_pressed(KeyCode::ArrowDown) {
@@ -463,6 +473,7 @@ fn adjust_controls(
     } else {
         return;
     };
+    // Write back both values so the untouched channel keeps its strength.
     let current = weights.get(controls.body).unwrap_or_default();
     let (mut muscle, mut pin) = (current.muscle(), current.pin());
     match controls.channel {
@@ -481,6 +492,7 @@ fn request_mouse_hit(
     mut controls: ResMut<'_, Controls>,
     mut requests: MessageWriter<'_, RagdollRaycast>,
 ) {
+    // Only a fresh left click starts a hit.
     if !buttons.just_pressed(MouseButton::Left) {
         return;
     }
@@ -493,6 +505,7 @@ fn request_mouse_hit(
     else {
         return;
     };
+    // Remember the impulse until the backend answers this ray.
     let id = controls.next_request_id;
     controls.next_request_id = id.wrapping_add(1);
     let impulse = *ray.direction * controls.magnitude(&settings);
@@ -512,6 +525,7 @@ fn apply_ray_hits(
     mut controls: ResMut<'_, Controls>,
     mut hits: MessageWriter<'_, RagdollHit>,
 ) {
+    // Responses without a pending impulse belong to another sender.
     for response in responses.read() {
         let Some(impulse) = controls.pending.remove(&response.request_id.get()) else {
             continue;
@@ -542,6 +556,7 @@ fn rifle_demo(
     bodies: Query<'_, '_, (Entity, &BodyIndex, &GlobalTransform), With<RagdollBodyOf>>,
     mut hits: MessageWriter<'_, RagdollHit>,
 ) {
+    // Fire once, shortly after the ragdoll has settled into its idle pose.
     if *done || time.elapsed_secs() < 0.85 {
         return;
     }
@@ -552,6 +567,7 @@ fn rifle_demo(
     else {
         return;
     };
+    // Aim from the camera through the chest so the hit pushes it away from view.
     let point = transform.translation();
     let direction = cameras.iter().next().map_or(Vec3::NEG_Z, |camera| {
         (point - camera.translation()).normalize_or_zero()
@@ -565,6 +581,7 @@ fn rifle_demo(
                 .unwrap_or_default(),
         kind: HitKind::Impact,
     });
+    // Never fire the demo hit again.
     *done = true;
 }
 
@@ -580,6 +597,7 @@ fn update_hud(
     let Ok(weights) = ragdolls.single() else {
         return;
     };
+    // Bars turn orange once a body drops below 30% muscle.
     for (bar, mut node, mut color) in &mut bars {
         let muscle = weights.get(bar.0).unwrap_or_default().muscle();
         node.width = percent(muscle * 100.0);
@@ -588,11 +606,13 @@ fn update_hud(
     let Some(body) = rig.0.bodies().get(controls.body) else {
         return;
     };
+    // The readout shows the selected body's edited channel.
     let selected = weights.get(controls.body).unwrap_or_default();
     let (channel, value) = match controls.channel {
         Channel::Muscle => ("muscle", selected.muscle()),
         Channel::Pin => ("pin", selected.pin()),
     };
+    // And the current hit preset with its impulse.
     let profile = controls.profile;
     let magnitude = controls.magnitude(&settings);
     let bone = body.bone();

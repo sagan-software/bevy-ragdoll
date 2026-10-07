@@ -21,6 +21,7 @@ use super::support::{BENCH_SEED, PopulationMode, chain_profile, core_app, human_
 
 /// Measures deterministic loops of joint-angle, motor, torque, and pin math.
 fn math_benchmarks(criterion: &mut Criterion) {
+    // A seeded 64-body chain gives repeatable inputs across runs.
     let profile = chain_profile(64, BENCH_SEED);
     let poses = profile.rest_poses(Isometry3d::IDENTITY).collect::<Vec<_>>();
     let joint_children = profile
@@ -31,7 +32,9 @@ fn math_benchmarks(criterion: &mut Criterion) {
     let settings = RagdollPhysicsSettings::default();
     let mut random = ChaCha8Rng::seed_from_u64(BENCH_SEED);
 
+    // Each count scales the batch so per-call overhead and throughput both show.
     for evaluation_count in [1, 16, 1024] {
+        // Pre-draw every input so the timed closures measure only the math.
         let angle_children = (0..evaluation_count)
             .filter_map(|_| {
                 let offset =
@@ -70,6 +73,7 @@ fn math_benchmarks(criterion: &mut Criterion) {
             })
             .collect::<Vec<_>>();
 
+        // Joint angle extraction from body poses.
         let angle_name = format!("math/joint_angles/{evaluation_count}");
         criterion.bench_function(&angle_name, |bencher| {
             bencher.iter(|| {
@@ -78,6 +82,7 @@ fn math_benchmarks(criterion: &mut Criterion) {
                 }
             });
         });
+        // Muscle and torque drives for the same joints.
         let motor_name = format!("math/muscle_drive/{evaluation_count}");
         criterion.bench_function(&motor_name, |bencher| {
             bencher.iter(|| {
@@ -94,6 +99,7 @@ fn math_benchmarks(criterion: &mut Criterion) {
                 }
             });
         });
+        // Pin drive toward the sampled targets.
         let pin_name = format!("math/pin_drive/{evaluation_count}");
         criterion.bench_function(&pin_name, |bencher| {
             bencher.iter(|| {
@@ -104,6 +110,7 @@ fn math_benchmarks(criterion: &mut Criterion) {
         });
     }
 
+    // Hit processing runs through a full app so message handling is included.
     let human = human_profile();
     let mut group = criterion.benchmark_group("math/hit_processing");
     group.measurement_time(Duration::from_secs(5));
@@ -115,6 +122,7 @@ fn math_benchmarks(criterion: &mut Criterion) {
             BENCH_SEED,
         )
         .expect("hit benchmark setup must bind the complete character population");
+        // One hit target per character, in a stable order.
         let targets = first_body_per_character(app.world_mut());
         assert_eq!(targets.len(), character_count);
         let benchmark_name = format!("{character_count}_ragdolls");
@@ -128,7 +136,9 @@ fn math_benchmarks(criterion: &mut Criterion) {
                         kind: HitKind::Impact,
                     });
                 }
-                app.world_mut().run_schedule(FixedUpdate);
+                app.world_mut()
+                    .try_run_schedule(FixedUpdate)
+                    .expect("the ragdoll plugin installs FixedUpdate");
                 black_box(targets.len());
             });
         });

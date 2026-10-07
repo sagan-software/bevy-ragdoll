@@ -9,6 +9,7 @@ use super::support::{BENCH_SEED, PopulationMode, core_app, human_profile};
 /// Measures one core app update with writeback for each population size.
 fn writeback_benchmarks(criterion: &mut Criterion) {
     let profile = human_profile();
+    // Scale the population to show how writeback cost grows per character.
     for character_count in [1, 64, 512] {
         let benchmark_name = format!("writeback/physics_writeback/{character_count}");
         criterion.bench_function(&benchmark_name, |bencher| {
