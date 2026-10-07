@@ -46,19 +46,9 @@ fn hit_profiles_use_the_documented_impulse_table() {
     assert_eq!(mismatches, []);
 
     // Custom magnitudes pass through only when finite and nonnegative.
-    assert_eq!(
-        settings.impulse_magnitude(HitProfile::Custom(27.0)),
-        Some(27.0)
-    );
-    assert_eq!(settings.impulse_magnitude(HitProfile::Custom(-1.0)), None);
-    assert_eq!(
-        settings.impulse_magnitude(HitProfile::Custom(f32::NAN)),
-        None
-    );
-    assert_eq!(
-        settings.impulse_magnitude(HitProfile::Custom(f32::INFINITY)),
-        None
-    );
+    let custom = [27.0, -1.0, f32::NAN, f32::INFINITY]
+        .map(|magnitude| settings.impulse_magnitude(HitProfile::Custom(magnitude)));
+    assert_eq!(custom, [Some(27.0), None, None, None]);
 }
 
 #[test]

@@ -142,12 +142,14 @@ mod tests {
         let previous = [Isometry3d::IDENTITY];
         let current = [Isometry3d::from_translation(Vec3::X)];
 
-        for delta_seconds in [0.0, -1.0, f32::INFINITY, f32::NAN] {
-            assert_eq!(
-                derive_velocities(&previous, &current, delta_seconds),
-                [BodyVelocity::default()]
-            );
-        }
+        // Collect every invalid step duration that still produced motion.
+        let mismatches = [0.0, -1.0, f32::INFINITY, f32::NAN]
+            .into_iter()
+            .filter(|delta_seconds| {
+                derive_velocities(&previous, &current, *delta_seconds) != [BodyVelocity::default()]
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(mismatches.len(), 0, "{mismatches:?}");
     }
 
     /// New target entries start with zero velocity while prior entries use both
