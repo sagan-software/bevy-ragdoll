@@ -17,14 +17,14 @@ Read first: [../decisions.md](../decisions.md),
 2. Write `flake.nix` with one dev shell:
    - Rust from `oxalica/rust-overlay`: stable, at least 1.95 (Bevy 0.19's
      MSRV), extensions `rust-src clippy rustfmt rust-analyzer
-     llvm-tools-preview`, targets `wasm32-unknown-unknown wasm32-wasip1`.
+llvm-tools-preview`, targets `wasm32-unknown-unknown wasm32-wasip1`.
    - Bevy system libraries: `pkg-config alsa-lib udev
-     vulkan-loader libxkbcommon wayland` and the X11 libraries, with
+vulkan-loader libxkbcommon wayland` and the X11 libraries, with
      `LD_LIBRARY_PATH` set for the runtime-loaded ones.
    - Tools: `cargo-llvm-cov cargo-deny critcmp samply perf tracy wasmtime
-     wasm-bindgen-cli mold clang`.
+wasm-bindgen-cli mold clang`.
    - `RUSTFLAGS` for mold only on Linux x86_64.
-   Run `nix develop -c cargo --version` and `nix develop -c rustc --version`.
+     Run `nix develop -c cargo --version` and `nix develop -c rustc --version`.
 3. Write the root `Cargo.toml`: `[workspace]` with `resolver = "3"`,
    members `crates/bevy_ragdoll`, `examples`, `benches`;
    `[workspace.package]` (`version = "0.1.0-dev"`, `edition = "2024"`,
@@ -61,7 +61,7 @@ Read first: [../decisions.md](../decisions.md),
 8. Add `.github/workflows/ci.yml`, on push and pull request, Ubuntu,
    `dtolnay/rust-toolchain@stable` with clippy and rustfmt,
    `Swatinem/rust-cache`, apt packages `libasound2-dev libudev-dev
-   libwayland-dev libxkbcommon-dev`. Jobs: `fmt`
+libwayland-dev libxkbcommon-dev`. Jobs: `fmt`
    (`cargo fmt --all -- --check`), `clippy`
    (`cargo clippy --workspace --all-targets --locked -- -D warnings`),
    `test` (`cargo test --workspace --locked`), `deny`
@@ -70,7 +70,7 @@ Read first: [../decisions.md](../decisions.md),
    into the repository as `docs/plan/`. From now on, use and update that
    copy; links inside it are relative and keep working.
 10. Commit ("Create the bevy-ragdoll workspace"), push, and watch CI with
-   `gh run watch`.
+    `gh run watch`.
 
 ## Gates
 

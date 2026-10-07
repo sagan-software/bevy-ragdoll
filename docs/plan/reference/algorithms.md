@@ -212,8 +212,8 @@ Output: `ProfileSpec`.
    - quadruped leg segments: as thigh, shin and foot with the hinge sign
      taken from the rest bend direction (positive if the child bends
      forward in the rest pose).
-   Hinge sign is never assumed: measure the rest-pose bend between the bone
-   and its child and choose the range on the side the joint already bends.
+     Hinge sign is never assumed: measure the rest-pose bend between the bone
+     and its child and choose the range on the side the joint already bends.
 8. Apply sparse per-bone overrides from `RagdollBone` components and the
    optional RON overrides file. Validate with `RagdollProfile::new`; the generator returns its spec and
    any warnings (`AutoWarning::MergedBone`, `AutoWarning::GuessedRole`).

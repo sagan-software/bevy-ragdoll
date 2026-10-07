@@ -44,21 +44,21 @@ array-size-threshold = 32768
 # Doc valid identifiers - technical terms that don't need backticks
 # Using ".." extends the default list rather than replacing it
 doc-valid-idents = [
-  "Bevy",
-  "ECS",
-  "Egui",
-  "glTF",
-  "GPU",
-  "LLD",
-  "MSRV",
-  "PBR",
-  "Tracy",
-  "WebGL",
-  "WebGPU",
-  "WGPU",
-  "WGSL",
-  "Winit",
-  "..",
+    "Bevy",
+    "ECS",
+    "Egui",
+    "glTF",
+    "GPU",
+    "LLD",
+    "MSRV",
+    "PBR",
+    "Tracy",
+    "WebGL",
+    "WebGPU",
+    "WGPU",
+    "WGSL",
+    "Winit",
+    "..",
 ]
 
 # Published library: keep exported API stable.
@@ -80,7 +80,7 @@ single-char-binding-names-threshold = 5
 # Note: unwrap/expect are handled via clippy::unwrap_used/expect_used lints in Cargo.toml
 # Here we can add specific API-level restrictions
 disallowed-methods = [
-  { path = "std::thread::sleep", reason = "Use Bevy Time, Timer, or state-driven systems instead of blocking the app thread" },
+    { path = "std::thread::sleep", reason = "Use Bevy Time, Timer, or state-driven systems instead of blocking the app thread" },
 ]
 
 # Disallowed types - add project-specific restrictions here once gameplay code

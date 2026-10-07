@@ -337,7 +337,7 @@ fn shoot(
 - `SphericalJoint { body1, body2, frame1: JointFrame, frame2: JointFrame, twist_axis: Vec3 (default Y), swing_limit: Option<AngleLimit>, twist_limit: Option<AngleLimit>, point_compliance, swing_compliance, twist_compliance }` (`AV/src/dynamics/joints/spherical.rs:33-61`).
   Builders: `new` (`:75`), `with_twist_axis` (`:97`), `with_local_anchor1/2(Vec3)` (`:130`, `:139`), `with_local_basis1/2(impl Into<Quat>)` (`:159`, `:168`), `with_local_frame1/2(impl Into<Isometry>)` (`:104`, `:111`), `with_anchor(global Vec3)` (`:120`),
   `with_swing_limits(min, max)` (`:275`), `with_twist_limits(min, max)` (`:282`), `with_swing_compliance` (`:309`), `with_twist_compliance` (`:316`), `with_point_compliance` (`:302`).
-  Compliance unit: inverse stiffness (N*m/rad for swing/twist). 0 = rigid.
+  Compliance unit: inverse stiffness (N\*m/rad for swing/twist). 0 = rigid.
 - `AngleLimit { min, max }`, `AngleLimit::new` (`joints/mod.rs:369-405`).
 - **`SphericalJoint` has no motor in 0.7.0**: no motor field (`spherical.rs:33-61`); motors exist only on `RevoluteJoint` (`AngularMotor`) and `PrismaticJoint` (`LinearMotor`) (`joints/mod.rs:227`). The crate doc still says motors are unsupported (`AV/src/lib.rs:182`); that line is stale.
 - Swing/twist solve (inferred from code, verify with a test): `prepare` builds `swing_axis = twist_axis.any_orthonormal_vector()` and limits the angle between `basis1*swing_axis` and `basis2*swing_axis` (`AV/src/dynamics/solver/xpbd/joints/spherical.rs:76-81`, `:112-151`); twist is measured about `swing_axis1 + swing_axis2` using the twist axes (`:153-210`).
@@ -473,6 +473,6 @@ fn shoot(spatial: SpatialQuery, colliders: Query<&ColliderOf>, mut bodies: Query
 
 Notes on the skeleton:
 
-- `kp`/`kd` here are absolute torque gains (N*m/rad, N*m*s/rad); scale them by the child's inertia for mass-independent tuning.
+- `kp`/`kd` here are absolute torque gains (N*m/rad, N*m\*s/rad); scale them by the child's inertia for mass-independent tuning.
 - `get_many_mut` returns `Result<[Item; 2], QueryEntityError>` in Bevy 0.19; it fails if both entities are the same.
 - `to_axis_angle` returns an angle in `[0, 2*pi)`; the wrap keeps the shortest error.

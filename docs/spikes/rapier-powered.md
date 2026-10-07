@@ -13,32 +13,32 @@ maximum absolute difference from target height, in metres. Step times
 are per fixed step. Every row recorded zero unstable bodies, defined as a
 body moving faster than 50 m/s or with a non-finite speed.
 
-| Run | Mean error | Max error | Drift m | Unstable |
-| --- | ---: | ---: | ---: | ---: |
-| Motor pin 0 | 5.420 | 80.243 | 0.8404 | 0 |
-| Motor pin 0.5 | 5.804 | 76.197 | 0.8403 | 0 |
-| Motor pin 1 | 6.016 | 70.129 | 0.8401 | 0 |
-| Torque pin 0 | 8.424 | 94.167 | 0.8420 | 0 |
-| Torque pin 0.5 | 8.747 | 113.823 | 0.8438 | 0 |
-| Torque pin 1 | 8.654 | 84.930 | 0.8425 | 0 |
-| Limp drop | 13.391 | 111.580 | 0.8403 | 0 |
-| Motor 6 Hz | 3.342 | 37.966 | 0.1936 | 0 |
-| Stress count 1 | 3.342 | 37.966 | 0.1936 | 0 |
-| Stress count 32 | 3.281 | 66.924 | 0.1979 | 0 |
-| Stress count 128 | 3.270 | 95.020 | 0.2919 | 0 |
+| Run              | Mean error | Max error | Drift m | Unstable |
+| ---------------- | ---------: | --------: | ------: | -------: |
+| Motor pin 0      |      5.420 |    80.243 |  0.8404 |        0 |
+| Motor pin 0.5    |      5.804 |    76.197 |  0.8403 |        0 |
+| Motor pin 1      |      6.016 |    70.129 |  0.8401 |        0 |
+| Torque pin 0     |      8.424 |    94.167 |  0.8420 |        0 |
+| Torque pin 0.5   |      8.747 |   113.823 |  0.8438 |        0 |
+| Torque pin 1     |      8.654 |    84.930 |  0.8425 |        0 |
+| Limp drop        |     13.391 |   111.580 |  0.8403 |        0 |
+| Motor 6 Hz       |      3.342 |    37.966 |  0.1936 |        0 |
+| Stress count 1   |      3.342 |    37.966 |  0.1936 |        0 |
+| Stress count 32  |      3.281 |    66.924 |  0.1979 |        0 |
+| Stress count 128 |      3.270 |    95.020 |  0.2919 |        0 |
 
-| Run | Mean ms | P95 ms |
-| --- | ---: | ---: |
-| Motor pin 0 | 0.1830 | 0.2029 |
-| Motor pin 0.5 | 0.1480 | 0.1862 |
-| Motor pin 1 | 0.1320 | 0.1749 |
-| Torque pin 0 | 0.1156 | 0.1354 |
-| Torque pin 0.5 | 0.1272 | 0.1472 |
-| Torque pin 1 | 0.1300 | 0.1544 |
-| Limp drop | 0.1403 | 0.1703 |
-| Motor 6 Hz | 0.1096 | 0.1263 |
-| Stress count 1 | 0.1162 | 0.1243 |
-| Stress count 32 | 2.1303 | 2.2959 |
+| Run              | Mean ms |  P95 ms |
+| ---------------- | ------: | ------: |
+| Motor pin 0      |  0.1830 |  0.2029 |
+| Motor pin 0.5    |  0.1480 |  0.1862 |
+| Motor pin 1      |  0.1320 |  0.1749 |
+| Torque pin 0     |  0.1156 |  0.1354 |
+| Torque pin 0.5   |  0.1272 |  0.1472 |
+| Torque pin 1     |  0.1300 |  0.1544 |
+| Limp drop        |  0.1403 |  0.1703 |
+| Motor 6 Hz       |  0.1096 |  0.1263 |
+| Stress count 1   |  0.1162 |  0.1243 |
+| Stress count 32  |  2.1303 |  2.2959 |
 | Stress count 128 | 10.1756 | 10.6003 |
 
 The best mean joint error was 3.270° at 128 ragdolls; its pelvis drift was

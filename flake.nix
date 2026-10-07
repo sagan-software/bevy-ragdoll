@@ -138,12 +138,13 @@
           # After a lock bump, update the version and both hashes; the assert names the new version.
           wasmBindgenVersion = "0.2.129";
           lockedWasmBindgen =
-            (lib.findFirst (package: package.name == "wasm-bindgen") { version = "missing"; }
-              (builtins.fromTOML (builtins.readFile ./Cargo.lock)).package
-            ).version;
+            (lib.findFirst (package: package.name == "wasm-bindgen") {
+              version = "missing";
+            } (builtins.fromTOML (builtins.readFile ./Cargo.lock)).package).version;
           wasmBindgenCli =
-            assert lib.assertMsg (lockedWasmBindgen == wasmBindgenVersion)
-              "flake.nix wasm-bindgen-cli ${wasmBindgenVersion} does not match Cargo.lock ${lockedWasmBindgen}";
+            assert lib.assertMsg (
+              lockedWasmBindgen == wasmBindgenVersion
+            ) "flake.nix wasm-bindgen-cli ${wasmBindgenVersion} does not match Cargo.lock ${lockedWasmBindgen}";
             pkgs.buildWasmBindgenCli rec {
               src = pkgs.fetchCrate {
                 pname = "wasm-bindgen-cli";

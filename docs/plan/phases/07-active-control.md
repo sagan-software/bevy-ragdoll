@@ -57,8 +57,7 @@ Pure (`tests/hits.rs`):
 - `recovery_starts_after_the_delay_and_core_first`: pelvis recovers
   before hands by the `order_delay` difference.
 - `impulse_clamp_passes_the_excess_to_the_parent`: 12 N·s on a 0.5 kg
-  hand: hand receives 1.5 N·s, the rest goes up the chain, the sum equals
-  12.
+  hand: hand receives 1.5 N·s, the rest goes up the chain, the sum equals 12.
 - `hit_kinds_map_to_the_impulse_table`.
 
 Physics tier (Rapier):

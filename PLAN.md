@@ -1,23 +1,23 @@
 # Implementation progress
 
-| Complete | Phase | Evidence |
-| --- | --- | --- |
-| [x] | 1. Repository, toolchain and CI | Local workspace and gates complete. The public GitHub repository exists, and `main` has been pushed. |
-| [x] | 2. Profile data model and import | Profile model, builder and RON loader implemented; all phase 2 gates pass. Automatic generation and sparse overrides later replaced the Skein components and GLB import. Coverage gaps are documented below and in the commit body. |
-| [x] | 3. Rapier powered-ragdoll spike | [Report](docs/spikes/rapier-powered.md); checks and coverage gap recorded below. |
-| [x] | 4. Core runtime | Runtime, mock backend, conformance tests and screenshots complete. Coverage gaps and reasons are recorded below. |
-| [x] | 5. Rapier 3D backend | Workspace gates, backend coverage, headless smoke run, and reviewed screenshots pass. Coverage gaps are recorded below. |
-| [x] | 6. Performance | The [stress baseline and Criterion results](benches/RESULTS.md) are committed; the default sweep, comparison boundaries, and benchmark gates pass. The all-features Clippy dependency error is recorded below. |
-| [ ] | 7. Active control | Implementation, workspace tests, strict Clippy, and formatting pass. Fresh coverage, stress and Criterion results, and Rapier-feature example tests remain. See Phase 7 evidence below. |
-| [ ] | 8. Human assets | |
-| [ ] | 9. Balance | |
-| [ ] | 10. Puppet showcase | |
-| [ ] | 11. Creatures | |
-| [ ] | 12. Avian 3D backend | |
-| [ ] | 13. Jolt feasibility | |
-| [ ] | 14. 2D | |
-| [ ] | 15. Determinism, WebAssembly and showcase site | |
-| [ ] | 16. Release | |
+| Complete | Phase                                          | Evidence                                                                                                                                                                                                                            |
+| -------- | ---------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [x]      | 1. Repository, toolchain and CI                | Local workspace and gates complete. The public GitHub repository exists, and `main` has been pushed.                                                                                                                                |
+| [x]      | 2. Profile data model and import               | Profile model, builder and RON loader implemented; all phase 2 gates pass. Automatic generation and sparse overrides later replaced the Skein components and GLB import. Coverage gaps are documented below and in the commit body. |
+| [x]      | 3. Rapier powered-ragdoll spike                | [Report](docs/spikes/rapier-powered.md); checks and coverage gap recorded below.                                                                                                                                                    |
+| [x]      | 4. Core runtime                                | Runtime, mock backend, conformance tests and screenshots complete. Coverage gaps and reasons are recorded below.                                                                                                                    |
+| [x]      | 5. Rapier 3D backend                           | Workspace gates, backend coverage, headless smoke run, and reviewed screenshots pass. Coverage gaps are recorded below.                                                                                                             |
+| [x]      | 6. Performance                                 | The [stress baseline and Criterion results](benches/RESULTS.md) are committed; the default sweep, comparison boundaries, and benchmark gates pass. The all-features Clippy dependency error is recorded below.                      |
+| [ ]      | 7. Active control                              | Implementation, workspace tests, strict Clippy, and formatting pass. Fresh coverage, stress and Criterion results, and Rapier-feature example tests remain. See Phase 7 evidence below.                                             |
+| [ ]      | 8. Human assets                                |                                                                                                                                                                                                                                     |
+| [ ]      | 9. Balance                                     |                                                                                                                                                                                                                                     |
+| [ ]      | 10. Puppet showcase                            |                                                                                                                                                                                                                                     |
+| [ ]      | 11. Creatures                                  |                                                                                                                                                                                                                                     |
+| [ ]      | 12. Avian 3D backend                           |                                                                                                                                                                                                                                     |
+| [ ]      | 13. Jolt feasibility                           |                                                                                                                                                                                                                                     |
+| [ ]      | 14. 2D                                         |                                                                                                                                                                                                                                     |
+| [ ]      | 15. Determinism, WebAssembly and showcase site |                                                                                                                                                                                                                                     |
+| [ ]      | 16. Release                                    |                                                                                                                                                                                                                                     |
 
 ## Notes
 
@@ -80,8 +80,7 @@
   eleven MD013 line-length findings in `README.md` and `PLAN.md`. After
   wrapping those files to 80 columns, the Markdown check passed on all four
   files.
-- The anonymous GitHub page check for `sagan-software/bevy-ragdoll` returned
-  404. `gh auth status --hostname github.com` confirmed that no host is logged
+- The anonymous GitHub page check for `sagan-software/bevy-ragdoll` returned 404. `gh auth status --hostname github.com` confirmed that no host is logged
   in. `gh repo view sagan-software/bevy-ragdoll` could not run without
   authentication. The owner later deferred repository creation, authentication,
   push, and CI until after the local implementation.
@@ -108,6 +107,7 @@
   Cargo output and build artifacts are on the SD card.
   The test run passed 25 unit tests, 15 integration tests, and 39 doctests;
   one asset-generator test and one root doctest are intentionally ignored.
+
 - The Dylints `sagan-lints --fast` run passes with the exact command above.
   This standalone Markdown command passes:
 
@@ -118,6 +118,7 @@
 
   Dylints ran from the corrected GitHub checkout at commit
   `2b4f80e272c413eda75de2cd0ce4fa9c7e713677`; `rumdl` is version 0.2.55.
+
 - The GLB importer follows the [Khronos glTF 2.0.1 specification, sections
   3.2 and 4.4](https://registry.khronos.org/glTF/specs/2.0/glTF-2.0.html).
   It accepts container version 2, exact `asset.version` `2.0`, and absent or
@@ -161,26 +162,26 @@
   library unit tests, 15 profile integration tests, and 39 doctests. One
   integration test and one doctest remain intentionally ignored.
 - `cargo test -p bevy_ragdoll_examples --example spike_rapier_powered
-  --features visual` passed all 10 example tests. The real visible run
+--features visual` passed all 10 example tests. The real visible run
   produced the screenshots listed in the report.
 - `cargo build -p bevy_ragdoll_examples --example spike_rapier_powered
-  --features visual` passed after the final source edits.
+--features visual` passed after the final source edits.
 - `cargo clippy --workspace --all-targets --all-features -- -D warnings`
   passed. Its first run found two undocumented private enum fields and one
   collapsible conditional; all three findings were fixed before rerunning.
 - `cargo deny check` passed all four checks. `cargo doc -p bevy_ragdoll
-  --no-deps` passed. Dylints `sagan-lints --fast` passed after the shared
+--no-deps` passed. Dylints `sagan-lints --fast` passed after the shared
   Rapier workspace dependency disabled default features, matching the example
   dependency declaration.
 - `rumdl check --no-config README.md CHANGELOG.md PLAN.md assets/CREDITS.md
-  docs/spikes/rapier-powered.md` passed after the report was written.
+docs/spikes/rapier-powered.md` passed after the report was written.
 - The stress build command
   `cargo build -p bevy_ragdoll_examples --example spike_rapier_powered
-  --features rapier3d --profile stress-test` passed. The 1, 32, and 128
+--features rapier3d --profile stress-test` passed. The 1, 32, and 128
   ragdoll runs each completed 600 steps with zero unstable bodies. The 128
   ragdoll p95 was 10.6003 ms on this machine.
 - `cargo llvm-cov -p bevy_ragdoll_examples --example
-  spike_rapier_powered --features visual --summary-only` passed all 10 tests.
+spike_rapier_powered --features visual --summary-only` passed all 10 tests.
   Before the coverage build, the SD card had 61 GiB free. Its report listed
   core-library files but omitted `examples/spike_rapier_powered.rs`; the
   changed example has no measured line or branch coverage. This remains an
@@ -222,8 +223,8 @@
   `/var/mnt/nixsd/Caches/dylints/bevy-ragdoll-current`.
 - The coverage gate passed:
   `cargo llvm-cov -p bevy_ragdoll -p bevy_ragdoll_conformance --text
-  --show-missing-lines --output-path
-  /var/mnt/nixsd/Build/bevy-ragdoll/phase4-coverage.txt`.
+--show-missing-lines --output-path
+/var/mnt/nixsd/Build/bevy-ragdoll/phase4-coverage.txt`.
   It passed all 61 library unit, 15 profile, 21 runtime, 8 conformance
   unit, and 7 conformance tests. The target-pose capture and preservation
   branches both have direct unit tests.
@@ -243,7 +244,7 @@
   contract runner can use without a backend-specific system parameter type.
   The runtime follows the architecture contract; no query trait is needed.
 - `cargo build -p bevy_ragdoll_examples --example custom_backend
-  --features custom-backend` passed. The SD card had 83 GiB free before
+--features custom-backend` passed. The SD card had 83 GiB free before
   the build.
 - Both `custom_backend` runs passed with `--exit-after 3 --screenshot`.
   The headless run used:
@@ -280,6 +281,7 @@
   I reviewed both images. Each shows the pelvis, chest, and head shapes at
   the authored rest pose. The windowed capture also shows the mock-backend
   label.
+
 - Runtime commands used the system Radeon ICD and host loader because the
   Nix Mesa selector reported a missing `GLIBC_ABI_GNU2_TLS` symbol against
   the system glibc. RADV VANGOGH rendered both images, and both runs exited
@@ -324,7 +326,7 @@
   but no example line-coverage report was collected. A separate instrumented
   visual build was skipped to protect the SD-card free-space reserve.
 - `nix develop -c cargo run -p bevy_ragdoll_examples --example minimal
-  --features rapier3d -- --headless --exit-after 3` passed. I reviewed the
+--features rapier3d -- --headless --exit-after 3` passed. I reviewed the
   rendered screenshots [minimal](docs/screenshots/phase-05-minimal.png),
   [windowed minimal](docs/screenshots/phase-05-minimal-windowed.png),
   [from code](docs/screenshots/phase-05-from-code.png),
@@ -367,6 +369,7 @@ of what ran; `benches/README.md` describes the current options.
   `benches/baselines/steamdeck-6dffb94acbac45d38b162ddde8b7d645.json`.
   `benches/RESULTS.md` records the report table, host details, and Criterion
   measurements.
+
 - The matched 16×16 comparison passed with `--profile stress-test`. Candidate
   frame and step p95 were 97.552 ms and 90.525 ms, below the baseline values
   97.730 ms and 90.713 ms. The first dev-profile comparison exited 1 because
@@ -394,6 +397,7 @@ of what ran; `benches/README.md` describes the current options.
   characters. Each target completed its requested samples; the full command
   exited 0. The sample windows and mean estimates are recorded in
   `benches/RESULTS.md`.
+
 - These gates passed after the final source and documentation edits:
 
   ```sh
@@ -424,6 +428,7 @@ of what ran; `benches/README.md` describes the current options.
   ```
 
   Dylints strict Clippy and `cargo check` both exited 0.
+
 - The fallback command
   `nix develop -c cargo clippy --all-targets --all-features -- -D warnings`
   remains blocked in Bevy 0.19.1 `bevy_reflect`. Rapier enhanced determinism
@@ -452,7 +457,7 @@ of what ran; `benches/README.md` describes the current options.
   changes, including the workspace doctests.
 - `cargo clippy --locked --workspace --all-targets -- -D warnings` and
   `cargo clippy --locked -p bevy_ragdoll_examples --all-targets --features
-  rapier3d -- -D warnings` passed.
+rapier3d -- -D warnings` passed.
 - The final `cargo fmt --all -- --check` command passed after Nix's SD-card
   read completed. `git diff --check` passed.
 - `cargo test --locked -p bevy_ragdoll_examples --features rapier3d` was

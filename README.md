@@ -71,11 +71,11 @@ fn main() {
 
 ## Backends
 
-| Backend   | Crate                   | Engine                | Status      | Web |
-| --------- | ----------------------- | --------------------- | ----------- | --- |
-| Rapier 3D | `bevy_ragdoll_rapier3d` | `bevy_rapier3d` 0.36  | Available   | Yes |
-| Avian 3D  | `bevy_ragdoll_avian3d`  | `avian3d` 0.7         | Available   | Yes |
-| Custom    | your crate              | any                   | Supported   | Depends |
+| Backend   | Crate                   | Engine               | Status    | Web     |
+| --------- | ----------------------- | -------------------- | --------- | ------- |
+| Rapier 3D | `bevy_ragdoll_rapier3d` | `bevy_rapier3d` 0.36 | Available | Yes     |
+| Avian 3D  | `bevy_ragdoll_avian3d`  | `avian3d` 0.7        | Available | Yes     |
+| Custom    | your crate              | any                  | Supported | Depends |
 
 A custom backend creates bodies and joints for the runtime's body entities and reports their poses back.
 [`examples/custom_backend.rs`](examples/custom_backend.rs) runs the core on a small mock backend.
@@ -84,17 +84,17 @@ A custom backend creates bodies and joints for the runtime's body entities and r
 
 Every example except Profile Builder runs in the browser.
 
-| Example | Demo | Description |
-| ------- | ---- | ----------- |
-| [`showcase`](examples/showcase.rs) | [Play](https://sagan-software.github.io/bevy-ragdoll/examples/showcase/) | Throw, hit, and tune a crowd of ragdolls while watching frame and step cost. |
-| [`minimal`](examples/minimal.rs) | [Play](https://sagan-software.github.io/bevy-ragdoll/examples/minimal/) | Drop the reference humanoid ragdoll and inspect its landing and joints. |
-| [`from_code`](examples/from_code.rs) | [Play](https://sagan-software.github.io/bevy-ragdoll/examples/from_code/) | Build and run a pinned three-body chain from Rust. |
-| [`from_gltf`](examples/from_gltf.rs) | [Play](https://sagan-software.github.io/bevy-ragdoll/examples/from_gltf/) | Generate ragdolls from skinned glTF creatures with no authored files. |
-| [`profile_builder`](examples/profile_builder.rs) | | Build and validate a one-body profile without an app. |
-| [`custom_backend`](examples/custom_backend.rs) | [Play](https://sagan-software.github.io/bevy-ragdoll/examples/custom_backend/) | Run the core runtime on a mock backend. |
-| [`hit_reactions`](examples/hit_reactions.rs) | [Play](https://sagan-software.github.io/bevy-ragdoll/examples/hit_reactions/) | Select hit profiles, click the rig, and edit local muscle and pin strengths. |
-| [`partial_ragdoll`](examples/partial_ragdoll.rs) | [Play](https://sagan-software.github.io/bevy-ragdoll/examples/partial_ragdoll/) | Keep the legs driven while impacts move the loose upper body. |
-| [`ragdoll_stress`](examples/ragdoll_stress.rs) | [Play](https://sagan-software.github.io/bevy-ragdoll/examples/ragdoll_stress/) | Drop many ragdolls and report frame and physics-step cost. |
+| Example                                          | Demo                                                                            | Description                                                                  |
+| ------------------------------------------------ | ------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| [`showcase`](examples/showcase.rs)               | [Play](https://sagan-software.github.io/bevy-ragdoll/examples/showcase/)        | Throw, hit, and tune a crowd of ragdolls while watching frame and step cost. |
+| [`minimal`](examples/minimal.rs)                 | [Play](https://sagan-software.github.io/bevy-ragdoll/examples/minimal/)         | Drop the reference humanoid ragdoll and inspect its landing and joints.      |
+| [`from_code`](examples/from_code.rs)             | [Play](https://sagan-software.github.io/bevy-ragdoll/examples/from_code/)       | Build and run a pinned three-body chain from Rust.                           |
+| [`from_gltf`](examples/from_gltf.rs)             | [Play](https://sagan-software.github.io/bevy-ragdoll/examples/from_gltf/)       | Generate ragdolls from skinned glTF creatures with no authored files.        |
+| [`profile_builder`](examples/profile_builder.rs) |                                                                                 | Build and validate a one-body profile without an app.                        |
+| [`custom_backend`](examples/custom_backend.rs)   | [Play](https://sagan-software.github.io/bevy-ragdoll/examples/custom_backend/)  | Run the core runtime on a mock backend.                                      |
+| [`hit_reactions`](examples/hit_reactions.rs)     | [Play](https://sagan-software.github.io/bevy-ragdoll/examples/hit_reactions/)   | Select hit profiles, click the rig, and edit local muscle and pin strengths. |
+| [`partial_ragdoll`](examples/partial_ragdoll.rs) | [Play](https://sagan-software.github.io/bevy-ragdoll/examples/partial_ragdoll/) | Keep the legs driven while impacts move the loose upper body.                |
+| [`ragdoll_stress`](examples/ragdoll_stress.rs)   | [Play](https://sagan-software.github.io/bevy-ragdoll/examples/ragdoll_stress/)  | Drop many ragdolls and report frame and physics-step cost.                   |
 
 Run one locally:
 

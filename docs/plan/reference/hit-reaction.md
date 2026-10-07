@@ -117,7 +117,7 @@ Source: https://jrouwe.github.io/JoltPhysics/class_ragdoll.html.
 
 - `DriveToPoseUsingMotors(inPose)` "activat[es] the motors on each
   constraint". The overload `DriveToPoseUsingMotors(inPrevPose, inPose,
-  inDeltaTime)` "drives both to target position and velocity": it feeds the
+inDeltaTime)` "drives both to target position and velocity": it feeds the
   animation's velocity forward.
 - `DriveToPoseUsingKinematics(inPose, inDeltaTime)` sets body velocities so
   the ragdoll reaches the pose in `inDeltaTime`. This is the fully pinned
@@ -629,7 +629,7 @@ offset  = 0.4 (forward fall, GTA forwardMaxArmOffset 0.4) or -0.3 (backward, bac
 ```
 
 - Two-bone IK on the target arms toward `hand_l` / `hand_r`, clamped to arm
-  reach (0.95 * arm length) from each shoulder.
+  reach (0.95 \* arm length) from each shoulder.
 - Arm muscles 1.0 and torso 0.6, legs 0.4 during the reach (GTA catchFall
   `armsStiffness 15`, `torsoStiffness 9`, `legsStiffness 6`, as ratios
   1.0 / 0.6 / 0.4).

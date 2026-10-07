@@ -21,8 +21,8 @@ section 9, [../reference/assets.md](../reference/assets.md) section 2.
    - rabbit: OpenGameArt `rabbit.blend` (CC0), converted the same way. If
      it has no usable walk or idle clip, use the Quaternius Bunny (CC0,
      biped) and note that it is a biped.
-   Inspect each file's bones and clips and add them to
-   `reference`-style notes in `assets/creatures/README.md`.
+     Inspect each file's bones and clips and add them to
+     `reference`-style notes in `assets/creatures/README.md`.
 2. Write failing tests in `tests/auto.rs`.
 3. `SkeletonView` from a spawned glTF scene (bones by `ChildOf`, rest
    transforms from the skin's inverse bind matrices, `SkinSample` from the
