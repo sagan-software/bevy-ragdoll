@@ -16,6 +16,7 @@ use bevy_ragdoll::{BodyRole, Ragdoll, RagdollError, RagdollPlugin, RagdollProfil
 /// Spawns `rig` with `Ragdoll::default()` and returns its generated profile.
 fn generated_profile(rig: &str) -> RagdollProfile {
     let mut app = App::new();
+    // Load glTF through the real asset pipeline, rooted at the crate's assets directory.
     app.add_plugins((
         MinimalPlugins,
         AssetPlugin {
@@ -33,6 +34,7 @@ fn generated_profile(rig: &str) -> RagdollProfile {
     // The glTF loader registers in `Plugin::finish`.
     app.finish();
     app.cleanup();
+    // Spawn the rig's first scene under a default Ragdoll.
     let scene = app
         .world()
         .get_resource::<AssetServer>()
