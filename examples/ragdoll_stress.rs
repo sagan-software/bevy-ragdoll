@@ -161,6 +161,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     #[cfg(not(target_arch = "wasm32"))]
     let args = Args::parse();
 
+    // The window choice must come first: headless runs replace DefaultPlugins.
     let mut app = App::new();
     add_presentation(&mut app, args.headless);
     app.insert_resource(Run {
@@ -180,8 +181,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 /// Adds a window with body meshes, or only the headless core plugins.
-fn add_presentation(app: &mut App, headless: bool) {
-    if headless {
+fn add_presentation(app: &mut App, is_headless: bool) {
+    if is_headless {
         app.add_plugins((
             MinimalPlugins.set(ScheduleRunnerPlugin::run_loop(Duration::ZERO)),
             AssetPlugin::default(),

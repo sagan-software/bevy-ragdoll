@@ -45,6 +45,8 @@ const PRESETS: [(KeyCode, HitProfile); 7] = [
     (KeyCode::Digit7, HitProfile::Explosion),
 ];
 
+/// Heading color for the HUD panel.
+const HEADING: Color = Color::srgb(0.49, 0.86, 0.89);
 /// Bar color for bodies at or above 30% muscle strength.
 const STRONG: Color = Color::srgb(0.24, 0.79, 0.71);
 /// Bar color for bodies below 30% muscle strength.
@@ -52,6 +54,7 @@ const WEAK: Color = Color::srgb(0.93, 0.57, 0.3);
 
 /// Loads the rig profile and runs the windowed example.
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // The profile is generated once and shared by the ragdoll and the systems.
     let profile = RagdollProfile::from_skeleton(&bevy_ragdoll::Skeleton::humanoid())?;
     let mut app = App::new();
     app.add_plugins(DefaultPlugins.set(WindowPlugin {
@@ -66,6 +69,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     app.insert_resource(ClearColor(Color::srgb(0.055, 0.075, 0.095)))
         .insert_resource(Rig(profile))
         .init_resource::<Controls>();
+    // Systems come last so every resource they read already exists.
     add_example_systems(&mut app);
     app.run();
     Ok(())
@@ -391,16 +395,17 @@ fn spawn_hud(mut commands: Commands<'_, '_>, rig: Res<'_, Rig>) {
             BackgroundColor(Color::srgba(0.035, 0.055, 0.07, 0.88)),
         ))
         .id();
-    commands.spawn((
-        label("Hit profile", 16.0, Color::srgb(0.49, 0.86, 0.89)),
-        ChildOf(panel),
-    ));
+    commands.spawn((label("Hit profile", 16.0, HEADING), ChildOf(panel)));
     commands.spawn((label("", 13.0, Color::WHITE), Readout, ChildOf(panel)));
     // One labelled strength bar per profile body.
     for (index, body) in rig.0.bodies().iter().enumerate() {
         spawn_muscle_bar(commands.reborrow(), panel, index, body.bone());
     }
-    // Key help sits at the bottom of the panel.
+    spawn_key_help(commands, panel);
+}
+
+/// Spawns the key help at the bottom of the HUD panel.
+fn spawn_key_help(mut commands: Commands<'_, '_>, panel: Entity) {
     commands.spawn((
         label(
             "1-7 select hit | click rig | M muscle | P pin\nTab next body | Up/Down strength | -/= impulse",
@@ -411,7 +416,7 @@ fn spawn_hud(mut commands: Commands<'_, '_>, rig: Res<'_, Rig>) {
     ));
 }
 
-/// Spawns one `bone [=====]` row in `panel` whose bar tracks body `index`'s muscle strength.
+/// Spawns one bone row in `panel` whose bar tracks body `index`'s muscle.
 fn spawn_muscle_bar(mut commands: Commands<'_, '_>, panel: Entity, index: usize, bone: &str) {
     let row = commands
         .spawn((
@@ -432,7 +437,12 @@ fn spawn_muscle_bar(mut commands: Commands<'_, '_>, panel: Entity, index: usize,
         },
         ChildOf(row),
     ));
-    // A dark track with a full-width bar that update_hud shrinks as strength drops.
+    spawn_bar_track(commands, row, index);
+}
+
+/// Spawns a dark track in `row` with a full-width bar that `update_hud` shrinks as
+/// body `index` loses strength.
+fn spawn_bar_track(mut commands: Commands<'_, '_>, row: Entity, index: usize) {
     let track = commands
         .spawn((
             Node {

@@ -25,6 +25,7 @@ use bevy_rapier3d::prelude::{Collider, Damping, Restitution, RigidBody, Velocity
 
 /// Loads the rig profile and runs the windowed example.
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // The profile is generated once and shared by the ragdoll and the systems.
     let profile = RagdollProfile::from_skeleton(&bevy_ragdoll::Skeleton::humanoid())?;
     let mut app = App::new();
     app.add_plugins(DefaultPlugins.set(WindowPlugin {
@@ -39,6 +40,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     app.insert_resource(ClearColor(Color::srgb(0.055, 0.075, 0.095)))
         .insert_resource(Rig(profile))
         .insert_resource(LaunchTimer(Timer::from_seconds(2.0, TimerMode::Repeating)));
+    // Systems come last so every resource they read already exists.
     add_example_systems(&mut app);
     app.run();
     Ok(())
@@ -72,7 +74,7 @@ fn add_example_systems(app: &mut App) {
         .register_type::<IdleTarget>()
         .register_type::<LaunchTimer>()
         .register_type::<Ball>();
-    app.add_systems(Startup, (setup_scene, spawn_ragdoll))
+    app.add_systems(Startup, (setup_view, setup_scene, spawn_ragdoll))
         .add_systems(
             PostUpdate,
             animate_idle_targets
@@ -141,12 +143,8 @@ fn body_index(position: usize) -> BodyIndex {
     BodyIndex::try_from(position).expect("validated profiles fit the body limit")
 }
 
-/// Spawns the camera, light, ground, and title.
-fn setup_scene(
-    mut commands: Commands<'_, '_>,
-    mut meshes: ResMut<'_, Assets<Mesh>>,
-    mut materials: ResMut<'_, Assets<StandardMaterial>>,
-) {
+/// Spawns the camera and the shadow-casting light.
+fn setup_view(mut commands: Commands<'_, '_>) {
     commands.spawn((
         Camera3d::default(),
         Transform::from_xyz(1.6, 2.0, 2.7).looking_at(Vec3::new(0.0, 1.0, 0.0), Vec3::Y),
@@ -159,6 +157,14 @@ fn setup_scene(
         },
         Transform::from_xyz(-4.0, 7.0, 5.0).looking_at(Vec3::ZERO, Vec3::Y),
     ));
+}
+
+/// Spawns the camera, light, ground, and title.
+fn setup_scene(
+    mut commands: Commands<'_, '_>,
+    mut meshes: ResMut<'_, Assets<Mesh>>,
+    mut materials: ResMut<'_, Assets<StandardMaterial>>,
+) {
     commands.spawn((
         RigidBody::Fixed,
         Collider::cuboid(6.0, 0.1, 6.0),

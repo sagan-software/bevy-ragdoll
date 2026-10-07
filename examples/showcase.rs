@@ -436,6 +436,7 @@ struct StepTimer {
 fn main() -> AppExit {
     let backend = Backend::from_environment();
     let mut app = App::new();
+    // Window and scene colors first, then the runtime, then the chosen engine.
     add_window(&mut app);
     app.add_plugins((
         RagdollPlugin::default(),
@@ -444,6 +445,7 @@ fn main() -> AppExit {
     .insert_resource(Time::<Fixed>::from_hz(60.0))
     .insert_resource(ActiveBackend(backend));
     backend.add_plugins(&mut app);
+    // Panel state, then the systems that read it.
     add_showcase_state(&mut app);
     add_showcase_systems(&mut app);
     app.run()
@@ -622,7 +624,17 @@ fn setup_scene(
     ));
     backend.0.insert_static_box(floor, floor_half);
 
-    // Obstacles give thrown ragdolls something to tumble over.
+    spawn_obstacles(commands.reborrow(), backend.0, &mut meshes, &mut materials);
+}
+
+/// Spawns a few static boxes that give thrown ragdolls something to tumble over.
+fn spawn_obstacles(
+    mut commands: Commands<'_, '_>,
+    backend: Backend,
+    meshes: &mut Assets<Mesh>,
+    materials: &mut Assets<StandardMaterial>,
+) {
+    // One shared material; each box gets a mesh and a static collider of the same size.
     let obstacle = materials.add(StandardMaterial {
         base_color: Color::srgb(0.22, 0.25, 0.30),
         perceptual_roughness: 0.6,
@@ -645,7 +657,7 @@ fn setup_scene(
             MeshMaterial3d(obstacle.clone()),
             transform,
         ));
-        backend.0.insert_static_box(entity, half_extents);
+        backend.insert_static_box(entity, half_extents);
     }
 }
 
@@ -849,22 +861,7 @@ fn spawn_panel(
     params: Res<'_, Params>,
 ) {
     // A translucent panel in the top-left corner.
-    let panel = commands
-        .spawn((
-            Node {
-                position_type: PositionType::Absolute,
-                top: px(14),
-                left: px(14),
-                width: px(310),
-                flex_direction: FlexDirection::Column,
-                row_gap: px(6),
-                padding: UiRect::all(px(14)),
-                border_radius: BorderRadius::all(px(8)),
-                ..default()
-            },
-            BackgroundColor(Color::srgba(0.04, 0.05, 0.07, 0.86)),
-        ))
-        .id();
+    let panel = commands.spawn(panel_node()).id();
     // Title and live metrics come first.
     commands.spawn((text("bevy_ragdoll", 18.0, ACCENT), ChildOf(panel)));
     commands.spawn((
@@ -880,6 +877,22 @@ fn spawn_panel(
     let row = commands.spawn((row_node(), ChildOf(panel))).id();
     button(commands.reborrow(), row, "Explode", Action::Explode, false);
     button(commands.reborrow(), row, "Reset", Action::Reset, false);
+}
+
+/// Returns the translucent top-left panel that holds the controls.
+fn panel_node() -> impl Bundle {
+    let node = Node {
+        position_type: PositionType::Absolute,
+        top: px(14),
+        left: px(14),
+        width: px(310),
+        flex_direction: FlexDirection::Column,
+        row_gap: px(6),
+        padding: UiRect::all(px(14)),
+        border_radius: BorderRadius::all(px(8)),
+        ..default()
+    };
+    (node, BackgroundColor(Color::srgba(0.04, 0.05, 0.07, 0.86)))
 }
 
 /// Spawns one `label  -  value  +` stepper row for `param` in `panel`.

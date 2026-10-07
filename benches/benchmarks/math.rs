@@ -109,11 +109,14 @@ fn math_benchmarks(criterion: &mut Criterion) {
             });
         });
     }
+}
 
-    // Hit processing runs through a full app so message handling is included.
+/// Measures hit processing through a full app so message handling is included.
+fn hit_benchmarks(criterion: &mut Criterion) {
     let human = human_profile();
     let mut group = criterion.benchmark_group("math/hit_processing");
     group.measurement_time(Duration::from_secs(5));
+    // One and 64 characters show the per-hit cost and how it scales.
     for character_count in [1, 64] {
         let mut app = core_app(
             human.clone(),
@@ -169,4 +172,4 @@ fn next_angle(random: &mut ChaCha8Rng) -> f32 {
     unit.mul_add(2.0, -1.0) * 0.5
 }
 
-criterion_group!(benches, math_benchmarks);
+criterion_group!(benches, math_benchmarks, hit_benchmarks);
