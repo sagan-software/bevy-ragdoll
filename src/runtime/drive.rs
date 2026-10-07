@@ -1162,8 +1162,10 @@ mod tests {
     fn stable_pd_torque_rejects_invalid_step_durations() {
         let motor = joint_motor_values(1.0, 10.0, &RagdollPhysicsSettings::default());
 
-        for delta_seconds in [0.0, -1.0, f32::INFINITY, f32::NAN] {
-            assert_eq!(
+        // Collect every invalid step duration that still produced torque.
+        let mismatches = [0.0, -1.0, f32::INFINITY, f32::NAN]
+            .into_iter()
+            .filter(|&delta_seconds| {
                 stable_pd_torque(
                     StablePdInput {
                         frame_rotation: Quat::IDENTITY,
@@ -1175,10 +1177,10 @@ mod tests {
                         delta_seconds,
                     },
                     motor,
-                ),
-                Vec3::ZERO
-            );
-        }
+                ) != Vec3::ZERO
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(mismatches.len(), 0, "{mismatches:?}");
     }
 
     /// Soft joint limits restore both ends of each configured interval.
