@@ -8,6 +8,7 @@
 //! the legs keep standing.
 //!
 //! Controls:
+//!
 //! - `Space`: pause or resume the chest impacts.
 
 use bevy::app::AnimationSystems;
@@ -23,6 +24,13 @@ use bevy_rapier3d::plugin::{RapierPhysicsPlugin, TimestepMode};
 use bevy_rapier3d::prelude::{Collider, Damping, Restitution, RigidBody, Velocity};
 
 /// Loads the rig profile and runs the windowed example.
+#[cfg_attr(
+    dylint_lib = "sagan_lints",
+    expect(
+        bevy_disallow_update_schedule,
+        reason = "input handling and UI react once per rendered frame, which is what Update is for"
+    )
+)]
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let profile = RagdollProfile::from_skeleton(&bevy_ragdoll::Skeleton::humanoid())?;
     App::new()
@@ -312,11 +320,14 @@ fn despawn_old_balls(
     time: Res<'_, Time>,
     mut balls: Query<'_, '_, (Entity, &mut Ball, &Transform)>,
 ) {
-    for (entity, mut ball, transform) in &mut balls {
-        if ball.lifetime.tick(time.delta()).is_finished() || transform.translation.y < -2.0 {
-            commands.entity(entity).despawn();
-        }
-    }
+    // Every ball's timer ticks each frame; expired or fallen balls are removed.
+    balls
+        .iter_mut()
+        .filter_map(|(entity, mut ball, transform)| {
+            let is_expired = ball.lifetime.tick(time.delta()).is_finished();
+            (is_expired || transform.translation.y < -2.0).then_some(entity)
+        })
+        .for_each(|entity| commands.entity(entity).despawn());
 }
 
 #[cfg(test)]

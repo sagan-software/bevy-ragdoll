@@ -122,13 +122,13 @@ impl Backend {
             let _ = window.location().set_search(&format!("backend={name}"));
         }
         #[cfg(not(target_arch = "wasm32"))]
-        if let Ok(exe) = std::env::current_exe()
-            && std::process::Command::new(exe)
+        if let Ok(exe) = std::env::current_exe() {
+            let restarted = std::process::Command::new(exe)
                 .args(["--backend", name])
-                .spawn()
-                .is_ok()
-        {
-            std::process::exit(0);
+                .spawn();
+            if restarted.is_ok() {
+                std::process::exit(0);
+            }
         }
     }
 
@@ -161,7 +161,7 @@ impl Backend {
     }
 
     /// Adds a fixed box collider with the given half extents in metres to `entity`.
-    fn insert_static_box(self, entity: &mut EntityCommands<'_>, half_extents: Vec3) {
+    fn insert_static_box(self, mut entity: EntityCommands<'_>, half_extents: Vec3) {
         match self {
             Self::Rapier => {
                 use bevy_rapier3d::prelude::{Collider, RigidBody};
@@ -284,7 +284,9 @@ impl Param {
 
     /// Moves the value one step in the direction of `sign` and keeps it in range.
     fn step(self, params: &mut Params, sign: f32) {
+        // Each value clamps to a range that keeps the simulation stable and readable.
         match self {
+            // Larger crowds step faster so 256 is a few clicks away.
             Self::Count => {
                 let step = if params.count >= 64 { 16 } else { 4 };
                 params.count = if sign > 0.0 {
@@ -298,6 +300,7 @@ impl Param {
             Self::TimeScale => {
                 params.time_scale = 0.1f32.mul_add(sign, params.time_scale).clamp(0.1, 2.0);
             }
+            // Hit presets wrap around in both directions.
             Self::Hit => {
                 let len = HIT_PROFILES.len();
                 params.hit = (params.hit + if sign > 0.0 { 1 } else { len - 1 }) % len;
@@ -308,12 +311,15 @@ impl Param {
 
     /// Formats the current value for the panel.
     fn value(self, params: &Params) -> String {
+        // Units use ASCII because the default UI font lacks superscripts and the
+        // multiplication sign.
         match self {
             Self::Count => params.count.to_string(),
             Self::Muscle => format!("{:.0}%", params.muscle * 100.0),
             Self::Gravity => format!("{:.1} m/s2", params.gravity),
             Self::TimeScale => format!("{:.1}x", params.time_scale),
             Self::Hit => format!("{:?}", params.hit_profile()),
+            // The creature switch reads as a mode, not a boolean.
             Self::Creatures => if params.has_creatures { "Mixed" } else { "Off" }.to_owned(),
         }
     }
@@ -337,7 +343,7 @@ enum Action {
 struct ParamValue(Param);
 
 /// Marks the performance readout text.
-#[derive(Component, Reflect)]
+#[derive(Component, Clone, Copy, Default, Reflect)]
 struct MetricsText;
 
 /// Marks a character root and records its spawn order for coloring.
@@ -425,7 +431,21 @@ struct StepTimer {
     average_ms: f32,
 }
 
-/// Loads the profile, picks a backend, and runs the showcase.
+/// Picks a backend and runs the showcase.
+#[cfg_attr(
+    dylint_lib = "sagan_lints",
+    expect(
+        bevy_disallow_update_schedule,
+        reason = "input handling and UI react once per rendered frame, which is what Update is for"
+    )
+)]
+#[cfg_attr(
+    dylint_lib = "sagan_lints",
+    expect(
+        bevy_disallow_fixed_update_schedule,
+        reason = "the grab impulse must be written once per physics step, before the ragdoll Behaviour set"
+    )
+)]
 fn main() -> AppExit {
     let backend = Backend::from_environment();
 
@@ -562,7 +582,7 @@ fn setup_scene(
 
     // The floor and obstacles carry the backend's static colliders.
     let floor_half = Vec3::new(ARENA_HALF_EXTENT, 0.25, ARENA_HALF_EXTENT);
-    let mut floor = commands.spawn((
+    let floor = commands.spawn((
         Mesh3d(meshes.add(Cuboid::from_size(floor_half * 2.0))),
         MeshMaterial3d(materials.add(StandardMaterial {
             base_color_texture: Some(images.add(checker_image())),
@@ -571,7 +591,7 @@ fn setup_scene(
         })),
         Transform::from_xyz(0.0, -0.25, 0.0),
     ));
-    backend.0.insert_static_box(&mut floor, floor_half);
+    backend.0.insert_static_box(floor, floor_half);
 
     // Obstacles give thrown ragdolls something to tumble over.
     let obstacle = materials.add(StandardMaterial {
@@ -591,12 +611,12 @@ fn setup_scene(
         ),
     ];
     for (half_extents, transform) in obstacles {
-        let mut entity = commands.spawn((
+        let entity = commands.spawn((
             Mesh3d(meshes.add(Cuboid::from_size(half_extents * 2.0))),
             MeshMaterial3d(obstacle.clone()),
             transform,
         ));
-        backend.0.insert_static_box(&mut entity, half_extents);
+        backend.0.insert_static_box(entity, half_extents);
     }
 }
 
@@ -690,7 +710,7 @@ fn sync_population(
             ((index % 5) as f32).mul_add(0.9, 1.0),
             angle.sin() * distance,
         );
-        spawn_character(&mut commands, &rigs, &params, index, position, angle);
+        spawn_character(commands.reborrow(), &rigs, &params, index, position, angle);
     }
 }
 
@@ -700,7 +720,7 @@ fn sync_population(
 /// `Ragdoll::default()` generates the ragdoll profile from whatever skeleton is
 /// under it.
 fn spawn_character(
-    commands: &mut Commands<'_, '_>,
+    mut commands: Commands<'_, '_>,
     rigs: &Rigs,
     params: &Params,
     index: usize,
@@ -725,7 +745,7 @@ fn spawn_character(
         character.insert(WorldAssetRoot(scene.clone()));
     } else {
         let character = character.id();
-        rigs.humanoid.spawn(commands, character);
+        rigs.humanoid.spawn(&mut commands, character);
     }
 }
 
@@ -738,6 +758,13 @@ type NewBone = (With<Name>, With<ChildOf>, Without<RestRotation>);
 ///
 /// Writeback copies physics poses into the bones after capture, so without this
 /// the captured target would equal the current pose and the muscles would idle.
+#[cfg_attr(
+    dylint_lib = "sagan_lints",
+    expect(
+        bevy_conflicting_query_params,
+        reason = "NewBone excludes RestRotation and the second query requires it, so the Transform accesses are disjoint"
+    )
+)]
 fn restore_rest_pose(
     mut commands: Commands<'_, '_>,
     new_bones: Query<'_, '_, (Entity, &Transform), NewBone>,
@@ -766,6 +793,7 @@ fn add_body_meshes(
 ) {
     // Share one mesh per collider shape so a large crowd costs few assets.
     for (entity, shape, owner) in &bodies {
+        // Color by spawn order so neighbours are easy to tell apart.
         let (mesh, transform) = assets
             .meshes
             .entry(format!("{:?}", shape.0))
@@ -834,7 +862,13 @@ fn spawn_panel(
             },
             ChildOf(row),
         ));
-        button(&mut commands, row, "-", Action::Step(param, -1), false);
+        button(
+            commands.reborrow(),
+            row,
+            "-",
+            Action::Step(param, -1),
+            false,
+        );
         commands.spawn((
             text(&param.value(&params), 14.0, Color::WHITE),
             Node {
@@ -846,7 +880,7 @@ fn spawn_panel(
             ParamValue(param),
             ChildOf(row),
         ));
-        button(&mut commands, row, "+", Action::Step(param, 1), false);
+        button(commands.reborrow(), row, "+", Action::Step(param, 1), false);
     }
     // Backend buttons; choosing another one restarts the app.
     let row = commands.spawn((row_node(), ChildOf(panel))).id();
@@ -861,7 +895,7 @@ fn spawn_panel(
     for option in Backend::ALL {
         let is_selected = option == backend.0;
         button(
-            &mut commands,
+            commands.reborrow(),
             row,
             option.name(),
             Action::UseBackend(option),
@@ -869,8 +903,8 @@ fn spawn_panel(
         );
     }
     let row = commands.spawn((row_node(), ChildOf(panel))).id();
-    button(&mut commands, row, "Explode", Action::Explode, false);
-    button(&mut commands, row, "Reset", Action::Reset, false);
+    button(commands.reborrow(), row, "Explode", Action::Explode, false);
+    button(commands.reborrow(), row, "Reset", Action::Reset, false);
 
     // Control hints stay at the bottom-left, outside the panel.
     commands.spawn((
@@ -911,7 +945,7 @@ fn text(value: &str, size: f32, color: Color) -> impl Bundle {
 
 /// Spawns a labelled button in `row` that performs `action` when pressed.
 fn button(
-    commands: &mut Commands<'_, '_>,
+    mut commands: Commands<'_, '_>,
     row: Entity,
     label: &str,
     action: Action,
@@ -1090,10 +1124,12 @@ fn read_pick(
             continue;
         }
         pointer.pending = None;
+        // A miss, or a hit on static geometry, leaves nothing to grab.
         let Some(hit) = response.hit else { continue };
         let (Some(body), Ok(camera)) = (hit.body, cameras.single()) else {
             continue;
         };
+        // Store the point in the body's frame so the grab follows the body as it moves.
         let Ok(body_transform) = bodies.get(body) else {
             continue;
         };

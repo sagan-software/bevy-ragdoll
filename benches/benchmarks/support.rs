@@ -559,7 +559,10 @@ fn profile_bone_parent_and_transform(
             if parent_index >= body_index {
                 return Err(BenchmarkSetupError::ParentNotFirst);
             }
-            let parent_entity = parent_bone_entity(bones, parent_index)?;
+            let parent_entity = bones
+                .get(parent_index)
+                .copied()
+                .ok_or(BenchmarkSetupError::ParentBoneNotSpawned)?;
             // Express the child's rest pose in its parent's local coordinate space.
             let local_rotation = parent_body.rest().rotation.inverse() * body.rest().rotation;
             let local_translation = parent_body.rest().rotation.inverse()
@@ -569,17 +572,6 @@ fn profile_bone_parent_and_transform(
             Ok((parent_entity, transform))
         }
     }
-}
-
-/// Resolves the parent bone entity for one child profile body.
-fn parent_bone_entity(
-    bones: &[Entity],
-    parent_index: usize,
-) -> Result<Entity, BenchmarkSetupError> {
-    bones
-        .get(parent_index)
-        .copied()
-        .ok_or(BenchmarkSetupError::ParentBoneNotSpawned)
 }
 
 /// Adds Rapier's requested sleeping state to every bound ragdoll body.

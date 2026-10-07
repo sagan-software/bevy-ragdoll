@@ -39,6 +39,13 @@ const UNSTABLE_SPEED: f32 = 50.0;
 #[derive(Parser, Clone, Serialize)]
 struct Args {
     /// Run without a window or renderer.
+    #[cfg_attr(
+        dylint_lib = "sagan_lints",
+        expect(
+            bool_name_prefix,
+            reason = "clap derives the --headless flag that CI calls from this field name"
+        )
+    )]
     #[arg(long)]
     headless: bool,
     /// How the ragdolls are placed.
@@ -120,6 +127,13 @@ impl Summary {
 }
 
 /// Run options and samples collected so far.
+#[cfg_attr(
+    dylint_lib = "sagan_lints",
+    expect(
+        bevy_missing_reflect,
+        reason = "the clap Args and Instant fields cannot implement Reflect, and nothing inspects this resource"
+    )
+)]
 #[derive(Resource)]
 struct Run {
     /// Command-line options.
@@ -316,8 +330,7 @@ fn finish_run(
             .map_err(std::io::Error::other)
             .and_then(|json| std::fs::write(path, json));
         if let Err(error) = written {
-            let path = path.display();
-            error!("could not write {path}: {error}");
+            error!(path = %path.display(), %error, "could not write the stress report");
             exit.write(AppExit::error());
             return;
         }

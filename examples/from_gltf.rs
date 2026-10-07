@@ -13,6 +13,13 @@ use bevy_rapier3d::plugin::{RapierPhysicsPlugin, TimestepMode};
 use bevy_rapier3d::prelude::{Collider, RigidBody};
 
 /// Runs the example.
+#[cfg_attr(
+    dylint_lib = "sagan_lints",
+    expect(
+        bevy_disallow_update_schedule,
+        reason = "input handling and UI react once per rendered frame, which is what Update is for"
+    )
+)]
 fn main() -> AppExit {
     App::new()
         // Web servers answer 404 for the `.meta` files Bevy probes by default; the rigs have none.

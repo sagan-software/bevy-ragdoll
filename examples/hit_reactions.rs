@@ -51,6 +51,13 @@ const STRONG: Color = Color::srgb(0.24, 0.79, 0.71);
 const WEAK: Color = Color::srgb(0.93, 0.57, 0.3);
 
 /// Loads the rig profile and runs the windowed example.
+#[cfg_attr(
+    dylint_lib = "sagan_lints",
+    expect(
+        bevy_disallow_update_schedule,
+        reason = "input handling and UI react once per rendered frame, which is what Update is for"
+    )
+)]
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let profile = RagdollProfile::from_skeleton(&bevy_ragdoll::Skeleton::humanoid())?;
     App::new()
@@ -139,9 +146,9 @@ struct Controls {
     /// Strength channel changed by the arrow keys.
     channel: Channel,
     /// Identity for the next ray request.
-    next_request_id: u64,
+    next_request_id: RagdollRequestId,
     /// Impulse to apply when the ray response with this identity arrives.
-    pending: HashMap<u64, Vec3>,
+    pending: HashMap<RagdollRequestId, Vec3>,
 }
 
 impl Default for Controls {
@@ -151,7 +158,7 @@ impl Default for Controls {
             magnitude_override: None,
             body: 0,
             channel: Channel::Muscle,
-            next_request_id: 0,
+            next_request_id: RagdollRequestId::new(0),
             pending: HashMap::new(),
         }
     }
@@ -171,7 +178,7 @@ impl Controls {
 struct MuscleBar(usize);
 
 /// Marks the HUD text that shows the selected hit and strength.
-#[derive(Component, Reflect)]
+#[derive(Component, Clone, Copy, Default, Reflect)]
 struct Readout;
 
 /// Converts a profile position to a body index.
@@ -182,11 +189,6 @@ fn body_index(position: usize) -> BodyIndex {
 /// Returns whether a body is pinned: the pelvis and chest.
 const fn is_core(body: &Body) -> bool {
     matches!(body.role(), BodyRole::Pelvis | BodyRole::Chest)
-}
-
-/// Returns the profile position of the chest.
-fn chest_position(profile: &RagdollProfile) -> Option<usize> {
-    profile.body_with_role(BodyRole::Chest).map(BodyIndex::get)
 }
 
 /// Starts every body at full strength and pins only the core bodies.
@@ -499,6 +501,7 @@ fn request_mouse_hit(
     let (Ok(window), Ok((camera, camera_transform))) = (windows.single(), cameras.single()) else {
         return;
     };
+    // No cursor over the window means there is nothing to aim at.
     let Some(ray) = window
         .cursor_position()
         .and_then(|cursor| camera.viewport_to_world(camera_transform, cursor).ok())
@@ -507,11 +510,11 @@ fn request_mouse_hit(
     };
     // Remember the impulse until the backend answers this ray.
     let id = controls.next_request_id;
-    controls.next_request_id = id.wrapping_add(1);
+    controls.next_request_id = RagdollRequestId::new(id.get().wrapping_add(1));
     let impulse = *ray.direction * controls.magnitude(&settings);
     controls.pending.insert(id, impulse);
     requests.write(RagdollRaycast {
-        request_id: RagdollRequestId::new(id),
+        request_id: id,
         origin: ray.origin,
         direction: *ray.direction,
         max_distance: 100.0,
@@ -527,7 +530,7 @@ fn apply_ray_hits(
 ) {
     // Responses without a pending impulse belong to another sender.
     for response in responses.read() {
-        let Some(impulse) = controls.pending.remove(&response.request_id.get()) else {
+        let Some(impulse) = controls.pending.remove(&response.request_id) else {
             continue;
         };
         if let Some(RayHit {
@@ -560,7 +563,7 @@ fn rifle_demo(
     if *done || time.elapsed_secs() < 0.85 {
         return;
     }
-    let chest = chest_position(&rig.0);
+    let chest = rig.0.body_with_role(BodyRole::Chest).map(BodyIndex::get);
     let Some((body, _, transform)) = bodies
         .iter()
         .find(|(_, index, _)| Some(index.get()) == chest)
@@ -615,6 +618,7 @@ fn update_hud(
     // And the current hit preset with its impulse.
     let profile = controls.profile;
     let magnitude = controls.magnitude(&settings);
+    // Bind the values first so the format string can name them.
     let bone = body.bone();
     for mut text in &mut readouts {
         **text = format!("{profile:?}: {magnitude:.0} kg*m/s\n{bone}: {channel} {value:.2}");
