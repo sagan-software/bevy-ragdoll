@@ -42,17 +42,22 @@ fn renamed(rename: impl Fn(&str) -> String) -> Skeleton {
     skeleton
 }
 
+/// The quadruped torso, neck, head and tail as `(name, parent, head position)`.
+const QUADRUPED_TRUNK: [(&str, Option<&str>, [f32; 3]); 7] = [
+    ("hips", None, [0.0, 0.6, -0.3]),
+    ("chest", Some("hips"), [0.0, 0.62, 0.3]),
+    ("neck", Some("chest"), [0.0, 0.75, 0.45]),
+    ("skull", Some("neck"), [0.0, 0.85, 0.6]),
+    ("tail_1", Some("hips"), [0.0, 0.62, -0.4]),
+    ("tail_2", Some("tail_1"), [0.0, 0.64, -0.55]),
+    ("tail_3", Some("tail_2"), [0.0, 0.66, -0.7]),
+];
+
 /// A dog-like quadruped facing +Z with a tail, neck and head.
 fn quadruped() -> Skeleton {
-    let mut bones = vec![
-        ("hips", None, Vec3::new(0.0, 0.6, -0.3)),
-        ("chest", Some("hips"), Vec3::new(0.0, 0.62, 0.3)),
-        ("neck", Some("chest"), Vec3::new(0.0, 0.75, 0.45)),
-        ("skull", Some("neck"), Vec3::new(0.0, 0.85, 0.6)),
-        ("tail_1", Some("hips"), Vec3::new(0.0, 0.62, -0.4)),
-        ("tail_2", Some("tail_1"), Vec3::new(0.0, 0.64, -0.55)),
-        ("tail_3", Some("tail_2"), Vec3::new(0.0, 0.66, -0.7)),
-    ];
+    let mut bones = QUADRUPED_TRUNK
+        .map(|(name, parent, head)| (name, parent, Vec3::from_array(head)))
+        .to_vec();
     // Front legs hang from the chest and back legs from the hips.
     let legs: [(&str, &str, f32, f32); 4] = [
         ("leg_fl", "chest", 0.12, 0.3),

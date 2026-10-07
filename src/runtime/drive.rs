@@ -935,32 +935,9 @@ mod tests {
     /// Applies pin masks and per-character controller values to body outputs.
     #[test]
     fn body_pin_output_respects_targets_and_settings() {
-        // One body ten metres from its target, so any active pin produces force.
-        let state = BodyDriveState {
-            entity: Entity::PLACEHOLDER,
-            target_pose: Some(Isometry3d::from_translation(Vec3::X * 10.0)),
-            target_velocity: BodyVelocity::default(),
-            current_pose: Isometry3d::IDENTITY,
-            current_velocity: BodyVelocity::default(),
-            mass: 1.0,
-            inertia: 1.0,
-            output: BodyDriveOutput::default(),
-        };
-        let index = BodyIndex::try_from(0).expect("zero is a valid body index");
-        let drive = RagdollDrive::default();
-        let weights = RagdollBodyWeights::default();
-        let settings = RagdollPhysicsSettings::default();
-
         // With no pin targets the body gets no pin force but keeps its speed caps.
-        let unpinned = body_pin_output(
-            state,
-            Some(index),
-            drive,
-            &weights,
-            PinTargets::none(),
-            settings,
-            true,
-        );
+        let settings = RagdollPhysicsSettings::default();
+        let unpinned = far_target_pin_output(PinTargets::none(), settings);
         assert_eq!(
             (unpinned.pin_force, unpinned.max_linear_speed),
             (Vec3::ZERO, Some(10.0))
@@ -977,18 +954,36 @@ mod tests {
         );
         let mut physics_settings = settings;
         limited_settings.override_shared(&mut physics_settings);
-        let pinned = body_pin_output(
-            state,
-            Some(index),
-            drive,
-            &weights,
-            PinTargets::all(),
-            physics_settings,
-            true,
-        );
+        let pinned = far_target_pin_output(PinTargets::all(), physics_settings);
         // The capped force and the angular speed cap both reach the output.
         let is_capped = (pinned.pin_force.length() - 0.5).abs() < 1.0e-5;
         assert_eq!((is_capped, pinned.max_angular_speed), (true, Some(20.0)));
+    }
+
+    /// Computes the pin output of one body ten metres from its target.
+    fn far_target_pin_output(
+        targets: PinTargets,
+        settings: RagdollPhysicsSettings,
+    ) -> BodyDriveOutput {
+        let state = BodyDriveState {
+            entity: Entity::PLACEHOLDER,
+            target_pose: Some(Isometry3d::from_translation(Vec3::X * 10.0)),
+            target_velocity: BodyVelocity::default(),
+            current_pose: Isometry3d::IDENTITY,
+            current_velocity: BodyVelocity::default(),
+            mass: 1.0,
+            inertia: 1.0,
+            output: BodyDriveOutput::default(),
+        };
+        body_pin_output(
+            state,
+            Some(body_index(0)),
+            RagdollDrive::default(),
+            &RagdollBodyWeights::default(),
+            targets,
+            settings,
+            true,
+        )
     }
 
     /// Reads a character's pin settings before computing every body output.
@@ -1291,30 +1286,8 @@ mod tests {
         let (mut world, character) = drive_world();
         // A valid parent, a child whose target pose is missing, and a child with no parent entity.
         let parent = world.spawn((RagdollBodyOf(character), body_index(0))).id();
-        let child = world
-            .spawn((
-                RagdollBodyOf(character),
-                body_index(1),
-                JointToParent {
-                    parent,
-                    frame: Isometry3d::IDENTITY,
-                    limits: locked_limits(),
-                    max_torque: 10.0,
-                },
-            ))
-            .id();
-        let missing_parent = world
-            .spawn((
-                RagdollBodyOf(character),
-                body_index(2),
-                JointToParent {
-                    parent: Entity::PLACEHOLDER,
-                    frame: Isometry3d::IDENTITY,
-                    limits: locked_limits(),
-                    max_torque: 10.0,
-                },
-            ))
-            .id();
+        let child = spawn_jointed_body(&mut world, character, 1, parent);
+        let missing_parent = spawn_jointed_body(&mut world, character, 2, Entity::PLACEHOLDER);
         // Only body 0 has a target, so neither joint can compute one.
         let mut targets = RagdollTargetPose::default();
         targets.record(vec![Isometry3d::IDENTITY], vec![BodyVelocity::default()]);
@@ -1323,8 +1296,9 @@ mod tests {
         drive(&mut world);
 
         // Both joints are skipped while the parent body is still driven.
-        assert!(world.get::<JointDriveTarget>(child).is_none());
-        assert!(world.get::<JointDriveTarget>(missing_parent).is_none());
+        let has_target =
+            [child, missing_parent].map(|body| world.get::<JointDriveTarget>(body).is_some());
+        assert_eq!(has_target, [false, false]);
         assert!(world.get::<BodyDriveOutput>(parent).is_some());
     }
 
@@ -1338,18 +1312,7 @@ mod tests {
             .unwrap()
             .has_native_joint_motors = true;
         let parent = world.spawn((RagdollBodyOf(character), body_index(0))).id();
-        let child = world
-            .spawn((
-                RagdollBodyOf(character),
-                body_index(1),
-                JointToParent {
-                    parent,
-                    frame: Isometry3d::IDENTITY,
-                    limits: locked_limits(),
-                    max_torque: 10.0,
-                },
-            ))
-            .id();
+        let child = spawn_jointed_body(&mut world, character, 1, parent);
         // Body 1's target is rotated, so the joint has real work to do.
         let mut targets = RagdollTargetPose::default();
         targets.record(
@@ -1365,20 +1328,34 @@ mod tests {
 
         // The joint target is written but no fallback torque reaches the parent.
         assert!(world.get::<JointDriveTarget>(child).is_some());
-        assert_eq!(
+        let torques = [parent, child].map(|body| {
             world
-                .get::<BodyDriveOutput>(parent)
-                .expect("the parent receives a drive output")
-                .joint_torque,
-            Vec3::ZERO
-        );
-        assert_eq!(
-            world
-                .get::<BodyDriveOutput>(child)
-                .expect("the child receives a drive output")
-                .joint_torque,
-            Vec3::ZERO
-        );
+                .get::<BodyDriveOutput>(body)
+                .expect("each body receives a drive output")
+                .joint_torque
+        });
+        assert_eq!(torques, [Vec3::ZERO; 2]);
+    }
+
+    /// Spawns body `index` of `character` with a locked joint to `parent`.
+    fn spawn_jointed_body(
+        world: &mut World,
+        character: Entity,
+        index: usize,
+        parent: Entity,
+    ) -> Entity {
+        world
+            .spawn((
+                RagdollBodyOf(character),
+                body_index(index),
+                JointToParent {
+                    parent,
+                    frame: Isometry3d::IDENTITY,
+                    limits: locked_limits(),
+                    max_torque: 10.0,
+                },
+            ))
+            .id()
     }
 
     /// Converts a test body index into the validated profile index type.

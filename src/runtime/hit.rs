@@ -898,37 +898,9 @@ mod tests {
         let mut world = World::new();
         let first_owner = world.spawn(RagdollBodies::default()).id();
         let second_owner = world.spawn(RagdollBodies::default()).id();
-        let first_body = world
-            .spawn((
-                BodyIndex::try_from(0).expect("zero is a valid body index"),
-                BodyRole::Pelvis,
-                RagdollBodyOf(first_owner),
-            ))
-            .id();
-        let second_body = world
-            .spawn((
-                BodyIndex::try_from(1).expect("one is a valid body index"),
-                BodyRole::Spine,
-                RagdollBodyOf(first_owner),
-                JointToParent {
-                    parent: first_body,
-                    frame: bevy::math::Isometry3d::IDENTITY,
-                    limits: crate::profile::JointLimits {
-                        x: crate::profile::AngleRange { min: 0.0, max: 0.0 },
-                        twist: crate::profile::AngleRange { min: 0.0, max: 0.0 },
-                        z: crate::profile::AngleRange { min: 0.0, max: 0.0 },
-                    },
-                    max_torque: 1.0,
-                },
-            ))
-            .id();
-        let foreign_body = world
-            .spawn((
-                BodyIndex::try_from(0).expect("zero is a valid body index"),
-                BodyRole::Pelvis,
-                RagdollBodyOf(second_owner),
-            ))
-            .id();
+        let first_body = spawn_pelvis(&mut world, first_owner);
+        let second_body = spawn_spine_child(&mut world, first_owner, first_body);
+        let foreign_body = spawn_pelvis(&mut world, second_owner);
         // Collect the tree the way process_hits does, from the owner's relationship.
         let related_bodies = world
             .get::<RagdollBodies>(first_owner)
@@ -1135,6 +1107,43 @@ mod tests {
 
     /// Returns every buffered impulse through a fresh cursor, so the result does
     /// not depend on which of the two update buffers holds the messages.
+    /// Spawns a pelvis body at index zero owned by `owner`.
+    fn spawn_pelvis(world: &mut World, owner: bevy::prelude::Entity) -> bevy::prelude::Entity {
+        world
+            .spawn((
+                BodyIndex::try_from(0).expect("zero is a valid body index"),
+                BodyRole::Pelvis,
+                RagdollBodyOf(owner),
+            ))
+            .id()
+    }
+
+    /// Spawns a spine body at index one with a locked joint to `parent`.
+    fn spawn_spine_child(
+        world: &mut World,
+        owner: bevy::prelude::Entity,
+        parent: bevy::prelude::Entity,
+    ) -> bevy::prelude::Entity {
+        let locked = crate::profile::AngleRange { min: 0.0, max: 0.0 };
+        world
+            .spawn((
+                BodyIndex::try_from(1).expect("one is a valid body index"),
+                BodyRole::Spine,
+                RagdollBodyOf(owner),
+                JointToParent {
+                    parent,
+                    frame: bevy::math::Isometry3d::IDENTITY,
+                    limits: crate::profile::JointLimits {
+                        x: locked,
+                        twist: locked,
+                        z: locked,
+                    },
+                    max_torque: 1.0,
+                },
+            ))
+            .id()
+    }
+
     /// Builds an app that runs only `process_hits`, so the test controls every message.
     fn hit_app() -> App {
         let mut app = App::new();
