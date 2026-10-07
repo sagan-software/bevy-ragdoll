@@ -262,8 +262,8 @@ impl Param {
         match self {
             Self::Count => params.count.to_string(),
             Self::Muscle => format!("{:.0}%", params.muscle * 100.0),
-            Self::Gravity => format!("{:.1} m/s²", params.gravity),
-            Self::TimeScale => format!("{:.1}×", params.time_scale),
+            Self::Gravity => format!("{:.1} m/s2", params.gravity),
+            Self::TimeScale => format!("{:.1}x", params.time_scale),
             Self::Hit => format!("{:?}", HIT_PROFILES[params.hit]),
         }
     }
@@ -719,7 +719,7 @@ fn spawn_panel(mut commands: Commands, backend: Res<ActiveBackend>, params: Res<
                 position_type: PositionType::Absolute,
                 top: px(14),
                 left: px(14),
-                width: px(260),
+                width: px(290),
                 flex_direction: FlexDirection::Column,
                 row_gap: px(6),
                 padding: UiRect::all(px(14)),
