@@ -17,6 +17,7 @@ import os
 import shutil
 import subprocess
 import tomllib
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -46,8 +47,9 @@ def build_wasm(names: list[str], out: Path) -> dict[str, int]:
     subprocess.run(command, cwd=ROOT, env=env, check=True)
 
     target_dir = Path(env.get("CARGO_TARGET_DIR", ROOT / "target"))
-    sizes = {}
-    for name in names:
+
+    def bind(name: str) -> int:
+        """Generates the JS bindings for one example and optimizes its module."""
         page = out / "examples" / name
         page.mkdir(parents=True, exist_ok=True)
         wasm = target_dir / TARGET / "release" / "examples" / f"{name}.wasm"
@@ -57,8 +59,11 @@ def build_wasm(names: list[str], out: Path) -> dict[str, int]:
         )
         bound = page / f"{name}_bg.wasm"
         subprocess.run(["wasm-opt", "-Os", "--all-features", bound, "-o", bound], check=True)
-        sizes[name] = bound.stat().st_size
-    return sizes
+        return bound.stat().st_size
+
+    # wasm-opt is single-threaded per module; run the examples side by side.
+    with ThreadPoolExecutor(max_workers=os.cpu_count()) as pool:
+        return dict(zip(names, pool.map(bind, names)))
 
 
 def megabytes(size: int) -> str:
