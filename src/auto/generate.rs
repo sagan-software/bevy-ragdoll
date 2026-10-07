@@ -320,36 +320,7 @@ impl<'a> Rig<'a> {
         let count = tree.bones.len();
         let mut roles = vec![BodyRole::Other; count];
         roles[0] = BodyRole::Pelvis;
-        // Subtree sizes accumulate child-first, which reverse parent-first order gives.
-        let mut sizes = vec![1_usize; count];
-        for body in (1..count).rev() {
-            if let Some(parent) = tree.parents[body] {
-                sizes[parent] += sizes[body];
-            }
-        }
-        // Follow a unique largest subtree from the core, then single children.
-        let mut spine = Vec::new();
-        let mut current = 0;
-        loop {
-            let children = &tree.children[current];
-            let next = if current == 0 {
-                let largest = children.iter().map(|child| sizes[*child]).max();
-                let mut best = children
-                    .iter()
-                    .filter(|child| Some(sizes[**child]) == largest);
-                match (best.next(), best.next()) {
-                    (Some(child), None) => Some(*child),
-                    _ => None,
-                }
-            } else if children.len() == 1 {
-                children.first().copied()
-            } else {
-                None
-            };
-            let Some(next) = next else { break };
-            spine.push(next);
-            current = next;
-        }
+        let spine = tree.spine();
         // The last spine body is the chest only when limbs or a head branch from it.
         for body in &spine {
             roles[*body] = BodyRole::Spine;
@@ -372,6 +343,28 @@ impl<'a> Rig<'a> {
                     .map(|start| (base, *start)),
             );
         }
+        let kinds = self.chain_kinds(tree, &chains, spine_end, spine_dir);
+        // Each chain kind maps depth along the chain to a proximal-to-distal role.
+        for ((_, start), kind) in chains.iter().zip(kinds) {
+            let members = tree.subtree(*start);
+            let last = members.iter().map(|(_, depth)| *depth).max().unwrap_or(0);
+            for (body, depth) in members {
+                roles[body] = kind.role(depth, last);
+            }
+        }
+        roles
+    }
+
+    /// Classifies each `(base, start)` chain by its lowest point and tip direction.
+    ///
+    /// At most one reach chain on the spine end becomes the head.
+    fn chain_kinds(
+        &self,
+        tree: &BodyTree,
+        chains: &[(usize, usize)],
+        spine_end: usize,
+        spine_dir: Vec3,
+    ) -> Vec<ChainKind> {
         // Classify each chain by its lowest point and its tip direction.
         let mut head_choice: Option<(f32, usize)> = None;
         let mut kinds = Vec::with_capacity(chains.len());
@@ -410,15 +403,7 @@ impl<'a> Rig<'a> {
         if let Some((_, index)) = head_choice {
             kinds[index] = ChainKind::Head;
         }
-        // Each chain kind maps depth along the chain to a proximal-to-distal role.
-        for ((_, start), kind) in chains.iter().zip(kinds) {
-            let members = tree.subtree(*start);
-            let last = members.iter().map(|(_, depth)| *depth).max().unwrap_or(0);
-            for (body, depth) in members {
-                roles[body] = kind.role(depth, last);
-            }
-        }
-        roles
+        kinds
     }
 
     /// Computes a body's capsule segment in skeleton space.
@@ -944,6 +929,45 @@ impl BodyTree {
             });
         }
         owner
+    }
+
+    /// Returns the spine bodies, from the core's child outward.
+    ///
+    /// The spine starts at the core's unique largest child subtree and follows
+    /// single children until the tree branches or ends.
+    fn spine(&self) -> Vec<usize> {
+        let count = self.bones.len();
+        // Subtree sizes accumulate child-first, which reverse parent-first order gives.
+        let mut sizes = vec![1_usize; count];
+        for body in (1..count).rev() {
+            if let Some(parent) = self.parents[body] {
+                sizes[parent] += sizes[body];
+            }
+        }
+        // Follow a unique largest subtree from the core, then single children.
+        let mut spine = Vec::new();
+        let mut current = 0;
+        loop {
+            let children = &self.children[current];
+            let next = if current == 0 {
+                let largest = children.iter().map(|child| sizes[*child]).max();
+                let mut best = children
+                    .iter()
+                    .filter(|child| Some(sizes[**child]) == largest);
+                match (best.next(), best.next()) {
+                    (Some(child), None) => Some(*child),
+                    _ => None,
+                }
+            } else if children.len() == 1 {
+                children.first().copied()
+            } else {
+                None
+            };
+            let Some(next) = next else { break };
+            spine.push(next);
+            current = next;
+        }
+        spine
     }
 
     /// Returns `start` and its descendant bodies with their depth below `start`.
