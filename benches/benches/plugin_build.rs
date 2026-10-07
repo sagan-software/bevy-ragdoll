@@ -1,6 +1,9 @@
 //! Criterion benchmark for building an app with the ragdoll plugin.
 
 use bevy::app::App;
+use bevy::asset::AssetPlugin;
+use bevy::prelude::MinimalPlugins;
+use bevy::transform::TransformPlugin;
 use bevy_ragdoll::RagdollPlugin;
 use criterion::{Criterion, criterion_group, criterion_main};
 use std::hint::black_box;
@@ -10,6 +13,8 @@ fn plugin_build_time(criterion: &mut Criterion) {
     criterion.bench_function("ragdoll_plugin_build", |bencher| {
         bencher.iter(|| {
             let mut app = App::new();
+            app.add_plugins(MinimalPlugins);
+            app.add_plugins((AssetPlugin::default(), TransformPlugin));
             app.add_plugins(RagdollPlugin::default());
             let _ = black_box(app);
         });

@@ -1,6 +1,7 @@
 //! Criterion targets for target capture on synthetic character populations.
 
 use std::hint::black_box;
+use std::time::Duration;
 
 use criterion::{BatchSize, Criterion, criterion_group, criterion_main};
 
@@ -9,9 +10,11 @@ use bevy_ragdoll_benches::support::{BENCH_SEED, PopulationMode, core_app, human_
 /// Measures one core app update with target capture for each population size.
 fn capture_benchmarks(criterion: &mut Criterion) {
     let profile = human_profile();
+    let mut group = criterion.benchmark_group("capture/target_capture");
+    group.measurement_time(Duration::from_secs(6));
     for character_count in [1, 64, 512] {
-        let benchmark_name = format!("capture/target_capture/{character_count}");
-        criterion.bench_function(&benchmark_name, |bencher| {
+        let benchmark_name = character_count.to_string();
+        group.bench_function(&benchmark_name, |bencher| {
             bencher.iter_batched(
                 || {
                     core_app(
@@ -30,6 +33,7 @@ fn capture_benchmarks(criterion: &mut Criterion) {
             );
         });
     }
+    group.finish();
 }
 
 criterion_group!(benches, capture_benchmarks);
