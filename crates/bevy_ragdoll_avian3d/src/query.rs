@@ -60,6 +60,7 @@ pub(crate) fn read_body_motion(
             linear.0 = Vec3::ZERO;
             angular.0 = Vec3::ZERO;
         }
+        // Publish Avian's velocity, then write back any capped speed.
         velocity.linear = linear.0;
         velocity.angular = angular.0;
         if drive.max_linear_speed.is_some() || drive.max_angular_speed.is_some() {
@@ -67,6 +68,7 @@ pub(crate) fn read_body_motion(
             linear.0 = velocity.linear;
             angular.0 = velocity.angular;
         }
+        // Mirror Avian's sleep flag as the core rest marker.
         if is_sleeping {
             commands.entity(entity).insert(BodyAtRest);
         } else {
@@ -86,12 +88,14 @@ pub(crate) fn read_ragdoll_queries(
     mut raycasts: MessageReader<'_, '_, RagdollRaycast>,
     mut responses: MessageWriter<'_, RagdollRaycastResponse>,
 ) {
+    // Rebuild each body's contact list from this step's touching pairs.
     for (entity, mut contacts) in &mut bodies {
         contacts.0.clear();
         for pair in collisions.collisions_with(entity) {
             append_pair_contacts(entity, pair, &rigid_bodies, &mut contacts.0);
         }
     }
+    // Answer every raycast request, including those without a hit.
     for request in raycasts.read() {
         let hit = raycast_hit(&spatial_query, request, &body_tags, &collider_bodies);
         responses.write(RagdollRaycastResponse {
@@ -150,6 +154,7 @@ fn raycast_hit(
     body_tags: &Query<'_, '_, &RagdollBodyOf>,
     collider_bodies: &Query<'_, '_, &ColliderOf>,
 ) -> Option<RayHit> {
+    // Reject non-finite origins and non-positive or non-finite distances.
     if !request.origin.is_finite()
         || !request.max_distance.is_finite()
         || request.max_distance <= 0.0
@@ -157,6 +162,7 @@ fn raycast_hit(
         return None;
     }
     let direction = Dir3::new(request.direction).ok()?;
+    // Map each hit collider to its rigid body before filtering.
     let body_of = |collider: Entity| {
         collider_bodies
             .get(collider)

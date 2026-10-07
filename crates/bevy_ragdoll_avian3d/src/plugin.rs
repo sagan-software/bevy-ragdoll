@@ -283,6 +283,7 @@ mod tests {
     /// Runs the settings system once on a world with the given inputs.
     fn applied_settings(gravity: Vec3, substep_count: u32) -> World {
         let mut world = World::new();
+        // Install the inputs and Avian resources that hold non-default values.
         let base = RagdollPhysicsSettings::default();
         world.insert_resource(RagdollPhysicsSettings { gravity, ..base });
         world.insert_resource(AvianRagdollSettings {
@@ -291,6 +292,7 @@ mod tests {
         });
         world.insert_resource(Gravity::default());
         world.insert_resource(SubstepCount(6));
+        // Run the system once so it overwrites both Avian resources.
         let mut schedule = Schedule::default();
         schedule.add_systems(apply_avian_settings);
         schedule.run(&mut world);
@@ -396,20 +398,23 @@ mod tests {
         timers.timers.insert(removed, 5.0);
         world.insert_resource(timers);
         world.spawn((RagdollBodyOf(with_bodies), BodyVelocity::default()));
+        // Run one fixed step of the sleep system.
         let mut schedule = Schedule::default();
         schedule.add_systems(force_sleep_limp_ragdolls);
 
         schedule.run(&mut world);
 
-        let tracked = world
+        assert_eq!(tracked_owners(&world), vec![with_bodies]);
+    }
+
+    /// Returns the owners that still have a sleep timer, in entity order.
+    fn tracked_owners(world: &World) -> Vec<Entity> {
+        let mut owners = world
             .get_resource::<AvianSleepTimers>()
-            .map(|timers| {
-                let mut owners = timers.timers.keys().copied().collect::<Vec<_>>();
-                owners.sort_unstable();
-                owners
-            })
+            .map(|timers| timers.timers.keys().copied().collect::<Vec<_>>())
             .unwrap_or_default();
-        assert_eq!(tracked, vec![with_bodies]);
+        owners.sort_unstable();
+        owners
     }
 
     /// Sleeping an entity that is not a body does nothing and does not panic.
