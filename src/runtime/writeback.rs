@@ -270,16 +270,14 @@ mod tests {
         let current = Isometry3d::new(Vec3::new(2.0, 0.0, 0.0), Quat::from_rotation_z(1.0));
 
         assert_eq!(
-            interpolate_translation(Vec3::ZERO, Vec3::X * 2.0, -1.0),
-            Vec3::ZERO
-        );
-        assert_eq!(
-            interpolate_translation(Vec3::ZERO, Vec3::X * 2.0, 2.0),
-            Vec3::X * 2.0
+            [-1.0, 2.0].map(|weight| interpolate_translation(Vec3::ZERO, Vec3::X * 2.0, weight)),
+            [Vec3::ZERO, Vec3::X * 2.0]
         );
         // Whole poses clamp the same way as translations.
-        assert_eq!(interpolate_physics_pose(previous, current, -1.0), previous);
-        assert_eq!(interpolate_physics_pose(previous, current, 2.0), current);
+        assert_eq!(
+            [-1.0, 2.0].map(|weight| interpolate_physics_pose(previous, current, weight)),
+            [previous, current]
+        );
     }
 
     /// Writeback skips when the fixed clock is unavailable.

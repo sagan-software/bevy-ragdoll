@@ -1210,17 +1210,18 @@ mod tests {
     #[test]
     fn numeric_drive_helpers_handle_finite_and_invalid_values() {
         // Unit clamping maps out-of-range and NaN values into 0..=1.
-        assert_eq!(clamp_unit(2.0), 1.0);
-        assert_eq!(clamp_unit(-1.0), 0.0);
-        assert_eq!(clamp_unit(f32::NAN), 0.0);
+        assert_eq!([2.0, -1.0, f32::NAN].map(clamp_unit), [1.0, 0.0, 0.0]);
         // Negative and infinite magnitudes become zero.
-        assert_eq!(finite_nonnegative(2.0), 2.0);
-        assert_eq!(finite_nonnegative(-1.0), 0.0);
-        assert_eq!(finite_nonnegative(f32::INFINITY), 0.0);
+        assert_eq!(
+            [2.0, -1.0, f32::INFINITY].map(finite_nonnegative),
+            [2.0, 0.0, 0.0]
+        );
         // Vectors are capped by length, and an overflowing length becomes zero.
-        assert_eq!(limit_vector(Vec3::X * 2.0, 1.0), Vec3::X);
-        assert_eq!(limit_vector(Vec3::X * 0.5, 1.0), Vec3::X * 0.5);
-        assert_eq!(limit_vector(Vec3::splat(f32::MAX), 1.0), Vec3::ZERO);
+        assert_eq!(
+            [Vec3::X * 2.0, Vec3::X * 0.5, Vec3::splat(f32::MAX)]
+                .map(|vector| limit_vector(vector, 1.0)),
+            [Vec3::X, Vec3::X * 0.5, Vec3::ZERO]
+        );
     }
 
     /// Drive skips inactive characters and characters without dynamic bodies.

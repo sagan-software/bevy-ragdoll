@@ -828,10 +828,10 @@ mod tests {
         let above_forty = f32::from_bits(40.0_f32.to_bits() + 1);
 
         // Each threshold itself still belongs to the lower hop count.
-        assert_eq!(maximum_hops(12.0), 1);
-        assert_eq!(maximum_hops(above_twelve), 2);
-        assert_eq!(maximum_hops(40.0), 2);
-        assert_eq!(maximum_hops(above_forty), 3);
+        assert_eq!(
+            [12.0, above_twelve, 40.0, above_forty].map(maximum_hops),
+            [1, 2, 2, 3]
+        );
     }
 
     /// Keeps ancestor and descendant falloff distinct and sibling falloff absent.
@@ -845,10 +845,11 @@ mod tests {
         tree.parents[3] = Some(1);
 
         // Falloff walks up the tree, scales by distance, and never crosses to a sibling.
-        assert_eq!(hop_falloff(2, 2, &tree), Some((0, 1.0)));
-        assert_eq!(hop_falloff(0, 2, &tree), Some((2, 0.25)));
-        assert_eq!(hop_falloff(3, 1, &tree), Some((1, 0.7)));
-        assert_eq!(hop_falloff(3, 2, &tree), None);
+        assert_eq!(
+            [(2, 2), (0, 2), (3, 1), (3, 2)]
+                .map(|(candidate, target)| hop_falloff(candidate, target, &tree)),
+            [Some((0, 1.0)), Some((2, 0.25)), Some((1, 0.7)), None]
+        );
     }
 
     /// Creates an empty bounded tree for private traversal tests.
