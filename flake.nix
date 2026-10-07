@@ -140,6 +140,29 @@
 
           treefmt = treefmt-nix.lib.evalModule pkgs ./treefmt.nix;
 
+          # wasm-bindgen-cli must equal the `wasm-bindgen` crate version in Cargo.lock.
+          # After a lock bump, update the version and both hashes; the assert names the new version.
+          wasmBindgenVersion = "0.2.129";
+          lockedWasmBindgen =
+            (lib.findFirst (package: package.name == "wasm-bindgen") { version = "missing"; }
+              (builtins.fromTOML (builtins.readFile ./Cargo.lock)).package
+            ).version;
+          wasmBindgenCli =
+            assert lib.assertMsg (lockedWasmBindgen == wasmBindgenVersion)
+              "flake.nix wasm-bindgen-cli ${wasmBindgenVersion} does not match Cargo.lock ${lockedWasmBindgen}";
+            pkgs.buildWasmBindgenCli rec {
+              src = pkgs.fetchCrate {
+                pname = "wasm-bindgen-cli";
+                version = wasmBindgenVersion;
+                hash = "sha256-pcecKQd7E8Opw6bkFoE569epUi7gh5qpQF1e5PJY6V8=";
+              };
+              cargoDeps = pkgs.rustPlatform.fetchCargoVendor {
+                inherit src;
+                inherit (src) pname version;
+                hash = "sha256-vmUrWVU7kPJJxO5qIVeAkwQyWDELO1Z4Z5gitz2kco8=";
+              };
+            };
+
           # Dylint runs the workspace through the nightly compiler that built the lints.
           dylintSupported = dylints.packages ? ${system};
           dylintCargoMetadata = manifest.workspace.metadata.dylint.libraries or [ ];
@@ -263,7 +286,10 @@
               pkgs.samply
               pkgs.tracy
               pkgs.wasmtime
-              pkgs.wasm-bindgen-cli
+              # `web/build.sh` builds the WebAssembly example gallery with these.
+              wasmBindgenCli
+              pkgs.binaryen
+              pkgs.python3
               pkgs.clang
               treefmt.config.build.wrapper
             ]

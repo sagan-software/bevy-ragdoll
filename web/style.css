@@ -1,0 +1,298 @@
+:root {
+  color-scheme: dark;
+  --bg: #0e1013;
+  --surface: #171a1f;
+  --surface-hover: #1e2228;
+  --line: #2a2f37;
+  --text: #e8eaed;
+  --muted: #a3abb6;
+  --accent: #fa9e48;
+  --accent-ink: #1a1006;
+  --radius: 10px;
+  --bar: 52px;
+  font-family: "Fira Sans", system-ui, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+}
+
+::selection {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
+a {
+  color: inherit;
+  text-underline-offset: 3px;
+}
+
+a:focus-visible,
+button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
+/* Gallery */
+
+.site-header {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 40px 24px 8px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px 32px;
+}
+
+.site-header h1 {
+  margin: 0;
+  font-size: 2rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.site-header h1 span {
+  color: var(--accent);
+}
+
+.site-header p {
+  margin: 6px 0 0;
+  color: var(--muted);
+}
+
+.site-links {
+  display: flex;
+  gap: 20px;
+  font-size: 0.95rem;
+}
+
+.site-links a {
+  color: var(--muted);
+  text-decoration: none;
+}
+
+.site-links a:hover {
+  color: var(--text);
+}
+
+main.gallery {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 8px 24px 64px;
+}
+
+.gallery h2 {
+  margin: 40px 0 16px;
+  font-size: 1.15rem;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 20px;
+}
+
+.grid.featured {
+  grid-template-columns: 1fr;
+}
+
+.tile {
+  display: block;
+  text-decoration: none;
+  border-radius: var(--radius);
+  background: var(--surface);
+  overflow: hidden;
+  transition: background 160ms ease-out, transform 160ms ease-out;
+}
+
+.tile:hover {
+  background: var(--surface-hover);
+  transform: translateY(-2px);
+}
+
+.tile img,
+.tile .placeholder {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  background: #1b1f26;
+}
+
+.featured .tile {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(220px, 2fr);
+}
+
+.featured .tile img,
+.featured .tile .placeholder {
+  height: 100%;
+}
+
+.tile .placeholder {
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.tile-text {
+  padding: 14px 16px 16px;
+}
+
+.featured .tile-text {
+  padding: 28px;
+  align-self: center;
+}
+
+.tile h3 {
+  margin: 0 0 4px;
+  font-size: 1.05rem;
+  font-weight: 500;
+}
+
+.featured .tile h3 {
+  font-size: 1.6rem;
+  margin-bottom: 10px;
+}
+
+.tile p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.92rem;
+  line-height: 1.45;
+}
+
+.featured .tile p {
+  font-size: 1.02rem;
+}
+
+.featured .cta {
+  display: inline-block;
+  margin-top: 18px;
+  padding: 8px 16px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-weight: 500;
+}
+
+@media (max-width: 720px) {
+  .site-header {
+    padding-top: 24px;
+  }
+
+  .featured .tile {
+    grid-template-columns: 1fr;
+  }
+
+  .featured .tile-text {
+    padding: 16px;
+  }
+}
+
+/* Example page */
+
+body.example {
+  overflow: hidden;
+}
+
+.bar {
+  position: fixed;
+  inset: 0 0 auto;
+  height: var(--bar);
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 0 16px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--line);
+  z-index: 2;
+}
+
+.bar a {
+  text-decoration: none;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.bar .back {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.bar a:hover {
+  color: var(--text);
+}
+
+.bar h1 {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bar h1 span {
+  color: var(--muted);
+  font-weight: 400;
+  margin-left: 10px;
+}
+
+/* Bevy appends its canvas to <body>; pin it below the bar at full size. */
+body.example canvas {
+  position: fixed;
+  top: var(--bar);
+  left: 0;
+  width: 100vw !important;
+  height: calc(100vh - var(--bar)) !important;
+  outline: none;
+  display: block;
+}
+
+.status {
+  position: fixed;
+  inset: var(--bar) 0 0;
+  display: grid;
+  place-content: center;
+  gap: 14px;
+  text-align: center;
+  color: var(--muted);
+  pointer-events: none;
+}
+
+.status[hidden] {
+  display: none;
+}
+
+.status progress {
+  width: 220px;
+  accent-color: var(--accent);
+}
+
+.status.error {
+  color: #ff9b8a;
+  pointer-events: auto;
+}
+
+@media (max-width: 720px) {
+  .bar h1 span {
+    display: none;
+  }
+}

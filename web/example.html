@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{{name}} · bevy_ragdoll</title>
+    <meta name="description" content="{{description}}" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="../../style.css" />
+  </head>
+  <body class="example">
+    <header class="bar">
+      <a href="../../" class="back"
+        ><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M10 3 5 8l5 5" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" /></svg
+        >Examples</a
+      >
+      <h1>{{name}}<span>{{description}}</span></h1>
+      <a href="https://github.com/sagan-software/bevy-ragdoll/blob/main/examples/{{id}}.rs">Source</a>
+    </header>
+    <div class="status" id="status">
+      <span id="status-text">Loading {{size}}</span>
+      <progress id="progress"></progress>
+    </div>
+    <script type="module">
+      import init from "./{{id}}.js";
+
+      const status = document.getElementById("status");
+      const statusText = document.getElementById("status-text");
+      const progress = document.getElementById("progress");
+
+      function fail(message) {
+        status.classList.add("error");
+        progress.hidden = true;
+        statusText.textContent = message;
+      }
+
+      // Bevy needs WebGL2; say so instead of showing a blank page.
+      if (!document.createElement("canvas").getContext("webgl2")) {
+        fail("This example needs WebGL2, which this browser does not provide.");
+      } else {
+        // Stream the module so the progress bar tracks the download.
+        const response = await fetch("./{{id}}_bg.wasm");
+        const total = Number(response.headers.get("content-length")) || 0;
+        let loaded = 0;
+        const body = new Response(
+          new ReadableStream({
+            async start(controller) {
+              const reader = response.body.getReader();
+              for (;;) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                loaded += value.length;
+                if (total) progress.value = loaded / total;
+                controller.enqueue(value);
+              }
+              controller.close();
+            },
+          }),
+          { headers: { "content-type": "application/wasm" } },
+        );
+        // Bevy's event loop throws a control-flow exception after start-up; it is not a failure.
+        const hide = new MutationObserver(() => {
+          if (document.querySelector("canvas")) {
+            status.hidden = true;
+            hide.disconnect();
+          }
+        });
+        hide.observe(document.body, { childList: true });
+        try {
+          await init({ module_or_path: body });
+        } catch (error) {
+          if (!String(error).includes("Using exceptions for control flow")) {
+            console.error(error);
+            fail("The example stopped with an error. The browser console has details.");
+          }
+        }
+      }
+    </script>
+  </body>
+</html>
