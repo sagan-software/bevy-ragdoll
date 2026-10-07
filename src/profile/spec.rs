@@ -149,7 +149,8 @@ fn is_identity(basis: &Quat) -> bool {
 }
 
 impl ShapeSpec {
-    /// Returns a render mesh of this shape and its transform in the body frame.
+    /// Returns a render mesh of this shape and its transform in the body frame,
+    /// for debug views and examples that draw colliders.
     ///
     /// # Examples
     ///

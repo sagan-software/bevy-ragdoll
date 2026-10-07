@@ -1,4 +1,8 @@
 //! Criterion entry point for every bevy-ragdoll benchmark group.
+//!
+//! Each group lives in `benches/benchmarks/` and measures one runtime stage:
+//! profile validation, drive math, target capture, writeback, plugin setup, or
+//! a Rapier physics step. Run them with `cargo bench --bench bench_main`.
 
 use criterion::criterion_main;
 

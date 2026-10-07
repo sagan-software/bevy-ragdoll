@@ -1,5 +1,9 @@
 //! Drops a ragdoll generated from the reference humanoid skeleton.
 //!
+//! `Ragdoll::default()` reads the spawned bones and builds bodies, masses, and
+//! joints for them, so the example needs no authored profile. Rapier steps the
+//! bodies, and the debug plugin draws their colliders.
+//!
 //! Run with `cargo run --example minimal`.
 
 use bevy::prelude::*;
@@ -13,7 +17,7 @@ use bevy_rapier3d::prelude::{Collider, RigidBody};
 const LABEL: &str = "Minimal ragdoll\nThe body lands, keeps its joints together, and settles.";
 
 /// Runs the example.
-fn main() {
+fn main() -> AppExit {
     App::new()
         .add_plugins(DefaultPlugins)
         // The ragdoll runtime and Rapier both step in `FixedUpdate` at 60 Hz.
@@ -29,7 +33,7 @@ fn main() {
             RagdollDebugPlugin,
         ))
         .add_systems(Startup, (setup_scene, spawn_ragdoll))
-        .run();
+        .run()
 }
 
 /// Spawns the reference skeleton under a dynamic ragdoll character.

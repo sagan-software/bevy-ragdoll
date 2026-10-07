@@ -2,7 +2,7 @@
 //!
 //! The humanoid uses UE mannequin bone names and gets the humanoid layout.
 //! The quadruped and the seven-legged alien are classified by topology.
-//! Press Space to drop them all.
+//! Press Space to drop them all and watch each body plan fall.
 
 use bevy::prelude::*;
 use bevy_ragdoll::RagdollDebugPlugin;
@@ -13,7 +13,7 @@ use bevy_rapier3d::plugin::{RapierPhysicsPlugin, TimestepMode};
 use bevy_rapier3d::prelude::{Collider, RigidBody};
 
 /// Runs the example.
-fn main() {
+fn main() -> AppExit {
     App::new()
         // Web servers answer 404 for the `.meta` files Bevy probes by default; the rigs have none.
         .add_plugins(DefaultPlugins.set(AssetPlugin {
@@ -34,7 +34,7 @@ fn main() {
         ))
         .add_systems(Startup, setup)
         .add_systems(Update, drop_on_space)
-        .run();
+        .run()
 }
 
 /// Spawns the floor, camera, light and the three creatures.

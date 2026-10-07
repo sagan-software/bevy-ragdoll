@@ -1,4 +1,9 @@
 //! Public profile, generator, builder, and asset-loader behavior.
+//!
+//! The tests build profiles through every public entry point and check that
+//! validation rejects malformed shapes, joints, and limits while valid input
+//! keeps its bodies, joints, masses, and rest poses exactly as written, including
+//! after a RON round trip.
 
 #![cfg(feature = "serialize")]
 
@@ -65,6 +70,7 @@ fn human_profile() -> RagdollProfile {
 /// Generates the expected sixteen bodies and 80 kilograms.
 #[test]
 fn human_has_sixteen_bodies_and_eighty_kilograms() {
+    // The reference humanoid's generated profile.
     let profile = human_profile();
     assert_eq!(profile.bodies().len(), 16);
     let total_mass = profile.total_mass().kilograms();
@@ -72,6 +78,7 @@ fn human_has_sixteen_bodies_and_eighty_kilograms() {
         (total_mass - 80.0).abs() < 0.05,
         "total mass is {total_mass}"
     );
+    // The pelvis comes first, so it is the root body.
     assert_eq!(
         profile
             .bodies()
@@ -86,10 +93,12 @@ fn human_has_sixteen_bodies_and_eighty_kilograms() {
 #[test]
 fn knees_are_hinges_that_bend_backward() {
     let profile = human_profile();
+    // Turn each calf backward by 60 degrees from rest.
     let rest = profile.rest_poses(Isometry3d::IDENTITY).collect::<Vec<_>>();
     for bone in ["calf_l", "calf_r"] {
         let index = profile.body_index(bone).expect("the rig has each calf");
         let joint = profile.joint_of(index).expect("each calf has a joint");
+        // A knee is a single-axis hinge whose range includes bending backward.
         assert!(joint.limits().is_hinge());
         assert!(joint.limits().x.is_angle_within_range(-1.0));
         let rest_pose = *rest.get(index.get()).expect("the calf has a rest pose");
@@ -104,6 +113,7 @@ fn knees_are_hinges_that_bend_backward() {
             rest_pose.translation,
             rest_pose.rotation * Quat::from_rotation_x(-PI / 3.0),
         );
+        // A knee bends backward, so the calf tip moves toward -Z.
         let tip_at_rest = rest_pose.transform_point(*b);
         let tip_turned = turned.transform_point(*b);
         assert!(tip_turned.z < tip_at_rest.z - 0.1);
@@ -114,10 +124,12 @@ fn knees_are_hinges_that_bend_backward() {
 #[test]
 fn hips_bend_forward() {
     let profile = human_profile();
+    // Turn each thigh forward by 60 degrees from rest.
     let rest = profile.rest_poses(Isometry3d::IDENTITY).collect::<Vec<_>>();
     for bone in ["thigh_l", "thigh_r"] {
         let index = profile.body_index(bone).expect("the rig has each thigh");
         let joint = profile.joint_of(index).expect("each thigh has a joint");
+        // A hip's X range includes bending forward.
         assert!(joint.limits().x.is_angle_within_range(1.0));
         let rest_pose = *rest.get(index.get()).expect("the thigh has a rest pose");
         let body = profile
@@ -131,6 +143,7 @@ fn hips_bend_forward() {
             rest_pose.translation,
             rest_pose.rotation * Quat::from_rotation_x(PI / 3.0),
         );
+        // A hip bends forward, so the thigh tip moves toward +Z.
         let tip_at_rest = rest_pose.transform_point(*b);
         let tip_turned = turned.transform_point(*b);
         assert!(tip_turned.z > tip_at_rest.z + 0.1);
@@ -140,6 +153,7 @@ fn hips_bend_forward() {
 /// Reports each validation error and preserves the documented validation order.
 #[test]
 fn each_error_variant_is_reported() {
+    // Each case breaks one rule of an otherwise valid spec.
     let mut empty = valid_spec();
     empty.bodies.clear();
     assert!(matches!(
@@ -155,6 +169,7 @@ fn each_error_variant_is_reported() {
         Err(ProfileError::TooManyBodies(65))
     ));
 
+    // A joint whose parent is its own child forms a cycle.
     let mut not_a_tree = valid_spec();
     not_a_tree.joints[0].parent = 1;
     assert!(matches!(
@@ -162,6 +177,7 @@ fn each_error_variant_is_reported() {
         Err(ProfileError::NotATree)
     ));
 
+    // Mass must be positive and shapes must have volume.
     let mut bad_mass = valid_spec();
     bad_mass.bodies[0].mass = 0.0;
     assert!(matches!(
@@ -176,6 +192,7 @@ fn each_error_variant_is_reported() {
         Err(ProfileError::BadShape { body }) if body.get() == 1
     ));
 
+    // Limits must contain zero, and the joint frame must be finite.
     let mut bad_limit = valid_spec();
     bad_limit.joints[0].limits.x = AngleRange { min: 0.1, max: 0.5 };
     assert!(matches!(
@@ -192,6 +209,7 @@ fn each_error_variant_is_reported() {
             if joint.get() == 1 && axis == bevy_ragdoll::JointAxis::Frame
     ));
 
+    // Torque must be nonnegative and bone names unique.
     let mut bad_torque = valid_spec();
     bad_torque.joints[0].max_torque = -1.0;
     assert!(matches!(
@@ -206,6 +224,7 @@ fn each_error_variant_is_reported() {
         Err(ProfileError::DuplicateBone { bone }) if bone == "root"
     ));
 
+    // With two errors, the earlier body check is reported first.
     let mut precedence = valid_spec();
     precedence.bodies[0].mass = -1.0;
     precedence.bodies[1].shape = capsule(Vec3::ZERO, Vec3::Y, 0.0);
@@ -218,6 +237,7 @@ fn each_error_variant_is_reported() {
 /// Derives joint neighbours and touching capsule pairs without excluding a far pair.
 #[test]
 fn no_contact_holds_neighbours_and_touching_capsules() {
+    // Three neighbours side by side under one root, and one far away.
     let mut spec = valid_spec();
     let far_rest = Isometry3d::from_xyz(10.0, 0.0, 0.0);
     spec.bodies = vec![
@@ -250,6 +270,7 @@ fn no_contact_holds_neighbours_and_touching_capsules() {
             role: None,
         },
     ];
+    // Each neighbour hangs from the root.
     spec.joints = [1, 2, 3]
         .into_iter()
         .map(|child| JointSpec {
@@ -270,6 +291,7 @@ fn no_contact_holds_neighbours_and_touching_capsules() {
         .collect();
 
     let profile = RagdollProfile::new(spec).expect("the four-body tree validates");
+    // Jointed and touching pairs skip contact; the far body still collides.
     let masks = profile.no_contact_masks();
     assert_ne!(masks[0] & (1 << 1), 0);
     assert_ne!(masks[1] & (1 << 2), 0);
@@ -281,9 +303,11 @@ fn no_contact_holds_neighbours_and_touching_capsules() {
 /// Serializes a generated profile spec and parses the same RON value back.
 #[test]
 fn ron_round_trip_is_exact() {
+    // Serialize the generated humanoid spec and parse it back.
     let spec = ProfileSpec::from(&Skeleton::humanoid());
     let ron = ron::to_string(&spec).expect("the profile spec serializes");
     let round_trip: ProfileSpec = ron::from_str(&ron).expect("the profile spec parses");
+    // The value and its text form both survive the round trip.
     assert_eq!(round_trip, spec);
     assert_eq!(
         ron::to_string(&round_trip).expect("the spec reserializes"),
@@ -294,6 +318,7 @@ fn ron_round_trip_is_exact() {
 /// Builds a three-body chain with the same value as a hand-written profile spec.
 #[test]
 fn builder_matches_spec() {
+    // The expected value, written out by hand.
     let root = BodySpec {
         bone: "root".to_owned(),
         shape: capsule(Vec3::ZERO, Vec3::Y, 0.1),
@@ -318,6 +343,7 @@ fn builder_matches_spec() {
         rest: Isometry3d::from_xyz(0.0, 2.0, 0.0),
         role: None,
     };
+    // Both joints share one single-axis limit set.
     let limits = JointLimits {
         x: AngleRange {
             min: -1.0,
@@ -348,6 +374,7 @@ fn builder_matches_spec() {
         ],
     };
 
+    // The same chain through the builder must produce an identical spec.
     let mut builder = ProfileBuilder::default();
     let root = builder
         .add_body(
@@ -396,6 +423,7 @@ fn builder_matches_spec() {
 /// Measures and reconstructs the five planned angles around each joint axis.
 #[test]
 fn joint_angles_round_trip_each_axis() {
+    // Rotate the child about each axis by angles across the joint range.
     let spec = valid_spec();
     let profile = RagdollProfile::new(spec).expect("the profile validates");
     let child = BodyIndex::try_from(1).expect("child index fits");
@@ -412,6 +440,7 @@ fn joint_angles_round_trip_each_axis() {
             assert!((measured - axis * angle).length() < 1.0e-5);
         }
     }
+    // A body without a joint has no angles.
     assert!(
         profile
             .joint_angles(BodyIndex::try_from(0).unwrap(), &[])
@@ -422,6 +451,7 @@ fn joint_angles_round_trip_each_axis() {
 /// Demonstrates a cuboid shape in the profile API's accepted spec data.
 #[test]
 fn cuboid_shapes_round_trip_through_ron() {
+    // Replace one capsule with a cuboid and round-trip it through RON.
     let mut spec = valid_spec();
     spec.bodies[1].shape = ShapeSpec::Cuboid {
         center: Vec3::ZERO,
@@ -429,6 +459,7 @@ fn cuboid_shapes_round_trip_through_ron() {
         half_extents: Vec3::splat(0.25),
     };
     let encoded = ron::to_string(&spec).unwrap();
+    // Decoding must give back the cuboid unchanged.
     let decoded = ron::from_str::<ProfileSpec>(&encoded).unwrap();
     assert_eq!(decoded, spec);
     assert_eq!(decoded.bodies[1].shape, spec.bodies[1].shape);
@@ -437,6 +468,7 @@ fn cuboid_shapes_round_trip_through_ron() {
 /// Keeps a typed body index bounded to the profile mask width.
 #[test]
 fn body_index_rejects_indices_outside_the_mask() {
+    // Index 63 is the last bit in the 64-body mask.
     assert_eq!(BodyIndex::try_from(63).unwrap().get(), 63);
     assert_eq!(BodyIndex::try_from(64), Err(64));
 }
@@ -444,6 +476,7 @@ fn body_index_rejects_indices_outside_the_mask() {
 /// Loads a sparse `.ragdoll.ron` overrides file through Bevy's asset server.
 #[test]
 fn overrides_asset_loads_through_the_asset_server() {
+    // Write an overrides file into a private temporary asset directory.
     let directory =
         std::env::temp_dir().join(format!("bevy_ragdoll_overrides_{}", std::process::id()));
     fs::create_dir_all(&directory).expect("the temporary asset directory is created");
@@ -452,6 +485,7 @@ fn overrides_asset_loads_through_the_asset_server() {
         r#"(mass: Some(12.0), bones: { "tail*": (body: Skip), "head": (radius: Some(0.1)) })"#,
     )
     .expect("the overrides file is written");
+    // Load it through a real AssetServer rooted at that directory.
     let mut app = App::new();
     app.add_plugins(MinimalPlugins)
         .add_plugins(AssetPlugin {
@@ -464,6 +498,7 @@ fn overrides_asset_loads_through_the_asset_server() {
         .get_resource::<AssetServer>()
         .unwrap()
         .load::<RagdollOverrides>("fox.ragdoll.ron");
+    // Poll until the loader finishes, then check the parsed values.
     for _ in 0..10_000 {
         app.update();
         if let Some(overrides) = app

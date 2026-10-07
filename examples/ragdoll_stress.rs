@@ -138,7 +138,7 @@ struct Run {
 
 impl Run {
     /// Returns whether the warmup has passed at `elapsed` simulated seconds.
-    fn measuring(&self, elapsed: f64) -> bool {
+    fn is_measuring(&self, elapsed: f64) -> bool {
         elapsed >= self.args.warmup
     }
 }
@@ -251,7 +251,7 @@ fn start_frame(mut run: ResMut<'_, Run>) {
 /// Records the frame time once the warmup has passed.
 fn finish_frame(time: Res<'_, Time>, mut run: ResMut<'_, Run>) {
     if let Some(start) = run.frame_start.take()
-        && run.measuring(time.elapsed_secs_f64())
+        && run.is_measuring(time.elapsed_secs_f64())
     {
         run.frames.push(start.elapsed().as_secs_f64() * 1000.0);
     }
@@ -265,7 +265,7 @@ fn start_step(mut run: ResMut<'_, Run>) {
 /// Records the fixed-step time once the warmup has passed.
 fn finish_step(time: Res<'_, Time>, mut run: ResMut<'_, Run>) {
     if let Some(start) = run.step_start.take()
-        && run.measuring(time.elapsed_secs_f64())
+        && run.is_measuring(time.elapsed_secs_f64())
     {
         run.steps.push(start.elapsed().as_secs_f64() * 1000.0);
     }
@@ -284,8 +284,9 @@ fn finish_run(
     let unstable_bodies = bodies
         .iter()
         .filter(|(pose, velocity)| {
-            let finite = pose.current.translation.is_finite() && pose.current.rotation.is_finite();
-            !finite || velocity.linear.length() > UNSTABLE_SPEED
+            let is_finite_pose =
+                pose.current.translation.is_finite() && pose.current.rotation.is_finite();
+            !is_finite_pose || velocity.linear.length() > UNSTABLE_SPEED
         })
         .count();
     let metrics = Metrics {

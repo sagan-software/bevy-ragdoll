@@ -1,8 +1,9 @@
 //! Hit reactions on an actively driven ragdoll.
 //!
-//! The rig is the reference humanoid skeleton with a generated profile. Every body follows a procedural idle
-//! pose at full muscle strength, and the pelvis and chest are pinned to their
-//! animated targets. A rifle hit lands on the chest shortly after startup.
+//! The rig is the reference humanoid skeleton with a generated profile.
+//! Every body follows a procedural idle pose at full muscle strength, and
+//! the pelvis and chest are pinned to their animated targets. A rifle hit
+//! lands on the chest shortly after startup.
 //!
 //! Controls:
 //! - Left click: hit the body under the cursor.

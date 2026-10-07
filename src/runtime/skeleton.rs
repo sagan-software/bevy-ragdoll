@@ -39,17 +39,18 @@ use super::settings::RagdollPhysicsSettings;
 pub enum RagdollError {
     /// A required profile bone name was not found among descendants of the
     /// character entity.
-    #[error("ragdoll profile bone `{0}` was not found in the skeleton")]
     /// Activation stores the exact profile name so an application can repair
     /// its skeleton before retrying.
+    #[error("ragdoll profile bone `{0}` was not found in the skeleton")]
     MissingBone(String),
     /// The monotonic identity counter reached its maximum and cannot assign a
     /// unique character ID.
-    #[error("ragdoll identity space is exhausted")]
     /// Activation keeps the character Animated because a wrapped ID would break
     /// oldest-first eviction order.
+    #[error("ragdoll identity space is exhausted")]
     IdentityExhausted,
-    /// The skeleton could not produce a valid generated profile.
+    /// The skeleton could not produce a valid generated profile; the message
+    /// names the profile validation error so the rig can be corrected.
     #[error("ragdoll profile generation failed: {0}")]
     InvalidSkeleton(String),
 }
@@ -156,40 +157,60 @@ fn resolve_profile(
     character: Entity,
 ) -> Option<bevy::asset::Handle<RagdollProfile>> {
     let ragdoll = world.get::<Ragdoll>(character)?;
+    // An explicit profile wins; generation only fills an empty slot.
     if let Some(profile) = &ragdoll.profile {
         return Some(profile.clone());
     }
     let mass = ragdoll.mass;
+    // Returning `None` while the overrides asset loads retries on a later frame.
     let overrides = match &ragdoll.overrides {
-        Some(handle) => Some(
-            world
-                .get_resource::<Assets<crate::auto::RagdollOverrides>>()?
-                .get(handle)?
-                .clone(),
-        ),
+        Some(handle) => Some(loaded_overrides(world, handle)?),
         None => None,
     };
     let mut skeleton = crate::auto::skeleton_from_world(world, character, overrides.as_ref())?;
+    // The component's mass beats the overrides file, which beats volume-derived mass.
     skeleton.mass = mass.or_else(|| {
         overrides
             .and_then(|overrides| overrides.mass)
             .and_then(|kilograms| crate::profile::Mass::try_from(kilograms).ok())
     });
-    let profile = match RagdollProfile::from_skeleton(&skeleton) {
-        Ok(profile) => profile,
-        Err(error) => {
-            bevy::log::warn!(%error, "ragdoll profile generation failed");
-            if let Ok(mut entity) = world.get_entity_mut(character) {
-                entity.insert(RagdollError::InvalidSkeleton(error.to_string()));
-            }
-            return None;
-        }
-    };
+    let profile = generate_profile(world, character, &skeleton)?;
+    // Storing the handle on the component makes later frames take the explicit path.
     let handle = world
         .get_resource_mut::<Assets<RagdollProfile>>()?
         .add(profile);
     world.get_mut::<Ragdoll>(character)?.profile = Some(handle.clone());
     Some(handle)
+}
+
+/// Returns the loaded overrides asset, or `None` while it is still loading.
+fn loaded_overrides(
+    world: &World,
+    handle: &bevy::asset::Handle<crate::auto::RagdollOverrides>,
+) -> Option<crate::auto::RagdollOverrides> {
+    let assets = world.get_resource::<Assets<crate::auto::RagdollOverrides>>()?;
+    assets.get(handle).cloned()
+}
+
+/// Builds a profile from `skeleton`, or records [`RagdollError::InvalidSkeleton`]
+/// on the character and returns `None`.
+fn generate_profile(
+    world: &mut World,
+    character: Entity,
+    skeleton: &crate::auto::Skeleton,
+) -> Option<RagdollProfile> {
+    // A malformed skeleton is a content error, so it is logged and stored rather than panicking.
+    match RagdollProfile::from_skeleton(skeleton) {
+        Ok(profile) => Some(profile),
+        Err(error) => {
+            bevy::log::warn!(%error, "ragdoll profile generation failed");
+            // The error component lets the application see why the character stayed Animated.
+            if let Ok(mut entity) = world.get_entity_mut(character) {
+                entity.insert(RagdollError::InvalidSkeleton(error.to_string()));
+            }
+            None
+        }
+    }
 }
 
 /// Ensures the profile is bound before the requested mode can create body entities.
@@ -826,11 +847,13 @@ mod tests {
     #[test]
     fn body_mode_skips_activation_after_identity_exhaustion() {
         let mut world = World::new();
+        // A counter at its maximum cannot hand out a new identity.
         world.insert_resource(RagdollIdCounter { next: u64::MAX });
         let character = world.spawn(RagdollMode::Dynamic).id();
 
         synchronize_body_mode(&mut world, character, RagdollMode::Dynamic, false, None);
 
+        // Activation must fall back to Animated and create no bodies.
         assert_eq!(
             world.get::<RagdollError>(character),
             Some(&RagdollError::IdentityExhausted)
@@ -846,10 +869,12 @@ mod tests {
     #[test]
     fn target_initialization_skips_a_missing_skeleton_map() {
         let mut world = World::new();
+        // No SkeletonMap means binding never ran, so there is nothing to capture.
         let character = world.spawn_empty().id();
 
         initialize_target_components(&mut world, character, 1);
 
+        // Initialization leaves the character untouched instead of inventing targets.
         assert!(world.get::<RagdollTargetPose>(character).is_none());
     }
 
@@ -857,6 +882,7 @@ mod tests {
     #[test]
     fn target_initialization_captures_initial_pose() {
         let mut world = World::new();
+        // One mapped bone whose world pose becomes the first drive target.
         let bone_pose = Transform::from_xyz(1.0, 2.0, 3.0);
         let bone = world.spawn(bone_pose).id();
         let character = world
@@ -874,8 +900,10 @@ mod tests {
             ))
             .id();
 
+        // Without a supplied target pose, initialization captures the bone pose.
         initialize_target_components(&mut world, character, 1);
 
+        // Capture also enables automatic capture and keeps the body weights.
         let body_index = crate::profile::BodyIndex::try_from(0)
             .expect("zero is a valid index for the mapped skeleton body");
         assert_eq!(
@@ -892,6 +920,7 @@ mod tests {
     #[test]
     fn target_initialization_preserves_existing_pose() {
         let mut world = World::new();
+        // A target pose the application supplied before binding.
         let bone = world.spawn(Transform::IDENTITY).id();
         let supplied_pose = Isometry3d::from_translation(Vec3::new(4.0, 5.0, 6.0));
         let mut targets = RagdollTargetPose::default();
@@ -915,8 +944,10 @@ mod tests {
             ))
             .id();
 
+        // Initialization must keep that pose instead of overwriting it with the bone pose.
         initialize_target_components(&mut world, character, 1);
 
+        // The supplied pose survives and the other target components are still added.
         let body_index = crate::profile::BodyIndex::try_from(0)
             .expect("zero is a valid index for the mapped skeleton body");
         assert_eq!(
@@ -935,6 +966,7 @@ mod tests {
         let mut world = World::new();
         world.insert_resource(RagdollIdCounter::default());
 
+        // A missing entity must not consume an identity from the counter.
         assert_eq!(assign_ragdoll_id(&mut world, Entity::PLACEHOLDER), None);
         assert_eq!(world.get_resource::<RagdollIdCounter>().unwrap().next, 1);
     }
@@ -949,6 +981,7 @@ mod tests {
     #[test]
     fn settle_tracking_requires_fixed_time_and_settings() {
         let mut no_clock = World::new();
+        // Each call must return early instead of panicking on the missing resource.
         update_settle_state(&mut no_clock);
 
         let mut no_settings = World::new();
@@ -978,11 +1011,13 @@ mod tests {
     #[test]
     fn body_spawn_requires_physics_settings() {
         let mut world = World::new();
+        // Without RagdollPhysicsSettings the runtime cannot size bodies, so it spawns none.
         let character = world.spawn_empty().id();
         let profile = single_body_profile();
 
         spawn_bodies(&mut world, character, &profile, RagdollMode::Dynamic);
 
+        // No BodyShape entity means no body was created.
         let mut bodies = world.query::<&BodyShape>();
         assert_eq!(bodies.iter(&world).count(), 0);
     }
@@ -991,9 +1026,11 @@ mod tests {
     #[test]
     fn identity_exhaustion_keeps_character_animated() {
         let mut world = World::new();
+        // A counter at its maximum cannot hand out a new identity.
         world.insert_resource(RagdollIdCounter { next: u64::MAX });
         let character = world.spawn(RagdollMode::Dynamic).id();
 
+        // Assignment fails, records the error, and keeps the character Animated without an ID.
         assert_eq!(assign_ragdoll_id(&mut world, character), None);
         assert_eq!(
             world.get::<RagdollError>(character),

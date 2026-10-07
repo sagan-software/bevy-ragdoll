@@ -12,8 +12,8 @@ use bevy::prelude::Resource;
 
 /// Shared physics and drive tuning passed from the core runtime to a backend.
 ///
-/// Defaults mirror that project's gravity, solver, damping, collision, motor, pin, and
-/// settling configuration. The core sanitizes selected force inputs, but
+/// Defaults mirror that project's gravity, solver, damping, collision, motor,
+/// pin, and settling configuration. The core sanitizes selected force inputs, but
 /// backends remain responsible for validating values they pass to
 /// engine-specific APIs and for preserving the stated SI unit conventions.
 #[derive(Clone, Copy, Debug, PartialEq, Resource, bevy::prelude::Reflect)]

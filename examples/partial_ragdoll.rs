@@ -1,8 +1,8 @@
 //! A partial ragdoll: driven legs under a loose upper body.
 //!
-//! The rig is the reference humanoid skeleton with a generated profile. The pelvis and legs follow a
-//! procedural idle pose at full muscle strength and are pinned to their
-//! animated targets. The upper body keeps 10% muscle strength and no pin, so
+//! The rig is the reference humanoid skeleton with a generated profile.
+//! The pelvis and legs follow a procedural idle pose at full muscle strength
+//! and are pinned to their animated targets. The upper body keeps 10% muscle strength and no pin, so
 //! the balls launched at the chest every two seconds knock it around while
 //! the legs keep standing.
 //!

@@ -905,9 +905,11 @@ mod tests {
     /// Creates the resources and one active character required by `drive`.
     fn drive_world() -> (World, Entity) {
         let mut world = World::new();
+        // Drive reads settings, capabilities, and the fixed step; all three are present here.
         world.insert_resource(RagdollPhysicsSettings::default());
         world.insert_resource(BackendCapabilities::default());
         world.insert_resource(Time::<Fixed>::from_hz(60.0));
+        // One dynamic character with no bodies; each test adds the bodies it needs.
         let character = world
             .spawn((
                 Ragdoll::new(Handle::<RagdollProfile>::default()),
@@ -920,9 +922,11 @@ mod tests {
     /// Drive returns without a fixed clock or physics settings resource.
     #[test]
     fn drive_requires_fixed_time_and_settings() {
+        // Without Time<Fixed>, drive has no step length and must return early.
         let mut no_clock = World::new();
         drive(&mut no_clock);
 
+        // With a clock but no RagdollPhysicsSettings it must also return early.
         let mut no_settings = World::new();
         no_settings.insert_resource(Time::<Fixed>::from_hz(60.0));
         drive(&mut no_settings);
@@ -931,6 +935,7 @@ mod tests {
     /// Applies pin masks and per-character controller values to body outputs.
     #[test]
     fn body_pin_output_respects_targets_and_settings() {
+        // One body ten metres from its target, so any active pin produces force.
         let state = BodyDriveState {
             entity: Entity::PLACEHOLDER,
             target_pose: Some(Isometry3d::from_translation(Vec3::X * 10.0)),
@@ -946,6 +951,7 @@ mod tests {
         let weights = RagdollBodyWeights::default();
         let settings = RagdollPhysicsSettings::default();
 
+        // With no pin targets the body gets no pin force but keeps its speed caps.
         let unpinned = body_pin_output(
             state,
             Some(index),
@@ -958,6 +964,7 @@ mod tests {
         assert_eq!(unpinned.pin_force, Vec3::ZERO);
         assert_eq!(unpinned.max_linear_speed, Some(10.0));
 
+        // A 0.5 N force cap must bound the pin even though the target is far away.
         let defaults = PinSettings::default();
         let limited_settings = PinSettings::new(
             defaults.frequency_hz(),
@@ -977,6 +984,7 @@ mod tests {
             physics_settings,
             true,
         );
+        // The capped force and the angular speed cap both reach the output.
         assert!((pinned.pin_force.length() - 0.5).abs() < 1.0e-5);
         assert_eq!(pinned.max_angular_speed, Some(20.0));
     }
@@ -985,6 +993,7 @@ mod tests {
     #[test]
     fn drive_applies_per_character_pin_settings() {
         let (mut world, character) = drive_world();
+        // A distant target that a zero-force pin setting must ignore.
         let mut targets = RagdollTargetPose::default();
         targets.record(
             vec![Isometry3d::from_translation(Vec3::X * 10.0)],
@@ -996,6 +1005,7 @@ mod tests {
             .insert((PinSettings::new(1.5, 1.0, 0.0, 400.0, 2.0), targets));
         let body = world.spawn((RagdollBodyOf(character), body_index(0))).id();
 
+        // The character's own PinSettings override the shared defaults.
         drive(&mut world);
 
         let output = world
@@ -1007,6 +1017,7 @@ mod tests {
     /// A joint index that does not match the gathered state vector is skipped.
     #[test]
     fn joint_drive_skips_inconsistent_body_state_indexes() {
+        // The child's parent is known, but the child has no drive state slot.
         let mut world = World::new();
         let parent = world.spawn_empty().id();
         let child = world
@@ -1027,6 +1038,7 @@ mod tests {
             inertia: 1.0,
             output: BodyDriveOutput::default(),
         }];
+        // Only the parent is indexed, so the child lookup fails.
         let entity_indexes = HashMap::from([(parent, 0)]);
         let weights = RagdollBodyWeights::default();
         let config = JointDriveConfig {
@@ -1037,6 +1049,7 @@ mod tests {
             delta_seconds: 1.0 / 60.0,
         };
 
+        // The joint is skipped without writing a target or touching the parent output.
         calculate_child_joint_target(&mut world, child, 1, &entity_indexes, &mut states, &config);
 
         assert!(world.get::<JointDriveTarget>(child).is_none());
@@ -1053,6 +1066,7 @@ mod tests {
     /// overshoot.
     #[test]
     fn stable_pd_pendulum_converges_with_bounded_overshoot() {
+        // A unit-inertia pendulum driven toward 0.3 rad for one second at 60 Hz.
         let settings = RagdollPhysicsSettings::default();
         let motor = joint_motor_values(1.0, 10.0, &settings);
         let target = Quat::from_rotation_z(0.3);
@@ -1061,6 +1075,7 @@ mod tests {
         let mut maximum_angle: f32 = 0.0;
         let delta_seconds = 1.0 / 60.0;
 
+        // Integrate explicitly so the test checks the controller, not an engine.
         for _step in 0..60 {
             let torque = stable_pd_torque(
                 StablePdInput {
@@ -1080,6 +1095,7 @@ mod tests {
             maximum_angle = maximum_angle.max(rotation.to_axis_angle().1);
         }
 
+        // It must settle within 1 degree and overshoot by at most 5 degrees.
         assert!(rotation.angle_between(target).to_degrees() < 1.0);
         assert!(maximum_angle <= 0.3 + 5.0_f32.to_radians());
     }
@@ -1088,6 +1104,7 @@ mod tests {
     /// overshoot.
     #[test]
     fn pin_reaches_target_without_excess_overshoot() {
+        // A unit mass pulled one metre along X for two seconds at 60 Hz.
         let settings = RagdollPhysicsSettings::default();
         let mut position = Vec3::ZERO;
         let mut velocity = Vec3::ZERO;
@@ -1095,6 +1112,7 @@ mod tests {
         let delta_seconds = 1.0 / 60.0;
         let mut maximum_x: f32 = 0.0;
 
+        // Integrate explicitly so the test checks the pin controller alone.
         for _step in 0..120 {
             let output = pin_drive(
                 PinDriveInput {
@@ -1116,6 +1134,7 @@ mod tests {
             maximum_x = maximum_x.max(position.x);
         }
 
+        // It must arrive within 1 cm and overshoot by at most 10 cm.
         assert!((position.x - 1.0).abs() < 0.01);
         assert!(maximum_x <= 1.1);
     }
@@ -1165,6 +1184,7 @@ mod tests {
     /// Soft joint limits restore both ends of each configured interval.
     #[test]
     fn soft_limit_torque_restores_beyond_both_limits() {
+        // The same 0.1 rad limit on every axis.
         let range = AngleRange {
             min: -0.1,
             max: 0.1,
@@ -1174,10 +1194,12 @@ mod tests {
             twist: range,
             z: range,
         };
+        // Rotations past each end and one inside the range.
         let upper = soft_limit_torque(Quat::IDENTITY, Quat::from_rotation_x(0.2), limits, 1.0);
         let lower = soft_limit_torque(Quat::IDENTITY, -Quat::from_rotation_x(-0.2), limits, 1.0);
         let inside = soft_limit_torque(Quat::IDENTITY, Quat::from_rotation_x(0.05), limits, 1.0);
 
+        // Torque pushes back toward the range from either side and is zero inside it.
         assert!(upper.x < 0.0);
         assert!(lower.x > 0.0);
         assert_eq!(inside, Vec3::ZERO);
@@ -1187,21 +1209,26 @@ mod tests {
     /// limiting.
     #[test]
     fn numeric_drive_helpers_handle_finite_and_invalid_values() {
-        assert_eq!(clamp_unit(2.0), 1.0);
-        assert_eq!(clamp_unit(-1.0), 0.0);
-        assert_eq!(clamp_unit(f32::NAN), 0.0);
-        assert_eq!(finite_nonnegative(2.0), 2.0);
-        assert_eq!(finite_nonnegative(-1.0), 0.0);
-        assert_eq!(finite_nonnegative(f32::INFINITY), 0.0);
-        assert_eq!(limit_vector(Vec3::X * 2.0, 1.0), Vec3::X);
-        assert_eq!(limit_vector(Vec3::X * 0.5, 1.0), Vec3::X * 0.5);
-        assert_eq!(limit_vector(Vec3::splat(f32::MAX), 1.0), Vec3::ZERO);
+        // Unit clamping maps out-of-range and NaN values into 0..=1.
+        assert_eq!([2.0, -1.0, f32::NAN].map(clamp_unit), [1.0, 0.0, 0.0]);
+        // Negative and infinite magnitudes become zero.
+        assert_eq!(
+            [2.0, -1.0, f32::INFINITY].map(finite_nonnegative),
+            [2.0, 0.0, 0.0]
+        );
+        // Vectors are capped by length, and an overflowing length becomes zero.
+        assert_eq!(
+            [Vec3::X * 2.0, Vec3::X * 0.5, Vec3::splat(f32::MAX)]
+                .map(|vector| limit_vector(vector, 1.0)),
+            [Vec3::X, Vec3::X * 0.5, Vec3::ZERO]
+        );
     }
 
     /// Drive skips inactive characters and characters without dynamic bodies.
     #[test]
     fn drive_skips_inactive_and_empty_characters() {
         let (mut world, _) = drive_world();
+        // An Animated character and a Dynamic character without bodies.
         let animated = world
             .spawn((
                 Ragdoll::new(Handle::<RagdollProfile>::default()),
@@ -1216,6 +1243,7 @@ mod tests {
             ))
             .id();
 
+        // Neither has anything to drive, so neither gains a target pose.
         drive(&mut world);
 
         assert!(world.get::<RagdollTargetPose>(animated).is_none());
@@ -1227,6 +1255,7 @@ mod tests {
     #[test]
     fn drive_skips_bodies_without_required_identity_or_target_data() {
         let (mut world, character) = drive_world();
+        // One body without an index and one whose index has no recorded target.
         let missing_index = world.spawn(RagdollBodyOf(character)).id();
         let missing_target = world.spawn((RagdollBodyOf(character), body_index(0))).id();
         world
@@ -1234,6 +1263,7 @@ mod tests {
             .unwrap()
             .insert(RagdollTargetPose::default());
 
+        // Drive must not pin either body but still apply the character's speed caps.
         drive(&mut world);
 
         let missing_index_output = world
@@ -1241,6 +1271,7 @@ mod tests {
             .expect("an invalid extra body still receives its active character limit");
         assert_eq!(missing_index_output.pin_force, Vec3::ZERO);
         assert_eq!(missing_index_output.max_linear_speed, Some(10.0));
+        // The body without a target gets the same treatment.
         let missing_target_output = world
             .get::<BodyDriveOutput>(missing_target)
             .expect("a body without a target still receives its active character limit");
@@ -1253,6 +1284,7 @@ mod tests {
     #[test]
     fn drive_skips_joints_without_parent_or_target_pose() {
         let (mut world, character) = drive_world();
+        // A valid parent, a child whose target pose is missing, and a child with no parent entity.
         let parent = world.spawn((RagdollBodyOf(character), body_index(0))).id();
         let child = world
             .spawn((
@@ -1278,12 +1310,14 @@ mod tests {
                 },
             ))
             .id();
+        // Only body 0 has a target, so neither joint can compute one.
         let mut targets = RagdollTargetPose::default();
         targets.record(vec![Isometry3d::IDENTITY], vec![BodyVelocity::default()]);
         world.get_entity_mut(character).unwrap().insert(targets);
 
         drive(&mut world);
 
+        // Both joints are skipped while the parent body is still driven.
         assert!(world.get::<JointDriveTarget>(child).is_none());
         assert!(world.get::<JointDriveTarget>(missing_parent).is_none());
         assert!(world.get::<BodyDriveOutput>(parent).is_some());
@@ -1293,6 +1327,7 @@ mod tests {
     #[test]
     fn drive_omits_fallback_torque_for_native_joint_motors() {
         let (mut world, character) = drive_world();
+        // A backend with native motors applies joint targets itself.
         world
             .get_resource_mut::<BackendCapabilities>()
             .unwrap()
@@ -1310,6 +1345,7 @@ mod tests {
                 },
             ))
             .id();
+        // Body 1's target is rotated, so the joint has real work to do.
         let mut targets = RagdollTargetPose::default();
         targets.record(
             vec![
@@ -1322,6 +1358,7 @@ mod tests {
 
         drive(&mut world);
 
+        // The joint target is written but no fallback torque reaches the parent.
         assert!(world.get::<JointDriveTarget>(child).is_some());
         assert_eq!(
             world

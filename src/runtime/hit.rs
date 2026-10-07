@@ -806,7 +806,7 @@ mod tests {
 
     use std::time::Duration;
 
-    use bevy::prelude::{App, Fixed, Time, Update};
+    use bevy::prelude::{App, Fixed, PostUpdate, Time, World};
     use bevy::reflect::tuple_struct::GetTupleStructField;
 
     use crate::profile::{BodyIndex, BodyRole, MAX_BODIES};
@@ -823,28 +823,33 @@ mod tests {
     /// Selects the local graph radius at each documented impulse boundary.
     #[test]
     fn maximum_hops_changes_at_twelve_and_forty() {
+        // The next representable values above each threshold must already reach the next hop count.
         let above_twelve = f32::from_bits(12.0_f32.to_bits() + 1);
         let above_forty = f32::from_bits(40.0_f32.to_bits() + 1);
 
-        assert_eq!(maximum_hops(12.0), 1);
-        assert_eq!(maximum_hops(above_twelve), 2);
-        assert_eq!(maximum_hops(40.0), 2);
-        assert_eq!(maximum_hops(above_forty), 3);
+        // Each threshold itself still belongs to the lower hop count.
+        assert_eq!(
+            [12.0, above_twelve, 40.0, above_forty].map(maximum_hops),
+            [1, 2, 2, 3]
+        );
     }
 
     /// Keeps ancestor and descendant falloff distinct and sibling falloff absent.
     #[test]
     fn hop_falloff_respects_tree_direction_and_siblings() {
+        // A root, one middle body, and two sibling leaves under it.
         let mut tree = empty_tree();
         tree.body_count = 4;
         tree.parents[1] = Some(0);
         tree.parents[2] = Some(1);
         tree.parents[3] = Some(1);
 
-        assert_eq!(hop_falloff(2, 2, &tree), Some((0, 1.0)));
-        assert_eq!(hop_falloff(0, 2, &tree), Some((2, 0.25)));
-        assert_eq!(hop_falloff(3, 1, &tree), Some((1, 0.7)));
-        assert_eq!(hop_falloff(3, 2, &tree), None);
+        // Falloff walks up the tree, scales by distance, and never crosses to a sibling.
+        assert_eq!(
+            [(2, 2), (0, 2), (3, 1), (3, 2)]
+                .map(|(candidate, target)| hop_falloff(candidate, target, &tree)),
+            [Some((0, 1.0)), Some((2, 0.25)), Some((1, 0.7)), None]
+        );
     }
 
     /// Creates an empty bounded tree for private traversal tests.
@@ -865,7 +870,8 @@ mod tests {
     /// Collects only the body's owner's relationship members in profile order.
     #[test]
     fn hit_tree_collects_related_bodies_without_foreign_owners() {
-        let mut world = bevy::prelude::World::new();
+        // Two characters, so the tree must keep only the first owner's bodies.
+        let mut world = World::new();
         let first_owner = world.spawn(RagdollBodies::default()).id();
         let second_owner = world.spawn(RagdollBodies::default()).id();
         let first_body = world
@@ -899,6 +905,7 @@ mod tests {
                 RagdollBodyOf(second_owner),
             ))
             .id();
+        // Collect the tree the way process_hits does, from the owner's relationship.
         let related_bodies = world
             .get::<RagdollBodies>(first_owner)
             .expect("the first owner's relationship is populated")
@@ -908,6 +915,7 @@ mod tests {
 
         let tree = HitImpulseTree::collect(first_owner, &related_bodies, &body_query);
 
+        // Only the first owner's two bodies are in the tree, in index order.
         assert_eq!(tree.body_count, 2);
         assert_eq!(tree.body(0), Some(first_body));
         assert_eq!(tree.body(1), Some(second_body));
@@ -917,11 +925,13 @@ mod tests {
     /// Saturates rapid-fire hit counts instead of wrapping after `u32::MAX`.
     #[test]
     fn rapid_fire_streak_saturates_at_its_integer_limit() {
+        // A streak already at u32::MAX inside the rapid-fire window.
         let mut last_hit = LastHit {
             last_at: Some(Duration::ZERO),
             streak: u32::MAX,
         };
 
+        // Another quick hit must saturate instead of wrapping to zero.
         last_hit.record(Duration::from_millis(1));
 
         assert_eq!(last_hit.streak(), u32::MAX);
@@ -930,12 +940,14 @@ mod tests {
     /// Skips hit state changes when the body owner lacks required character state.
     #[test]
     fn process_hits_skips_a_body_with_missing_character_state() {
+        // Run process_hits alone so the test controls every input message.
         let mut app = App::new();
         app.add_message::<RagdollHit>()
             .add_message::<RagdollImpulse>()
             .insert_resource(Time::<Fixed>::from_hz(60.0))
-            .add_systems(Update, super::process_hits);
+            .add_systems(PostUpdate, super::process_hits);
 
+        // The owner lacks RagdollMode and RagdollBodies, so it is not a valid character.
         let owner = app
             .world_mut()
             .spawn((RagdollBodyWeights::default(), LastHit::default()))
@@ -957,6 +969,7 @@ mod tests {
 
         app.update();
 
+        // The hit is ignored: no history, no weight change, and no impulse.
         assert_eq!(
             app.world()
                 .get::<LastHit>(owner)
@@ -971,24 +984,18 @@ mod tests {
                 .as_ref(),
             &[]
         );
-        assert!(
-            app.world()
-                .get_resource::<bevy::ecs::message::Messages<RagdollImpulse>>()
-                .unwrap()
-                .iter_current_update_messages()
-                .next()
-                .is_none()
-        );
+        assert_eq!(published_impulses(app.world()), []);
     }
 
     /// Ignores an out-of-range index introduced through mutable reflection.
     #[test]
     fn process_hits_skips_an_out_of_range_reflected_body_index() {
+        // Run process_hits alone so the test controls every input message.
         let mut app = App::new();
         app.add_message::<RagdollHit>()
             .add_message::<RagdollImpulse>()
             .insert_resource(Time::<Fixed>::from_hz(60.0))
-            .add_systems(Update, super::process_hits);
+            .add_systems(PostUpdate, super::process_hits);
 
         let owner = app
             .world_mut()
@@ -1006,6 +1013,7 @@ mod tests {
                 RagdollBodyOf(owner),
             ))
             .id();
+        // Reflection can write an index past MAX_BODIES that normal construction rejects.
         {
             let mut index = app
                 .world_mut()
@@ -1024,6 +1032,7 @@ mod tests {
 
         app.update();
 
+        // The hit is ignored: no history, no weight change, and no impulse.
         assert_eq!(
             app.world()
                 .get::<LastHit>(owner)
@@ -1038,24 +1047,18 @@ mod tests {
                 .as_ref(),
             &[BodyWeights::default()]
         );
-        assert!(
-            app.world()
-                .get_resource::<bevy::ecs::message::Messages<RagdollImpulse>>()
-                .unwrap()
-                .iter_current_update_messages()
-                .next()
-                .is_none()
-        );
+        assert_eq!(published_impulses(app.world()), []);
     }
 
     /// Rejects a hit when another body occupies its validated index.
     #[test]
     fn process_hits_skips_duplicate_body_indexes() {
+        // Run process_hits alone so the test controls every input message.
         let mut app = App::new();
         app.add_message::<RagdollHit>()
             .add_message::<RagdollImpulse>()
             .insert_resource(Time::<Fixed>::from_hz(60.0))
-            .add_systems(Update, super::process_hits);
+            .add_systems(PostUpdate, super::process_hits);
 
         let owner = app
             .world_mut()
@@ -1073,6 +1076,7 @@ mod tests {
                 RagdollBodyOf(owner),
             ))
             .id();
+        // A second body with the same index makes the body tree ambiguous.
         app.world_mut().spawn((
             BodyIndex::try_from(0).expect("zero is a valid body index"),
             BodyRole::Spine,
@@ -1087,6 +1091,7 @@ mod tests {
 
         app.update();
 
+        // The hit is ignored: no history, no weight change, and no impulse.
         assert_eq!(
             app.world()
                 .get::<LastHit>(owner)
@@ -1101,14 +1106,7 @@ mod tests {
                 .as_ref(),
             &[BodyWeights::default()]
         );
-        assert!(
-            app.world()
-                .get_resource::<bevy::ecs::message::Messages<RagdollImpulse>>()
-                .unwrap()
-                .iter_current_update_messages()
-                .next()
-                .is_none()
-        );
+        assert_eq!(published_impulses(app.world()), []);
     }
 
     /// Stops safely when impulse-tree data or the remaining vector is invalid.
@@ -1116,8 +1114,9 @@ mod tests {
     fn distribute_impulse_stops_on_missing_tree_data() {
         let mut app = App::new();
         app.add_message::<RagdollImpulse>().add_systems(
-            Update,
+            PostUpdate,
             |mut impulses: bevy::ecs::message::MessageWriter<'_, RagdollImpulse>| {
+                // Body 0 points at a parent slot that holds no data.
                 let mut tree = HitImpulseTree {
                     masses: [1.0; MAX_BODIES],
                     body_count: 1,
@@ -1133,6 +1132,7 @@ mod tests {
                     &mut impulses,
                 );
 
+                // A placeholder entity with a zero impulse must also publish nothing.
                 tree.body_entities[0] = Some(bevy::prelude::Entity::PLACEHOLDER);
                 distribute_impulse(
                     bevy::math::Vec3::ZERO,
@@ -1189,12 +1189,7 @@ mod tests {
 
         app.update();
 
-        let outputs = app
-            .world()
-            .get_resource::<bevy::ecs::message::Messages<RagdollImpulse>>()
-            .unwrap()
-            .iter_current_update_messages()
-            .collect::<Vec<_>>();
+        let outputs = published_impulses(app.world());
         assert_eq!(
             outputs
                 .iter()
@@ -1208,5 +1203,15 @@ mod tests {
                 bevy::math::Vec3::X * 7.0,
             ]
         );
+    }
+
+    /// Returns every buffered impulse through a fresh cursor, so the result does
+    /// not depend on which of the two update buffers holds the messages.
+    fn published_impulses(world: &World) -> Vec<RagdollImpulse> {
+        let Some(messages) = world.get_resource::<bevy::ecs::message::Messages<RagdollImpulse>>()
+        else {
+            return Vec::new();
+        };
+        messages.get_cursor().read(messages).copied().collect()
     }
 }

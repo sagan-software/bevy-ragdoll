@@ -154,12 +154,14 @@ mod tests {
     /// poses.
     #[test]
     fn missing_history_defaults_only_the_new_target_velocity() {
+        // The second body has no previous pose, as on the frame it first appears.
         let previous = [Isometry3d::IDENTITY];
         let current = [
             Isometry3d::from_translation(Vec3::X),
             Isometry3d::from_translation(Vec3::Y),
         ];
 
+        // A 0.5 s step turns the first body's one-metre move into 2 m/s.
         let velocities = derive_velocities(&previous, &current, 0.5);
 
         assert_eq!(

@@ -210,7 +210,7 @@ struct Params {
     /// Position in `HIT_PROFILES` of the hit applied by a click.
     hit: usize,
     /// Whether every fourth and fifth ragdoll is a glTF creature instead of a humanoid.
-    creatures: bool,
+    has_creatures: bool,
 }
 
 impl Default for Params {
@@ -221,7 +221,7 @@ impl Default for Params {
             gravity: 9.81,
             time_scale: 1.0,
             hit: 2,
-            creatures: true,
+            has_creatures: true,
         }
     }
 }
@@ -249,7 +249,7 @@ enum Param {
     TimeScale,
     /// `Params::hit`.
     Hit,
-    /// `Params::creatures`.
+    /// `Params::has_creatures`.
     Creatures,
 }
 
@@ -296,7 +296,7 @@ impl Param {
                 let len = HIT_PROFILES.len();
                 params.hit = (params.hit + if sign > 0.0 { 1 } else { len - 1 }) % len;
             }
-            Self::Creatures => params.creatures = !params.creatures,
+            Self::Creatures => params.has_creatures = !params.has_creatures,
         }
     }
 
@@ -308,7 +308,7 @@ impl Param {
             Self::Gravity => format!("{:.1} m/s2", params.gravity),
             Self::TimeScale => format!("{:.1}x", params.time_scale),
             Self::Hit => format!("{:?}", params.hit_profile()),
-            Self::Creatures => if params.creatures { "Mixed" } else { "Off" }.to_owned(),
+            Self::Creatures => if params.has_creatures { "Mixed" } else { "Off" }.to_owned(),
         }
     }
 }
@@ -385,7 +385,7 @@ struct PointerState {
     /// The body under the cursor at press time.
     target: Option<Target>,
     /// Whether the cursor moved far enough to turn the press into a drag.
-    dragging: bool,
+    is_dragging: bool,
 }
 
 /// A body picked by the cursor.
@@ -417,7 +417,7 @@ struct StepTimer {
 }
 
 /// Loads the profile, picks a backend, and runs the showcase.
-fn main() {
+fn main() -> AppExit {
     let backend = Backend::from_environment();
 
     let mut app = App::new();
@@ -487,7 +487,7 @@ fn main() {
             FixedUpdate,
             pull_grabbed_body.before(RagdollFixedSystems::Behaviour),
         )
-        .run();
+        .run()
 }
 
 /// Builds the humanoid skeleton and starts loading the glTF creatures.
@@ -582,8 +582,8 @@ fn checker_image() -> Image {
     let mut data = Vec::with_capacity(size * size * 4);
     for y in 0..size {
         for x in 0..size {
-            let light = (x / cell_px + y / cell_px) % 2 == 0;
-            let value = if light { 58 } else { 46 };
+            let is_light_cell = (x / cell_px + y / cell_px) % 2 == 0;
+            let value = if is_light_cell { 58 } else { 46 };
             data.extend_from_slice(&[value, value + 4, value + 10, 255]);
         }
     }
@@ -682,7 +682,7 @@ fn spawn_character(
         Transform::from_translation(position).with_rotation(Quat::from_rotation_y(yaw)),
     ));
     let creature = params
-        .creatures
+        .has_creatures
         .then(|| rigs.creatures.get((index % 5).checked_sub(3)?))
         .flatten();
     if let Some(scene) = creature {
@@ -813,13 +813,13 @@ fn spawn_panel(
         ChildOf(row),
     ));
     for option in Backend::ALL {
-        let selected = option == backend.0;
+        let is_selected = option == backend.0;
         button(
             &mut commands,
             row,
             option.name(),
             Action::UseBackend(option),
-            selected,
+            is_selected,
         );
     }
     let row = commands.spawn((row_node(), ChildOf(panel))).id();
@@ -868,9 +868,9 @@ fn button(
     row: Entity,
     label: &str,
     action: Action,
-    selected: bool,
+    is_selected: bool,
 ) {
-    let background = if selected {
+    let background = if is_selected {
         ACCENT.with_alpha(0.35)
     } else {
         Color::srgba(1.0, 1.0, 1.0, 0.08)
@@ -996,14 +996,14 @@ fn press_pointer(
     let Some((cursor, ray)) = cursor_ray(&windows, &cameras) else {
         return;
     };
-    let over_panel = interactions.iter().any(|i| *i != Interaction::None);
-    if buttons.just_pressed(MouseButton::Left) && !over_panel {
+    let is_over_panel = interactions.iter().any(|i| *i != Interaction::None);
+    if buttons.just_pressed(MouseButton::Left) && !is_over_panel {
         let id = pointer.next_request;
         pointer.next_request = id.wrapping_add(1);
         pointer.press = Some(cursor);
         pointer.pending = Some(id);
         pointer.target = None;
-        pointer.dragging = false;
+        pointer.is_dragging = false;
         rays.write(RagdollRaycast {
             request_id: RagdollRequestId::new(id),
             origin: ray.origin,
@@ -1015,7 +1015,7 @@ fn press_pointer(
     if let Some(press) = pointer.press
         && buttons.pressed(MouseButton::Left)
     {
-        pointer.dragging |= press.distance(cursor) > DRAG_THRESHOLD_PX;
+        pointer.is_dragging |= press.distance(cursor) > DRAG_THRESHOLD_PX;
         if let Some(target) = pointer.target.as_mut() {
             target.goal = ray.origin + *ray.direction * target.depth;
         }
@@ -1074,7 +1074,7 @@ fn release_pointer(
     let Some(target) = pointer.target.take() else {
         return;
     };
-    if pointer.dragging {
+    if pointer.is_dragging {
         return;
     }
     let Ok((transform, children)) = bodies.get(target.body) else {
@@ -1133,7 +1133,7 @@ fn pull_grabbed_body(
     masses: Query<'_, '_, (&BodyMass, &RagdollBodyOf)>,
     mut impulses: MessageWriter<'_, RagdollImpulse>,
 ) {
-    let Some(target) = pointer.target.filter(|_| pointer.dragging) else {
+    let Some(target) = pointer.target.filter(|_| pointer.is_dragging) else {
         return;
     };
     let Ok((pose, velocity, mass, owner)) = bodies.get(target.body) else {

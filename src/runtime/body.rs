@@ -159,16 +159,20 @@ mod tests {
     /// Applies independent finite limits without changing values below either cap.
     #[test]
     fn velocity_limits_clamp_only_excess_speed() {
+        // Both caps sit below the current speeds, so both vectors must shrink to the cap.
         let output = BodyDriveOutput {
+            pin_force: Vec3::ZERO,
+            pin_torque: Vec3::ZERO,
+            joint_torque: Vec3::ZERO,
             max_linear_speed: Some(10.0),
             max_angular_speed: Some(20.0),
-            ..Default::default()
         };
         let mut velocity = BodyVelocity {
             linear: Vec3::X * 12.0,
             angular: Vec3::Y * 24.0,
         };
 
+        // Clamping preserves direction and only removes the excess speed.
         output.clamp_velocity(&mut velocity);
 
         assert!((velocity.linear.length() - 10.0).abs() < 1.0e-5);
@@ -178,6 +182,7 @@ mod tests {
     /// Keeps velocity unchanged when limits are absent and clears malformed vectors.
     #[test]
     fn velocity_limits_ignore_absent_caps_and_clear_nonfinite_values() {
+        // No caps are set, so only the non-finite angular vector changes.
         let output = BodyDriveOutput::default();
         let mut velocity = BodyVelocity {
             linear: Vec3::X * 12.0,
@@ -193,24 +198,32 @@ mod tests {
     /// Ignores a non-finite cap and clamps to a finite zero cap.
     #[test]
     fn velocity_limits_validate_public_caps() {
+        // A NaN cap and a negative cap are invalid, so they must be ignored.
         let output = BodyDriveOutput {
+            pin_force: Vec3::ZERO,
+            pin_torque: Vec3::ZERO,
+            joint_torque: Vec3::ZERO,
             max_linear_speed: Some(f32::NAN),
             max_angular_speed: Some(-1.0),
-            ..Default::default()
         };
         let mut velocity = BodyVelocity {
             linear: Vec3::X,
             angular: Vec3::Y,
         };
 
+        // Velocity passes through unchanged because neither cap is usable.
         output.clamp_velocity(&mut velocity);
 
         assert_eq!(velocity.linear, Vec3::X);
         assert_eq!(velocity.angular, Vec3::Y);
 
+        // Zero is a valid cap and stops rotation entirely.
         let zero_limit = BodyDriveOutput {
+            pin_force: Vec3::ZERO,
+            pin_torque: Vec3::ZERO,
+            joint_torque: Vec3::ZERO,
+            max_linear_speed: None,
             max_angular_speed: Some(0.0),
-            ..Default::default()
         };
         zero_limit.clamp_velocity(&mut velocity);
         assert_eq!(velocity.angular, Vec3::ZERO);
