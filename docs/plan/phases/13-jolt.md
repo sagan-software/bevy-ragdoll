@@ -25,7 +25,7 @@ Known facts (checked 2026-10-03):
    this). Record whether it builds and how long.
 3. Prototype in the scratch crate: two capsules joined by a SixDOF
    constraint with angular limits and motors, stepped 600 times; and, if
-   SixDOF suffices, the TGF human from its RON profile in a Jolt
+   SixDOF suffices, the generated human profile in a Jolt
    `PhysicsSystem` with motors toward the rest pose, measuring ms per step
    for 1, 32 and 128 ragdolls.
 4. Write `docs/jolt-feasibility.md`: what builds, what the bindings lack

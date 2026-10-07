@@ -1,7 +1,7 @@
 # Phase 7: active control and hits
 
 Goal: per-body muscle and pin weights, hits that weaken muscles locally
-and recover, and the examples that show them on the TGF rig with a
+and recover, and the examples that show them on the capsule human rig with a
 procedural target pose.
 
 Read first: [../reference/hit-reaction.md](../reference/hit-reaction.md)
@@ -36,7 +36,7 @@ sections 2, 4 and 8.
    `max_angular_speed = 20` (2.2 step 4), applied by the core through
    `BodyDriveOutput` limits; backends clamp engine velocity in `Apply` if
    the engine has a native setting.
-6. Examples on the TGF rig (capsule visuals), Rapier backend:
+6. Examples on the human rig (capsule visuals), Rapier backend:
    - `hit_reactions`: the rig stands with muscle 1 and pelvis and chest pin
      1, following the procedural idle. Clicking a capsule sends a
      `RagdollHit` of the selected kind at the clicked point along the

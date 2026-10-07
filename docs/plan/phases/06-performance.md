@@ -12,12 +12,12 @@ in full, Bevy's `examples/stress_tests/many_foxes.rs`,
 
 1. Implement `examples/ragdoll_stress.rs` with every argument in the
    reference. Scenarios that need animation (`grid`, `wave`, `powered`)
-   use a procedural idle on the TGF rig until phase 8 adds the animated
+   use a procedural idle on the capsule human rig until phase 8 adds the animated
    human: rest pose plus a 0.25 Hz breathing sway of 0.05 rad on the
    spine. `balance` and `shooting` print "needs phase 9/7" and exit 2 until
    those phases enable them; `--creature` accepts only `human` until phase
    11.
-2. Draw the TGF rig's capsules as meshes (one shared capsule mesh per
+2. Draw the human rig's capsules as meshes (one shared capsule mesh per
    shape size, shared material) so windowed runs show bodies.
 3. Implement timing systems around the backend's step set and the core
    sets, the report JSON exactly as specified (`schema: 1`), `--sweep`

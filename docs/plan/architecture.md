@@ -35,7 +35,7 @@ workspace. Workspace lints: `missing_docs = "warn"`,
 `clippy::missing_docs_in_private_items = "warn"`, `unsafe_code = "forbid"`.
 
 Core crate features: `default = ["3d", "gltf", "serialize"]`; `3d`;
-`2d` (phase 14); `gltf` (Skein component types and glTF skeleton
+`2d` (phase 14); `gltf` (glTF skeleton
 helpers); `serialize` (serde + RON asset loader). The core never depends
 on a physics crate.
 
@@ -64,29 +64,40 @@ validated at construction and immutable afterwards.
   `AngleRange` (validated), `RagdollProfile { bodies, joints, no_contact: Vec<u64>, total_mass, children: Vec<u64> }`.
   `no_contact` and `children` are derived at construction, never stored in
   RON: joint neighbours plus bodies whose shapes touch at rest
-  (port TGF `REST_CONTACT_MARGIN = 0.01` and Ericson's segment distance).
+  (`REST_CONTACT_MARGIN = 0.01` m and Ericson's segment distance).
 - `ProfileError` variants, checked in this order: `Empty`,
   `TooManyBodies(usize)` (max 64), `NotATree` (parents first, body 0 is
   the root, every other body has exactly one joint), `BadMass { body }`,
   `BadShape { body }`, `BadLimit { joint, axis }`, `BadTorque { joint }`,
   `DuplicateBone(String)`.
 
-Profiles come from four sources (phase 3 and 11):
+Profiles come from three sources:
 
-1. RON asset `*.ragdoll.ron` holding a `ProfileSpec` (`RagdollProfileLoader`).
-2. glTF with Skein components `RagdollBody { mass_kg }` and
-   `RagdollJoint { limit_x, limit_y, limit_z, torque_nm }` on capsule mesh
-   nodes parented to bones (TGF's format; port `tgf-rig`).
-3. `ProfileBuilder` in code.
-4. `auto::generate(&SkeletonView, &AutoOptions) -> Result<ProfileSpec, AutoError>`.
+1. Automatic generation from any skeleton (a skinned glTF scene or a
+   bone hierarchy built in code) with no authored files:
+   `Ragdoll::default()` on the scene root, through
+   `auto::generate(&SkeletonView, &AutoOptions) -> Result<ProfileSpec, AutoError>`.
+   Bone names select a humanoid layout when they match a standard
+   convention (UE4 and UE5 mannequin, Mixamo, Unity, Godot and VRM
+   humanoid, Rigify). Otherwise topology classifies chains as support
+   limbs, reach limbs, neck and head, or tail, so quadrupeds and other
+   creatures work ([reference/algorithms.md](reference/algorithms.md)
+   section 9).
+2. `ProfileBuilder` in code.
+3. A `ProfileSpec` deserialised from RON.
+
+Generated profiles accept sparse per-bone overrides: a reflected
+`RagdollBone` component on a bone entity (Skein can author it through type
+registration alone; the crate has no Skein-specific code), or a short RON
+overrides file.
 
 ## Runtime entities
 
 On the character (the entity that owns the skeleton, usually the glTF
 scene root):
 
-- `Ragdoll { profile: Handle<RagdollProfile> }` or
-  `Ragdoll::auto(AutoOptions)`. `#[require(RagdollMode, RagdollDrive, RagdollBlend)]`.
+- `Ragdoll::default()` generates the profile from the skeleton;
+  `Ragdoll { profile: Handle<RagdollProfile> }` uses a given one. `#[require(RagdollMode, RagdollDrive, RagdollBlend)]`.
 - `RagdollMode` enum: `Animated` (no physics bodies), `Kinematic` (bodies
   follow the animation exactly; they can be hit and raycast), `Dynamic`
   (simulated, driven by muscle and pin), `Frozen` (bodies static where they
@@ -203,8 +214,8 @@ it.
 
 `RagdollBudget { max_dynamic: usize, policy: EvictPolicy::FreezeOldest }`.
 When a ragdoll turns `Dynamic` and the budget is full, the oldest dynamic
-ragdoll becomes `Frozen` (port TGF `pool.rs`). Settle detection (port TGF
-`force_sleep_after`, `settle_speed`) can freeze a limp ragdoll at rest.
+ragdoll becomes `Frozen`. Settle detection (`force_sleep_after`,
+`settle_speed`) can freeze a limp ragdoll at rest.
 
 ## Crate `bevy_ragdoll_balance`
 

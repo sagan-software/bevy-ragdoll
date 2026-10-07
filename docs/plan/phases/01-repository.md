@@ -4,9 +4,7 @@ Goal: a public, empty-but-building workspace with a dev shell and green
 CI.
 
 Read first: [../decisions.md](../decisions.md),
-[../architecture.md](../architecture.md) (Workspace section), and TGF's
-`~/Code/gitlab.com/liamcurry/tgf/flake.nix` for the Bevy system-library
-setup this machine needs.
+[../architecture.md](../architecture.md) (Workspace section).
 
 ## Steps
 
@@ -20,7 +18,7 @@ setup this machine needs.
    - Rust from `oxalica/rust-overlay`: stable, at least 1.95 (Bevy 0.19's
      MSRV), extensions `rust-src clippy rustfmt rust-analyzer
      llvm-tools-preview`, targets `wasm32-unknown-unknown wasm32-wasip1`.
-   - Bevy libraries as in TGF's flake: `pkg-config alsa-lib udev
+   - Bevy system libraries: `pkg-config alsa-lib udev
      vulkan-loader libxkbcommon wayland` and the X11 libraries, with
      `LD_LIBRARY_PATH` set for the runtime-loaded ones.
    - Tools: `cargo-llvm-cov cargo-deny critcmp samply perf tracy wasmtime

@@ -11,8 +11,8 @@ owner can publish.
    modes with their measured status, the performance summary
    from `benches/RESULTS.md` with the backend recommendation per scenario,
    the Bevy version table, the licence section, and asset credits.
-2. Guide pages in `docs/`: authoring a profile in Blender with Skein,
-   automatic profiles, active control (muscle, pin, blend), hits, balance
+2. Guide pages in `docs/`: automatic profiles, per-bone overrides (with
+   `RagdollBone` in Blender through Skein, or a RON overrides file), active control (muscle, pin, blend), hits, balance
    and the puppet, writing a backend (from the mock backend and the
    contract), determinism, performance and profiling.
 3. Every public item documented with an example where useful; run

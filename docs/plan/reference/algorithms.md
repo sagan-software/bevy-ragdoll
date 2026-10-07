@@ -1,8 +1,7 @@
 # Algorithms
 
 Each section gives the formula, its units, where it runs, and the test
-that proves it. TGF line references point into
-`~/Code/gitlab.com/liamcurry/tgf`.
+that proves it.
 
 ## 1. Joint angles
 
@@ -16,16 +15,14 @@ if q.w < 0 { q = -q }                       // shortest arc
 angles = ( 2*atan2(q.x, q.w), 2*atan2(q.y, q.w), 2*atan2(q.z, q.w) )   // radians about X, Y (twist), Z
 ```
 
-Port: `crates/tgf-ragdoll/src/desc.rs` `relative_rotation` and
-`joint_angles`. At rest every angle is 0. This per-axis measure is exact
+At rest every angle is 0. This per-axis measure is exact
 for rotation about one axis and approximate for combined rotations.
 Rapier 0.35's motor error uses `2*asin(q_err.imag[axis])`
 ([physics-api.md](physics-api.md) A5); the two agree to first order. Test:
-`joint_angles_measure_about_each_axis` (port) plus a round trip for each
+`joint_angles_measure_about_each_axis` plus a round trip for each
 single axis at `-PI/2, -0.1, 0, 0.1, PI/2`.
 
-Clamp target angles into the joint's limits before writing motors (TGF
-`RagdollWorld::set_target`).
+Clamp target angles into the joint's limits before writing motors.
 
 ## 2. Muscle drive (joint motors)
 
@@ -42,7 +39,7 @@ damping   = 2*zeta*omega*sqrt(m) + r            1/s
 limit     = T * s * (phi + m)                   N·m
 ```
 
-Port: TGF `RagdollWorld::apply_motors`. With no target, `m` counts as 0,
+With no target, `m` counts as 0,
 so only friction remains. Rapier: one motor per unlocked angular axis,
 `MotorModel::AccelerationBased`, `set_motor(axis, target_angle, target_velocity, stiffness, damping)`,
 `set_motor_max_force(axis, limit)`.
@@ -117,7 +114,7 @@ captured automatically:
 3. Shift `current` into `previous`, store the new poses in `current`, and
    record the time between them. Target velocity per body:
    `v = (current.t - previous.t) / dt`, `w` from
-   `q = current.r * previous.r^-1` as in TGF `BodyState::from_poses`.
+   `q = current.r * previous.r^-1`.
 
 ## 6. Interpolation and writeback
 
@@ -129,8 +126,7 @@ a    = Time<Fixed>::overstep_fraction()          0..1
 pose = { t: lerp(prev.t, cur.t, a), r: slerp(prev.r, cur.r, a) }
 ```
 
-Writeback, parents first (port TGF `crates/tgf-glue/src/ragdoll/skeleton.rs`
-`ragdoll_locals` and `animated_local`):
+Writeback, parents first:
 
 1. For a bone with a body: `world_phys = pose` (body frame equals the bone
    frame). For a bone without one: `world_phys = world_phys[parent] * animated_local`.
@@ -145,7 +141,7 @@ Writeback, parents first (port TGF `crates/tgf-glue/src/ragdoll/skeleton.rs`
 
 When a ragdoll turns `Dynamic`, each body starts at its target pose with
 the target velocity (section 5), so a running character keeps running
-into the fall. Port TGF `RagdollWorld::spawn_lift` as an optional
+into the fall. An optional
 `RagdollPhysicsSettings::max_spawn_lift` (default 0.5 m) that lifts the
 whole ragdoll out of static geometry it starts inside; the backend
 implements the overlap test through its own shape queries.
@@ -163,7 +159,14 @@ step.
 
 Input: `SkeletonView { bones: Vec<SkeletonBone { name, parent: Option<usize>, rest_world: Affine3A }>, skin: Option<SkinSample> }`
 where `SkinSample` holds vertex positions and per-vertex (bone, weight)
-pairs from the skinned mesh in the same space. Output: `ProfileSpec`.
+pairs from the skinned mesh in the same space. The view comes from a
+spawned skinned glTF scene or from a bone hierarchy built in code.
+Output: `ProfileSpec`.
+
+0. Layout: when the bone names match a standard humanoid convention
+   (UE4 and UE5 mannequin, Mixamo, Unity, Godot and VRM humanoid,
+   Rigify), use the humanoid layout and its roles. Otherwise classify
+   chains by topology in step 6.
 
 1. Ignore bones whose lowercased name contains any of `twist`, `leaf`,
    `_end`, `ik_`, `ik`, `ctrl`, `socket`, `helper`, `ball` (feet keep
@@ -183,12 +186,15 @@ pairs from the skinned mesh in the same space. Output: `ProfileSpec`.
    tails, `0.45 * length` for torso bones (role step 6).
 5. Mass: capsule volume times 985 kg/m^3, then scale every mass so the
    total equals `AutoOptions::total_mass` when it is set.
-6. Role by topology, then by name: the spine chain runs from the root to
-   the bone with the most kept descendants that has two or more kept
-   child chains (shoulders or hips). Chains leaving the pelvis end opposite
-   the head are legs, or a tail if the chain has more than three bones and
-   no foot-like leaf below the pelvis height. Chains leaving the chest are
-   arms; the chain continuing up is neck and head. Name hints (`spine`,
+6. Role by topology when step 0 found no humanoid layout: the spine chain
+   runs from the root to the bone with the most kept descendants that has
+   two or more kept child chains (shoulders or hips). Each other chain is
+   a support limb (it ends near the ground below the spine), a reach limb
+   (it leaves the spine above the ground and ends free), neck and head
+   (it continues the spine away from the support limbs), or a tail (more
+   than three bones and no ground-contact leaf). Any number of chains of
+   each kind is allowed, so quadrupeds and a 7-legged, 3-armed creature
+   work. Name hints (`spine`,
    `neck`, `head`, `arm`, `leg`, `thigh`, `calf`, `shin`, `foot`, `hand`,
    `tail`, `clavicle`, `shoulder`, `hip`, `upperleg`, `lowerleg`) override
    topology when present.
@@ -208,10 +214,11 @@ pairs from the skinned mesh in the same space. Output: `ProfileSpec`.
      forward in the rest pose).
    Hinge sign is never assumed: measure the rest-pose bend between the bone
    and its child and choose the range on the side the joint already bends.
-8. Validate with `RagdollProfile::new`; the generator returns its spec and
+8. Apply sparse per-bone overrides from `RagdollBone` components and the
+   optional RON overrides file. Validate with `RagdollProfile::new`; the generator returns its spec and
    any warnings (`AutoWarning::MergedBone`, `AutoWarning::GuessedRole`).
 
-Tests: the TGF human skeleton gives 14 to 18 bodies, total mass equal to
+Tests: `assets/rigs/humanoid.glb` gives 14 to 18 bodies, total mass equal to
 the option, knees as hinges bending backward; each creature in phase 11
 gives a profile that passes the physics conformance "drop and settle"
 case.

@@ -9,9 +9,7 @@ seems to need a different answer.
   `main`. Local clone: `~/Code/github.com/sagan-software/bevy-ragdoll`.
 - Licence: MIT OR Apache-2.0, files `LICENSE-MIT` and `LICENSE-APACHE`.
   Copyright holder: Bill Curry.
-- Fresh history. The code is extracted from TGF
-  (`~/Code/gitlab.com/liamcurry/tgf`, owner's own code), rewritten to fit
-  this crate. TGF itself is not changed by this plan.
+- Fresh history.
 - Engine: Bevy 0.19.1. Physics: bevy_rapier3d 0.36.0 (which pins
   rapier3d `=0.35.0-glamx0.2`; do not add rapier3d 0.36, it uses glam
   0.33) and avian3d 0.7.0.
@@ -27,8 +25,10 @@ seems to need a different answer.
 
 In scope:
 
-- Ragdoll profiles from Blender (Skein components), from RON files, from
-  code, and generated automatically from any skeleton.
+- Ragdoll profiles generated automatically from any skeleton with no
+  authored files, with optional sparse per-bone overrides (a reflected
+  `RagdollBone` component, usable from Blender through Skein, or a short
+  RON overrides file), and profiles built in code.
 - Active ragdolls: per-body muscle (joint motor) and pin (world-space)
   drives toward any animation's pose; hits that weaken muscles locally and
   recover; blending between animation and physics; a simulation budget.

@@ -7,7 +7,7 @@ Euphoria-style `puppet_showcase` example.
 Read first: [../reference/hit-reaction.md](../reference/hit-reaction.md)
 sections 4, 5, 6, 7 (all states), 8 (tests 2, 3, 10 to 18);
 [../reference/examples.md](../reference/examples.md) (`puppet_showcase`,
-`crowd_brawl`); TGF `crates/tgf-game/src/combat/ragdoll/lifecycle.rs`.
+`crowd_brawl`).
 
 ## Steps
 
@@ -42,7 +42,7 @@ sections 4, 5, 6, 7 (all states), 8 (tests 2, 3, 10 to 18);
 6. Turning (6.3): the free clips have no turn clips, so turn by rotating
    the root at `clamp(2.5 * e, -1.6, 1.6)` rad/s while idle plays; tidy
    steps happen through the stepping logic. Done at 4 degrees.
-7. Death path: `PuppetCommand::Kill` switches to the TGF lifecycle (powered
+7. Death path: `PuppetCommand::Kill` switches to the death lifecycle (powered
    fall toward `death` at `fall_strength 1.0` for `fall_ms 1200`, hold at
    0.4, then limp, settle). A killed puppet never gets up.
 8. `puppet_showcase` example as specified in
