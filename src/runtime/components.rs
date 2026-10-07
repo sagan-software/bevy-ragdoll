@@ -55,7 +55,7 @@ pub struct Ragdoll {
     /// body's mass from its collider volume and a uniform density.
     pub mass: Option<crate::profile::Mass>,
     /// Sparse per-bone overrides for a generated profile, usually loaded from a
-    /// `.ragdoll.ron` file; `None` keeps every generated value.
+    /// `.ragdoll.ron` file; `None` keeps every generated shape, mass, and limit.
     pub overrides: Option<bevy::asset::Handle<crate::auto::RagdollOverrides>>,
 }
 
@@ -769,11 +769,13 @@ mod tests {
 
     #[test]
     fn component_accessors_keep_clamped_values_and_target_history() {
+        // Drive setters replace both multipliers.
         let mut drive = RagdollDrive::new(0.25, 0.75);
         drive.set(0.5, 0.0);
         assert_eq!(drive.muscle(), 0.5);
         assert_eq!(drive.pin(), 0.0);
 
+        // Body weights default to full strength, and lookups past the end return None.
         let default_weights = BodyWeights::default();
         assert_eq!(default_weights.muscle(), 1.0);
         assert_eq!(default_weights.pin(), 1.0);
@@ -781,10 +783,12 @@ mod tests {
         assert_eq!(overrides.as_ref(), &[BodyWeights::new(0.25, 0.75)]);
         assert_eq!(overrides.get(1), None);
 
+        // Blend stores the weight it is given.
         let mut blend = RagdollBlend::default();
         blend.set(0.25);
         assert_eq!(blend.get(), 0.25);
 
+        // A target history needs two records before it has a previous pose.
         let index = BodyIndex::try_from(0_usize).expect("the first body index is valid");
         let first = Isometry3d::IDENTITY;
         let second = Isometry3d::from_translation(Vec3::X);
@@ -796,12 +800,14 @@ mod tests {
         assert_eq!(targets.current_pose(index), None);
         assert_eq!(targets.previous_pose(index), None);
         assert_eq!(targets.velocity(index), None);
+        // The second record shifts the first into the previous slot.
         targets.record(vec![first], vec![velocity]);
         targets.record(vec![second], vec![velocity]);
         assert_eq!(targets.previous_pose(index), Some(first));
         assert_eq!(targets.current_pose(index), Some(second));
         assert_eq!(targets.velocity(index), Some(velocity));
 
+        // Default adjustments change nothing.
         let adjustments = RagdollTargetAdjust::default();
         assert_eq!(adjustments.replace, []);
         assert_eq!(adjustments.additive, []);
@@ -812,9 +818,11 @@ mod tests {
     /// Fills bound body positions without replacing authored or extra weights.
     #[test]
     fn profile_weight_initialization_preserves_authored_entries() {
+        // One authored entry for a three-body profile.
         let authored = BodyWeights::new(0.25, 0.5);
         let mut weights = RagdollBodyWeights::new(vec![authored]);
 
+        // Initialization pads missing bodies with defaults and keeps the authored entry.
         weights.initialize_profile_bodies(3);
 
         assert_eq!(
@@ -823,6 +831,7 @@ mod tests {
         );
         assert_eq!(weights.base(0), authored);
         assert_eq!(weights.base(1), BodyWeights::default());
+        // A later edit to body 2 must survive a shorter re-initialization.
         let third_index = BodyIndex::try_from(2).expect("the third body index is valid");
         let extra = BodyWeights::new(0.75, 0.5);
         weights.set(third_index, extra);
@@ -835,11 +844,13 @@ mod tests {
     /// Creates required control state before binding can spawn physics bodies.
     #[test]
     fn ragdoll_requires_weights_and_hit_history_at_spawn() {
+        // Spawning only a Ragdoll must pull in its required components.
         let mut world = World::new();
         let character = world
             .spawn(Ragdoll::new(Handle::<RagdollProfile>::default()))
             .id();
 
+        // Weights exist and the hit history starts empty.
         assert!(world.get::<RagdollBodyWeights>(character).is_some());
         assert_eq!(
             world
@@ -851,11 +862,13 @@ mod tests {
 
     #[test]
     fn body_relationship_target_reports_empty_and_populated_states() {
+        // An empty relationship reports no bodies.
         let empty = RagdollBodies::default();
-        assert_eq!(empty.len(), 0);
+        assert!(empty.is_empty());
         assert_eq!(empty.len(), 0);
         assert_eq!(empty.iter().count(), 0);
 
+        // One related body is reported through every accessor.
         let populated = RagdollBodies(vec![Entity::PLACEHOLDER]);
         assert!(!populated.is_empty());
         assert_eq!(populated.len(), 1);
