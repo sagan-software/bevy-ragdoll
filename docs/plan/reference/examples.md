@@ -1,14 +1,13 @@
 # Examples
 
-Every example lives in `examples/` (crate `bevy_ragdoll_examples`) with
-Bevy's metadata block:
+Every example is one self-contained file in `examples/`, registered on the
+root `bevy_ragdoll` crate with Bevy's metadata block:
 
 ```toml
 [[example]]
 name = "hit_reactions"
-path = "hit_reactions.rs"
 doc-scrape-examples = true
-required-features = ["rapier3d"]
+required-features = ["gltf"]
 
 [package.metadata.example.hit_reactions]
 name = "Hit Reactions"
@@ -17,15 +16,10 @@ category = "Active"
 wasm = true
 ```
 
-Shared helpers in `examples/src/lib.rs`: `ExampleBackend` (adds the
-backend chosen by `--backend` or the only one compiled in), an orbit
-camera, a ground plane, a light, the diagnostics overlay, `--headless`,
-`--screenshot <path>` and `--exit-after <seconds>`. Every example accepts
-`--exit-after` so CI and agents can run it unattended.
-
-Check for each example: run it with `--screenshot` and `--exit-after`,
-view the image at full resolution, and record visible defects in the
-commit body. The "Check" line names the behaviour to see.
+Examples share no helper crate or module. Each file sets up its own app,
+backend, scene, and skeleton so it reads as a complete program, like
+Bevy's examples. When an example needs a large helper, simplify the
+library API instead. The "Check" line names the behaviour to see.
 
 ## Basics (phase 4 to 7)
 

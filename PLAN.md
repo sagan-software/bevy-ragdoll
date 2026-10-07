@@ -21,6 +21,14 @@
 
 ## Notes
 
+- Repository layout change (2026-10-07): `bevy_ragdoll` is now the root
+  crate. `crates/bevy_ragdoll/{src,tests}` moved to `src/` and `tests/`;
+  `src/skein.rs` and `src/profile/geometry.rs` became `mod.rs` files. The
+  `bevy_ragdoll_examples` and `bevy_ragdoll_benches` crates were removed:
+  examples are standalone files run with `cargo run --example NAME`, and
+  benches run with `cargo bench --bench bench_main`. Commands recorded
+  below ran against the old layout and are kept as written.
+
 - Phase 1 Cargo gates used `CARGO_HOME=/var/mnt/nixsd/Caches/cargo`,
   `CARGO_TARGET_DIR=/var/mnt/nixsd/Build/bevy-ragdoll`, and
   `CARGO_BUILD_JOBS=4`.

@@ -10,25 +10,23 @@ Units: metres, kilograms, seconds, radians. World space is Bevy's (Y up).
 
 ```
 bevy-ragdoll/
-  Cargo.toml                    workspace, [workspace.package], [workspace.dependencies], lints
+  Cargo.toml                    root crate `bevy_ragdoll` plus [workspace], [workspace.package], [workspace.dependencies], lints
+  src/                          core: profiles, binding, drives, writeback, hits, budget
+  tests/                        core integration tests
   flake.nix, flake.lock         dev shell (rust, bevy system libs, wasm tools)
   PLAN.md                       progress table copied from this plan's phase list
   README.md, CHANGELOG.md, LICENSE-MIT, LICENSE-APACHE
   crates/
-    bevy_ragdoll/               core: profiles, binding, drives, writeback, hits, budget
     bevy_ragdoll_conformance/   mock backend + contract and physics test suites
     bevy_ragdoll_rapier3d/      backend on bevy_rapier3d 0.36
     bevy_ragdoll_avian3d/       backend on avian3d 0.7 (phase 12)
     bevy_ragdoll_balance/       measuring, pelvis pin, stepping, puppet state machine
     bevy_ragdoll_rapier2d/      phase 14
     bevy_ragdoll_avian2d/       phase 14
-  examples/                     a separate crate `bevy_ragdoll_examples` (publish = false)
-    Cargo.toml                  one [[example]] per file, Bevy's metadata convention
-    src/lib.rs                  shared example helpers: backend selection, camera, ground, HUD
-    *.rs
-  benches/                      a separate crate `bevy_ragdoll_benches` (publish = false), criterion
+  examples/*.rs                 self-contained examples of the root crate, registered in the root Cargo.toml
+  benches/bench_main.rs         Criterion entry point (`[[bench]] bench_main`, harness = false)
+  benches/benchmarks/           one module per benchmark group plus `support.rs` fixtures
   assets/                       example assets and CREDITS.md
-  tests/                        none at the root; each crate keeps its own tests/
 ```
 
 Every crate inherits `version`, `edition = "2024"`, `rust-version`,

@@ -125,8 +125,9 @@ body.
 
 ## Criterion benchmarks
 
-Crate `benches/` (`bevy_ragdoll_benches`, publish = false), criterion 0.8
-with `html_reports`, one `[[bench]]` per area, `harness = false`, names
+Criterion 0.8 benches on the root crate in Criterion's own layout:
+`benches/bench_main.rs` registers one `[[bench]] bench_main`,
+`harness = false`, and runs one group per module in `benches/benchmarks/`, names
 built with a `bench!` macro like Bevy's (`module_path!()` + name). Seeded
 inputs only.
 
@@ -146,8 +147,8 @@ inputs only.
 Commands:
 
 ```
-cargo bench -p bevy_ragdoll_benches -- --save-baseline main
-cargo bench -p bevy_ragdoll_benches -- --baseline main
+cargo bench --bench bench_main -- --save-baseline main
+cargo bench --bench bench_main -- --baseline main
 ```
 
 Commit nothing from `target/criterion`; record notable numbers in commit

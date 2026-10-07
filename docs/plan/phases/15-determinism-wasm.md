@@ -40,7 +40,7 @@ A1 and B1 (determinism and wasm features), Bevy's `examples/wasm/` and
    flake). Disable `parallel` features for wasm.
 2. `argh::from_env()` panics on wasm: use `Args::from_args(&[], &[])` on
    wasm as Bevy's `many_foxes` does.
-3. Add an `xtask`-free build: a `cargo run -p bevy_ragdoll_examples --bin build_site`
+3. Add an `xtask`-free build: a `cargo run --example build_site`
    binary that builds the listed examples and writes `site/` with an
    `index.html` per example and a gallery page. Rust only; no shell or
    Node scripts.

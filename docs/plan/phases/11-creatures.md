@@ -23,7 +23,7 @@ section 9, [../reference/assets.md](../reference/assets.md) section 2.
      biped) and note that it is a biped.
    Inspect each file's bones and clips and add them to
    `reference`-style notes in `assets/creatures/README.md`.
-2. Write failing tests in `crates/bevy_ragdoll/tests/auto.rs`.
+2. Write failing tests in `tests/auto.rs`.
 3. `SkeletonView` from a spawned glTF scene (bones by `ChildOf`, rest
    transforms from the skin's inverse bind matrices, `SkinSample` from the
    skinned mesh's positions, joint indices and weights) and from
