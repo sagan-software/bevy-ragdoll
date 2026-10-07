@@ -112,40 +112,48 @@ Deviations from the steps above:
   0.7 panics ("Neither body ... is in an island") when a joint links two
   static bodies, because static bodies have no island. The adapter keeps a
   frozen body's `BodyPhysicsPose` and clears its velocity on readback.
-- `solver_iterations` maps to `SubstepCount`. `pgs_iterations`,
-  `max_substeps` and `threads` have no Avian equivalent.
+- `AvianRagdollSettings::substep_count` (default 20) sets `SubstepCount`.
+  `solver_iterations`, `pgs_iterations`, `max_substeps` and `threads` have
+  no Avian equivalent.
+- Swept CCD is off by default (`AvianRagdollSettings::use_swept_ccd`).
+  Avian moves each swept body back to its own time of impact after the
+  solve, which separated joints by up to 17 cm on landing. Speculative
+  contacts (`SpeculativeMargin` from `soft_ccd_prediction`) stay on.
 - Avian creates its collider-tree diagnostics in `Plugin::finish`. Apps that
   call `App::run` get it; the conformance harness calls `App::update` only,
   so `tests/conformance.rs` calls `app.finish()` and `app.cleanup()`.
 - `motors_hold_a_target_pose` is not run, because the adapter has no native
   motors.
 
-Physics-tier cases that fail, with their measured values (all are
+Second pass (after the generated-humanoid core). A per-step trace of the
+drop showed joint gaps under 2 mm in free fall, so the joint frames and
+anchors are correct; the gaps appeared only on landing frames. Swept CCD
+caused them: with it off, the worst drop gap fell from 3.0 cm to 0.9 cm and
+the throw gap from 16.9 cm to 1.8 cm. Raising substeps from 8 to 20 made
+`torque_drive_holds_a_target_pose` (knee reached -27.5 deg of -60 deg at 8)
+and `bullet_moves_downed_body_a_little` pass. Mass and inertia come from
+`Mass` and `AngularInertia` on the body; the impulse-momentum cases confirm
+the mass. Stiffer `SolverConfig` contacts (damping 20, frequency factor 4,
+overlap speed 10) did not reduce floor sink and broke the knee target, so the
+defaults stay.
+
+Physics-tier cases that still fail, with measured values at 20 substeps (all
 `#[ignore]`d in `tests/conformance.rs`; none crashes or produces NaN):
 
-- `dropped_ragdoll_lands_and_settles`: sinks 2.9 cm (bound 1 cm); limit
-  overshoot 100 deg, 47 deg at rest (bounds 5 and 2 deg); joint gap 7.5 cm
-  at `upperarm_l` (bound 1 cm).
-- `hard_throw_keeps_joints_together`: sinks 5.4 cm (bound 2.5 cm); overshoot
-  68 deg (bound 20 deg); gap 7.8 cm at `calf_l` (bound 3 cm).
-- `same_input_gives_the_same_output`: the shared drop sinks 2.4 cm before
+- `dropped_ragdoll_lands_and_settles`: sinks 1.7 cm (bound 1 cm).
+- `hard_throw_keeps_joints_together`: sinks 4.2 cm (bound 2.5 cm).
+- `same_input_gives_the_same_output`: the shared drop sinks 1.3 cm before
   repeatability is compared.
-- `torque_drive_holds_a_target_pose`: `calf_l` ends at -89 deg.
-- `pinned_pelvis_stands_for_ten_seconds`: pelvis drifts 12.2 cm.
-- `headshot_drops_body_like_the_references`: `hand_l` goes 60 deg past its
-  X limit at 0.57 s.
-- `chest_hit_buckles_knees_and_stops`: pelvis rises 7.4 cm after landing.
-- `running_death_stops_within_a_body_length`,
-  `body_shot_onto_stairs_stays_on_them`: the body never rests.
-- `bullet_moves_downed_body_a_little`: a head hit moves the body 5.7 cm.
-- `pistol_to_the_chest_does_not_move_the_pelvis_far`: pelvis moves 54 cm.
+- `pinned_pelvis_stands_for_ten_seconds`: pelvis drifts 10.9 cm.
+- `headshot_drops_body_like_the_references`: `upperarm_r` goes 58 deg past
+  its X limit at 0.42 s, inside the symmetric swing cone.
+- `chest_hit_buckles_knees_and_stops`, `running_death_stops_within_a_body_length`,
+  `body_shot_onto_stairs_stays_on_them`: the body does not come to rest.
+- `pistol_to_the_chest_does_not_move_the_pelvis_far`: pelvis moves 48 cm.
 
-Step 10 tuning tried `SubstepCount` 8, 12 and 30 and `SolverConfig`
-(`contact_damping_ratio` 20, `contact_frequency_factor` 2.5,
-`max_overlap_solve_speed` 10). More substeps made the drop worse (30
-substeps: 4.6 cm sink, 11.8 cm gap, energy rising after contact in the
-throw). The joint gaps and limit overshoot point at the joint solve or the
-fallback torque, which still needs investigation.
+Floor sink is the remaining contact problem; the limit overshoot and the
+pinned and pistol cases follow from the symmetric swing cone plus the weak
+core soft-limit torque.
 
 Not done: balance tests against Avian, the `step_avian3d` bench (the bench
 fixtures in `benches/benchmarks/support.rs` build Rapier apps only), the
