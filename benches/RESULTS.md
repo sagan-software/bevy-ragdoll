@@ -41,6 +41,9 @@ RUSTFLAGS="-C link-arg=-fuse-ld=lld" \
   cargo bench -p bevy_ragdoll_benches -- --save-baseline phase6
 ```
 
+The benches now live on the root crate; the equivalent command is
+`cargo bench --bench bench_main -- --save-baseline phase6`.
+
 The Nix shell selects mold by default. The Criterion link failed with mold
 because `alloca.o` is LLVM bitcode and mold's selected GCC plugin did not
 claim it. The command passed when it selected LLD through `RUSTFLAGS` without

@@ -3,9 +3,9 @@
 use std::hint::black_box;
 
 use bevy_ragdoll::RagdollProfile;
-use criterion::{BatchSize, Criterion, criterion_group, criterion_main};
+use criterion::{BatchSize, Criterion, criterion_group};
 
-use bevy_ragdoll_benches::support::{BENCH_SEED, chain_spec, human_profile};
+use super::support::{BENCH_SEED, chain_spec, human_profile};
 
 /// Measures human and chain profile construction plus the human RON parser.
 fn profile_benchmarks(criterion: &mut Criterion) {
@@ -42,4 +42,3 @@ fn profile_benchmarks(criterion: &mut Criterion) {
 }
 
 criterion_group!(benches, profile_benchmarks);
-criterion_main!(benches);

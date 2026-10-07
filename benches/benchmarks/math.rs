@@ -13,13 +13,11 @@ use bevy_ragdoll::runtime::drive::{
 };
 use bevy_ragdoll::runtime::messages::{HitKind, RagdollHit};
 use bevy_ragdoll::runtime::settings::RagdollPhysicsSettings;
-use criterion::{Criterion, criterion_group, criterion_main};
+use criterion::{Criterion, criterion_group};
 use rand_chacha::ChaCha8Rng;
-use rand_core::{RngCore, SeedableRng};
+use rand_core::{Rng, SeedableRng};
 
-use bevy_ragdoll_benches::support::{
-    BENCH_SEED, PopulationMode, chain_profile, core_app, human_profile,
-};
+use super::support::{BENCH_SEED, PopulationMode, chain_profile, core_app, human_profile};
 
 /// Measures deterministic loops of joint-angle, motor, torque, and pin math.
 fn math_benchmarks(criterion: &mut Criterion) {
@@ -158,4 +156,3 @@ fn next_angle(random: &mut ChaCha8Rng) -> f32 {
 }
 
 criterion_group!(benches, math_benchmarks);
-criterion_main!(benches);

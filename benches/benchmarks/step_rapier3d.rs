@@ -3,9 +3,9 @@
 use std::hint::black_box;
 use std::time::Duration;
 
-use criterion::{BatchSize, Criterion, criterion_group, criterion_main};
+use criterion::{BatchSize, Criterion, criterion_group};
 
-use bevy_ragdoll_benches::support::{BENCH_SEED, PopulationMode, human_profile, rapier_app};
+use super::support::{BENCH_SEED, PopulationMode, human_profile, rapier_app};
 
 /// Measures 60 fixed steps for limp, powered, and asleep TGF populations.
 fn rapier_step_benchmarks(criterion: &mut Criterion) {
@@ -55,4 +55,3 @@ fn rapier_step_benchmarks(criterion: &mut Criterion) {
 }
 
 criterion_group!(benches, rapier_step_benchmarks);
-criterion_main!(benches);

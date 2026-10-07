@@ -5,7 +5,7 @@ use bevy::asset::AssetPlugin;
 use bevy::prelude::MinimalPlugins;
 use bevy::transform::TransformPlugin;
 use bevy_ragdoll::RagdollPlugin;
-use criterion::{Criterion, criterion_group, criterion_main};
+use criterion::{Criterion, criterion_group};
 use std::hint::black_box;
 
 /// Measures app construction with [`RagdollPlugin`].
@@ -22,4 +22,3 @@ fn plugin_build_time(criterion: &mut Criterion) {
 }
 
 criterion_group!(benches, plugin_build_time);
-criterion_main!(benches);

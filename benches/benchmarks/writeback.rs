@@ -2,9 +2,9 @@
 
 use std::hint::black_box;
 
-use criterion::{BatchSize, Criterion, criterion_group, criterion_main};
+use criterion::{BatchSize, Criterion, criterion_group};
 
-use bevy_ragdoll_benches::support::{BENCH_SEED, PopulationMode, core_app, human_profile};
+use super::support::{BENCH_SEED, PopulationMode, core_app, human_profile};
 
 /// Measures one core app update with writeback for each population size.
 fn writeback_benchmarks(criterion: &mut Criterion) {
@@ -33,4 +33,3 @@ fn writeback_benchmarks(criterion: &mut Criterion) {
 }
 
 criterion_group!(benches, writeback_benchmarks);
-criterion_main!(benches);

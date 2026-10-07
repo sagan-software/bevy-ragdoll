@@ -18,8 +18,8 @@ scenarios that need later phases and writes a JSON array under
 `$CARGO_TARGET_DIR/stress/`.
 
 ```sh
-cargo run -p bevy_ragdoll_examples --example ragdoll_stress \
-  --profile stress-test --features rapier3d -- --headless --sweep default
+cargo run --example ragdoll_stress \
+  --profile stress-test -- --headless --sweep default
 ```
 
 Run one scenario with a JSON report by adding `--scenario`, its grid or count,
@@ -31,9 +31,8 @@ Compare one run with an existing report array by selecting the same backend,
 scenario, grid, seed, and runtime options used by that report:
 
 ```sh
-cargo run -p bevy_ragdoll_examples --example ragdoll_stress \
-  --profile stress-test \
-  --features rapier3d -- --headless --scenario grid --grid 16x16 \
+cargo run --example ragdoll_stress \
+  --profile stress-test -- --headless --scenario grid --grid 16x16 \
   --compare benches/baselines/HOSTNAME.json
 ```
 
@@ -42,15 +41,15 @@ invalid timing values, missing matching configurations, and unstable bodies.
 
 ## Criterion
 
-Run the seeded profile, math, capture, writeback, plugin-build, and Rapier-step
-targets. The capture and writeback cases construct their app outside the timed
+`benches/bench_main.rs` runs the seeded profile, math, capture, writeback,
+plugin-build, and Rapier-step groups from `benches/benchmarks/`. The capture and writeback cases construct their app outside the timed
 iteration, bind the human skeleton, then time one Bevy update. Writeback starts
 with distinct seeded previous and current physics poses. Rapier cases time 60
 fixed steps for limp, powered, and asleep populations.
 
 ```sh
 RUSTFLAGS="-C link-arg=-fuse-ld=lld" \
-  cargo bench -p bevy_ragdoll_benches -- --save-baseline phase6
+  cargo bench --bench bench_main -- --save-baseline phase6
 ```
 
 The Nix shell selects `mold` by default. It cannot link Criterion's `alloca`
@@ -73,8 +72,7 @@ Build the native stress example with the optimized profile before profiling.
 `samply` records CPU samples, and `perf` records Linux call stacks:
 
 ```sh
-cargo build -p bevy_ragdoll_examples --example ragdoll_stress \
-  --profile stress-test --features rapier3d
+cargo build --example ragdoll_stress --profile stress-test
 samply record "$CARGO_TARGET_DIR/stress-test/examples/ragdoll_stress" \
   --headless --scenario grid --grid 16x16 --duration 10
 perf record --call-graph dwarf -- \
@@ -82,12 +80,5 @@ perf record --call-graph dwarf -- \
   --headless --scenario grid --grid 16x16 --duration 10
 ```
 
-Use the `tracy` feature for Bevy's Tracy tracing integration. It also enables
-the visible runner because Bevy installs the Tracy tracing plugin through its
-default plugin group:
-
-```sh
-cargo run -p bevy_ragdoll_examples --example ragdoll_stress \
-  --profile stress-test --features rapier3d,tracy -- \
-  --scenario grid --grid 16x16 --duration 10
-```
+For Tracy, add Bevy's `trace_tracy` feature to the `bevy` dev-dependency
+locally; the stress example has no Tracy feature of its own.
