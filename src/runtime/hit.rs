@@ -1187,9 +1187,10 @@ mod tests {
     /// Returns every buffered impulse through a fresh cursor, so the result does
     /// not depend on which of the two update buffers holds the messages.
     fn published_impulses(world: &World) -> Vec<RagdollImpulse> {
-        let Some(messages) = world.get_resource::<bevy::ecs::message::Messages<RagdollImpulse>>() else {
-        return Vec::new();
-    };
+        let Some(messages) = world.get_resource::<bevy::ecs::message::Messages<RagdollImpulse>>()
+        else {
+            return Vec::new();
+        };
         messages.get_cursor().read(messages).copied().collect()
     }
 }

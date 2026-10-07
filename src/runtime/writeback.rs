@@ -286,8 +286,8 @@ mod tests {
     #[test]
     fn writeback_requires_fixed_time() {
         let mut world = World::new();
-// A world without Time<Fixed> has no overstep to interpolate with, so writeback returns early.
 
+        // A world without Time<Fixed> has no overstep to interpolate, so writeback returns early.
         writeback(&mut world);
     }
 
