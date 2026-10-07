@@ -348,6 +348,10 @@
 
 ## Phase 6 evidence
 
+The `--sweep`, `--compare`, and `shooting` stress options below were removed
+when `ragdoll_stress` became a single-file example. The commands are a record
+of what ran; `benches/README.md` describes the current options.
+
 - The default stress sweep passed with the planned Rapier grid, pile, and
   powered configurations:
 
@@ -489,8 +493,7 @@
       --report /var/mnt/nixsd/Build/bevy-ragdoll/stress/phase7-shooting-final-smoke.json
   ```
 
-  Rerun it and the default sweep command below against the final source
-  revision:
+  The sweep command below no longer exists; it is kept as a record:
 
   ```sh
   nix develop --command env \

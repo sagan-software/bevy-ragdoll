@@ -10,34 +10,21 @@ export CARGO_BUILD_JOBS=4
 nix develop
 ```
 
-## Stress sweep
+## Stress runs
 
-The default sweep runs Rapier grids of 8×8, 16×16, 24×24, and 32×32, piles of
-32, 64, and 128 characters, and a powered 16×16 grid. It prints skipped
-scenarios that need later phases and writes a JSON array under
-`$CARGO_TARGET_DIR/stress/`.
-
-```sh
-cargo run --example ragdoll_stress \
-  --profile stress-test -- --headless --sweep default
-```
-
-Run one scenario with a JSON report by adding `--scenario`, its grid or count,
-and `--report path.json`. A sweep can read ordered RON rows with
-`--sweep path.ron`; each row selects a scenario and can override the backend,
-grid, or count.
-
-Compare one run with an existing report array by selecting the same backend,
-scenario, grid, seed, and runtime options used by that report:
+`ragdoll_stress` drops ragdolls in a `grid` or a `pile` and reports frame and
+fixed-step p50, p95, and maximum times, the body count, and unstable bodies.
+Each frame advances one 60 Hz step, so runs are repeatable.
 
 ```sh
-cargo run --example ragdoll_stress \
-  --profile stress-test -- --headless --scenario grid --grid 16x16 \
-  --compare benches/baselines/HOSTNAME.json
+cargo run --example ragdoll_stress --profile stress-test -- \
+  --headless --scenario grid --count 256 --duration 10 --report grid-256.json
 ```
 
-The comparison rejects p95 frame or physics-step regressions above 10 percent,
-invalid timing values, missing matching configurations, and unstable bodies.
+Run with `--help` for every option. To compare two runs, compare the
+`metrics.frame_ms.p95` and `metrics.step_ms.p95` fields of their reports.
+`benches/baselines/` holds the older sweep format, which the example no longer
+writes.
 
 ## Criterion
 
