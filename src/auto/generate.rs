@@ -25,13 +25,15 @@ const MERGE_NAMES: &[&str] = &["twist", "end", "roll", "helper", "corrective"];
 
 /// Generates unvalidated profile data for `skeleton`.
 pub(super) fn generate(skeleton: &Skeleton) -> ProfileSpec {
+    // Select body bones first; a skeleton without any yields an empty spec.
     let rig = Rig::new(skeleton);
     let bodies = rig.select_bodies();
     if bodies.is_empty() {
         return ProfileSpec::default();
     }
+    // Roles drive capsule tips, mass shares and joint templates, so they come first.
     let tree = BodyTree::new(&rig, bodies);
-    let humanoid = rig.humanoid_slots().is_some();
+    let is_humanoid = rig.humanoid_slots().is_some();
     let roles = rig.roles(&tree);
     let segments = (0..tree.bones.len())
         .map(|body| rig.segment(&tree, &roles, body))
@@ -43,10 +45,12 @@ pub(super) fn generate(skeleton: &Skeleton) -> ProfileSpec {
         .zip(&segments)
         .map(|((bone, role), segment)| rig.body_spec(*bone, *role, segment))
         .collect::<Vec<_>>();
-    if humanoid {
+    // Humanoids use the segment-mass table; other rigs keep volume-derived masses.
+    if is_humanoid {
         rig.distribute_humanoid_mass(&tree, &roles, &mut body_specs);
     }
     rig.normalize_mass(&tree, &mut body_specs);
+    // Joint torques scale with the final total mass.
     let total = body_specs.iter().map(|body| body.mass).sum::<f32>();
     let joints = (1..tree.bones.len())
         .map(|child| rig.joint_spec(&tree, &roles, &segments, child, total))
@@ -128,6 +132,7 @@ struct BodyTree {
 impl<'a> Rig<'a> {
     /// Computes parents, children, eligibility and skeleton size.
     fn new(skeleton: &'a Skeleton) -> Self {
+        // Out-of-order parents would break the parent-first passes, so they become roots.
         let count = skeleton.bones.len();
         let parents = skeleton
             .bones
@@ -136,11 +141,11 @@ impl<'a> Rig<'a> {
             .map(|(index, bone)| bone.parent.filter(|parent| *parent < index))
             .collect::<Vec<_>>();
         let mut children = vec![Vec::new(); count];
-        for (index, parent) in parents.iter().enumerate() {
-            if let Some(parent) = parent {
-                children[*parent].push(index);
-            }
-        }
+        parents
+            .iter()
+            .enumerate()
+            .filter_map(|(index, parent)| parent.map(|parent| (index, parent)))
+            .for_each(|(index, parent)| children[parent].push(index));
         // `Skip` removes a whole subtree; helper names only remove the bone itself.
         let mut skipped = vec![false; count];
         let mut eligible = vec![false; count];
@@ -152,6 +157,7 @@ impl<'a> Rig<'a> {
                 bone.overrides.body == BoneBody::Body || !has_fragment(&bone.name, HELPER_NAMES);
             eligible[index] = !skipped[index] && named[index];
         }
+        // Measure size only over eligible bones so helper and prop bones do not inflate it.
         let heads = skeleton
             .bones
             .iter()
@@ -164,6 +170,7 @@ impl<'a> Rig<'a> {
             .fold((Vec3::MAX, Vec3::MIN), |(min, max), (head, _)| {
                 (min.min(*head), max.max(*head))
             });
+        // A degenerate skeleton falls back to a 1 m size so tip and radius estimates stay positive.
         let extent = (max - min).max(Vec3::ZERO);
         let size = if extent.max_element() > 1.0e-3 {
             extent.max_element()
@@ -185,6 +192,7 @@ impl<'a> Rig<'a> {
 
     /// Returns the nearest eligible ancestor of `bone`.
     fn eligible_parent(&self, bone: usize) -> Option<usize> {
+        // Walk up past ineligible helper bones until one may carry geometry.
         let mut current = self.parents[bone];
         while let Some(parent) = current {
             if self.eligible[parent] {
@@ -192,6 +200,7 @@ impl<'a> Rig<'a> {
             }
             current = self.parents[parent];
         }
+        // Reaching the root without a match means the bone starts its own tree.
         None
     }
 
@@ -203,6 +212,7 @@ impl<'a> Rig<'a> {
             .iter()
             .map(|bone| bone.name.as_str())
             .collect::<Vec<_>>();
+        // A `Body` override always wins over the preset and the length test.
         let forced = |bone: usize| self.skeleton.bones[bone].overrides.body == BoneBody::Body;
         let bones = Bones {
             names: &names,
@@ -226,7 +236,7 @@ impl<'a> Rig<'a> {
         loop {
             let selected = (0..names.len())
                 .filter(|bone| self.eligible[*bone])
-                .filter(|bone| forced(*bone) || self.keeps(*bone, min_length))
+                .filter(|bone| forced(*bone) || self.is_long_enough(*bone, min_length))
                 .collect::<Vec<_>>();
             if selected.len() <= MAX_BODIES {
                 return selected;
@@ -236,13 +246,15 @@ impl<'a> Rig<'a> {
     }
 
     /// Returns whether an automatic bone is long enough to carry a body.
-    fn keeps(&self, bone: usize, min_length: f32) -> bool {
+    fn is_long_enough(&self, bone: usize, min_length: f32) -> bool {
+        // Merge overrides and merge-style names never carry a body.
         let overrides = &self.skeleton.bones[bone].overrides;
         if overrides.body == BoneBody::Merge
             || has_fragment(&self.skeleton.bones[bone].name, MERGE_NAMES)
         {
             return false;
         }
+        // A root has no parent link to compare against, so it always keeps its body.
         let Some(parent) = self.eligible_parent(bone) else {
             return true;
         };
@@ -272,6 +284,7 @@ impl<'a> Rig<'a> {
             parents: &self.parents,
             eligible: &self.named,
         };
+        // Humanoid slots name every body; other rigs fall back to tree shape.
         let mut roles = humanoid::detect(&bones).map_or_else(
             || self.topology_roles(tree),
             |slots| {
@@ -286,11 +299,12 @@ impl<'a> Rig<'a> {
                     .collect()
             },
         );
-        for (role, bone) in roles.iter_mut().zip(&tree.bones) {
-            if let Some(explicit) = self.skeleton.bones[*bone].overrides.role {
-                *role = explicit;
-            }
-        }
+        // Explicit role overrides replace whatever either path chose.
+        roles
+            .iter_mut()
+            .zip(&tree.bones)
+            .filter_map(|(role, bone)| Some(role).zip(self.skeleton.bones[*bone].overrides.role))
+            .for_each(|(role, explicit)| *role = explicit);
         roles
     }
 
@@ -301,9 +315,11 @@ impl<'a> Rig<'a> {
     /// they reach the ground, a tail when they point against the spine, the
     /// head when they continue the spine, and reach limbs otherwise.
     fn topology_roles(&self, tree: &BodyTree) -> Vec<BodyRole> {
+        // The root body is always the core of a generic rig.
         let count = tree.bones.len();
         let mut roles = vec![BodyRole::Other; count];
         roles[0] = BodyRole::Pelvis;
+        // Subtree sizes accumulate child-first, which reverse parent-first order gives.
         let mut sizes = vec![1_usize; count];
         for body in (1..count).rev() {
             if let Some(parent) = tree.parents[body] {
@@ -333,6 +349,7 @@ impl<'a> Rig<'a> {
             spine.push(next);
             current = next;
         }
+        // The last spine body is the chest only when limbs or a head branch from it.
         for body in &spine {
             roles[*body] = BodyRole::Spine;
         }
@@ -340,18 +357,21 @@ impl<'a> Rig<'a> {
         if spine_end != 0 && !tree.children[spine_end].is_empty() {
             roles[spine_end] = BodyRole::Chest;
         }
+        // The spine direction separates tails from heads and reach limbs.
         let spine_dir = (self.heads[tree.bones[spine_end]] - self.heads[tree.bones[0]])
             .try_normalize()
             .unwrap_or(Vec3::Y);
         // Collect chains that start at the core or a spine body.
         let mut chains = Vec::new();
         for base in std::iter::once(0).chain(spine.iter().copied()) {
-            for start in &tree.children[base] {
-                if !spine.contains(start) {
-                    chains.push((base, *start));
-                }
-            }
+            chains.extend(
+                tree.children[base]
+                    .iter()
+                    .filter(|start| !spine.contains(start))
+                    .map(|start| (base, *start)),
+            );
         }
+        // Classify each chain by its lowest point and its tip direction.
         let mut head_choice: Option<(f32, usize)> = None;
         let mut kinds = Vec::with_capacity(chains.len());
         for (index, (base, start)) in chains.iter().enumerate() {
@@ -368,11 +388,13 @@ impl<'a> Rig<'a> {
             let direction = (self.heads[tree.bones[tip]] - self.heads[tree.bones[*base]])
                 .try_normalize()
                 .unwrap_or(Vec3::NEG_Y);
+            // Ground contact wins over direction, so legs under a tail stay legs.
             let kind = if lowest <= self.ground + 0.15 * self.height {
                 ChainKind::Support
             } else if direction.dot(-spine_dir) > 0.5 {
                 ChainKind::Tail
             } else {
+                // The reach chain best aligned with the spine end becomes the head.
                 let alignment = direction.dot(spine_dir);
                 if *base == spine_end
                     && alignment > 0.3
@@ -387,6 +409,7 @@ impl<'a> Rig<'a> {
         if let Some((_, index)) = head_choice {
             kinds[index] = ChainKind::Head;
         }
+        // Each chain kind maps depth along the chain to a proximal-to-distal role.
         for ((_, start), kind) in chains.iter().zip(kinds) {
             let members = tree.subtree(*start);
             let last = members.iter().map(|(_, depth)| *depth).max().unwrap_or(0);
@@ -399,6 +422,7 @@ impl<'a> Rig<'a> {
 
     /// Computes a body's capsule segment in skeleton space.
     fn segment(&self, tree: &BodyTree, roles: &[BodyRole], body: usize) -> Segment {
+        // The incoming link direction picks the main child and estimates leaf tips.
         let bone = tree.bones[body];
         let start = self.heads[bone];
         let incoming = tree.parents[body].map(|parent| start - self.heads[tree.bones[parent]]);
@@ -460,6 +484,7 @@ impl<'a> Rig<'a> {
 
     /// Builds a body's spec: a capsule inside its segment and its volume mass.
     fn body_spec(&self, bone: usize, role: BodyRole, segment: &Segment) -> BodySpec {
+        // An override radius still respects the minimum so tiny rigs keep valid capsules.
         let source = &self.skeleton.bones[bone];
         let length = segment.start.distance(segment.end);
         let radius = source
@@ -467,8 +492,10 @@ impl<'a> Rig<'a> {
             .radius
             .unwrap_or_else(|| default_radius(role, length, self.size))
             .max(0.005 * self.size);
+        // Capsule volume is a cylinder plus one full sphere.
         let (a, b) = (segment.start, segment.end);
         let volume = PI * radius * radius * (length + 4.0 / 3.0 * radius);
+        // Profiles store shapes in the bone frame, so convert from skeleton space.
         let local = source.rest.inverse();
         BodySpec {
             bone: source.name.clone(),
@@ -513,15 +540,17 @@ impl<'a> Rig<'a> {
                 .mass
                 .is_some()
         };
+        // Only automatic masses share the volume-derived total.
         let free = (0..bodies.len()).filter(|body| !explicit(*body));
         let (volume, share) = free.fold((0.0, 0.0), |(volume, share), body| {
             (volume + bodies[body].mass, share + mass_share(roles[body]))
         });
-        for (body, spec) in bodies.iter_mut().enumerate() {
-            if !explicit(body) {
-                spec.mass = volume * mass_share(roles[body]) / share;
-            }
-        }
+        // Each automatic body gets its table share of that total.
+        bodies
+            .iter_mut()
+            .enumerate()
+            .filter(|(body, _)| !explicit(*body))
+            .for_each(|(body, spec)| spec.mass = volume * mass_share(roles[body]) / share);
     }
 
     /// Scales automatic masses so the total equals the requested mass.
@@ -529,12 +558,14 @@ impl<'a> Rig<'a> {
         let Some(total) = self.skeleton.mass else {
             return;
         };
+        // Explicit masses are fixed; only automatic masses absorb the difference.
         let explicit = |body: usize| self.skeleton.bones[tree.bones[body]].overrides.mass;
         let fixed = (0..bodies.len()).filter_map(explicit).sum::<f32>();
         let free = (0..bodies.len())
             .filter(|body| explicit(*body).is_none())
             .map(|body| bodies[body].mass)
             .sum::<f32>();
+        // Keep the masses when overrides already exceed the total or no mass is free.
         let scale = (total.kilograms() - fixed) / free;
         if !(scale.is_finite() && scale > 0.0) {
             return;
@@ -555,11 +586,13 @@ impl<'a> Rig<'a> {
         child: usize,
         total_mass: f32,
     ) -> JointSpec {
+        // The joint frame is the child rest pose in the parent bone frame.
         let parent = tree.parents[child].unwrap_or(0);
         let source = &self.skeleton.bones[tree.bones[child]];
         let parent_rest = self.skeleton.bones[tree.bones[parent]].rest;
         let role = roles[child];
         let template = Template::of(role);
+        // The basis puts the twist axis on the bone, whatever the rig's bone axis.
         let along = segments[child].direction();
         let basis = twist_basis(source.rest.rotation.inverse() * along);
         let limit_axes = source.rest.rotation * basis;
@@ -601,10 +634,11 @@ impl<'a> Rig<'a> {
     /// flexes toward the role's default direction: knees backward (-Z), feet
     /// upward, hands downward and everything else forward (+Z, the glTF front).
     fn flex_axis(role: BodyRole, parent: &Segment, child: &Segment) -> Vec3 {
+        // A visibly bent elbow or knee already shows its flex direction.
         let along = child.direction();
-        let hinge = matches!(role, BodyRole::LowerArm | BodyRole::Calf);
+        let is_hinge = matches!(role, BodyRole::LowerArm | BodyRole::Calf);
         let bent = parent.direction().cross(along);
-        if hinge && bent.length() > 0.25 {
+        if is_hinge && bent.length() > 0.25 {
             return bent.normalize();
         }
         let toward = match role {
@@ -613,6 +647,7 @@ impl<'a> Rig<'a> {
             BodyRole::Hand => Vec3::NEG_Y,
             _ => Vec3::Z,
         };
+        // Fall back to other axes when the bone is parallel to the preferred one.
         [toward, Vec3::Y, Vec3::Z]
             .into_iter()
             .find_map(|toward| along.cross(toward).try_normalize())
@@ -707,13 +742,14 @@ enum ChainKind {
 impl ChainKind {
     /// Role of the body at `depth` in a chain whose deepest body is at `last`.
     const fn role(self, depth: usize, last: usize) -> BodyRole {
-        let distal = depth == last && last >= 2;
+        // Two-body limbs have no foot or hand; the end needs a third body.
+        let is_distal = depth == last && last >= 2;
         match self {
             Self::Support if depth == 0 => BodyRole::Thigh,
-            Self::Support if distal => BodyRole::Foot,
+            Self::Support if is_distal => BodyRole::Foot,
             Self::Support => BodyRole::Calf,
             Self::Reach if depth == 0 => BodyRole::UpperArm,
-            Self::Reach if distal => BodyRole::Hand,
+            Self::Reach if is_distal => BodyRole::Hand,
             Self::Reach => BodyRole::LowerArm,
             Self::Head if depth == last => BodyRole::Head,
             Self::Head => BodyRole::Neck,
@@ -781,8 +817,10 @@ impl Template {
     /// `abduct_sign` is the sign of rotation about the other bend axis that
     /// moves the child away from the body.
     fn limits(&self, axis: Vec3, abduct_sign: impl Fn(bool) -> f32) -> JointLimits {
-        let along_x = axis.x.abs() >= axis.z.abs();
-        let sign = if along_x { axis.x } else { axis.z };
+        // Flexion goes on the bend axis closest to the flex axis.
+        let is_along_x = axis.x.abs() >= axis.z.abs();
+        let sign = if is_along_x { axis.x } else { axis.z };
+        // A negative flex axis mirrors the range so flexion stays positive-going.
         let flex = if sign >= 0.0 {
             AngleRange {
                 min: -self.extend,
@@ -794,7 +832,8 @@ impl Template {
                 max: self.extend,
             }
         };
-        let side = if abduct_sign(!along_x) >= 0.0 {
+        // The other bend axis carries the side range, mirrored to point away from the body.
+        let side = if abduct_sign(!is_along_x) >= 0.0 {
             AngleRange {
                 min: -self.adduct,
                 max: self.abduct,
@@ -809,7 +848,11 @@ impl Template {
             min: -self.twist,
             max: self.twist,
         };
-        let (x, z) = if along_x { (flex, side) } else { (side, flex) };
+        let (x, z) = if is_along_x {
+            (flex, side)
+        } else {
+            (side, flex)
+        };
         JointLimits { x, twist, z }
     }
 }
@@ -824,20 +867,8 @@ impl BodyTree {
     /// When several bodies have no body ancestor, the root with the most
     /// descendants is kept and the other roots' subtrees are dropped.
     fn new(rig: &Rig<'_>, selected: Vec<usize>) -> Self {
-        let count = rig.skeleton.bones.len();
-        let mut body_of = vec![None; count];
-        let mut owner = vec![None; count];
-        for (body, bone) in selected.iter().enumerate() {
-            body_of[*bone] = Some(body);
-        }
-        // Owners follow parent-first order: a bone's owner is itself or its parent's owner.
-        for bone in 0..count {
-            owner[bone] = body_of[bone].or_else(|| {
-                rig.eligible[bone]
-                    .then(|| rig.parents[bone].and_then(|parent| owner[parent]))
-                    .flatten()
-            });
-        }
+        // Assign every bone to a body before choosing among several roots.
+        let owner = Self::owners(rig, &selected);
         let parent_body = |bone: usize| rig.parents[bone].and_then(|parent| owner[parent]);
         // Count descendants per root to choose the single root.
         let roots = selected
@@ -865,28 +896,17 @@ impl BodyTree {
             .map(|(_, bone)| *bone)
             .collect::<Vec<_>>();
         // Rebuild ownership for the kept bodies only.
-        let mut body_of = vec![None; count];
-        for (body, bone) in kept.iter().enumerate() {
-            body_of[*bone] = Some(body);
-        }
-        let mut owner = vec![None; count];
-        for bone in 0..count {
-            owner[bone] = body_of[bone].or_else(|| {
-                rig.eligible[bone]
-                    .then(|| rig.parents[bone].and_then(|parent| owner[parent]))
-                    .flatten()
-            });
-        }
+        let owner = Self::owners(rig, &kept);
         let parents = kept
             .iter()
             .map(|bone| rig.parents[*bone].and_then(|parent| owner[parent]))
             .collect::<Vec<_>>();
         let mut children = vec![Vec::new(); kept.len()];
-        for (body, parent) in parents.iter().enumerate() {
-            if let Some(parent) = parent {
-                children[*parent].push(body);
-            }
-        }
+        parents
+            .iter()
+            .enumerate()
+            .filter_map(|(body, parent)| parent.map(|parent| (body, parent)))
+            .for_each(|(body, parent)| children[parent].push(body));
         Self {
             bones: kept,
             parents,
@@ -895,8 +915,31 @@ impl BodyTree {
         }
     }
 
+    /// Returns the body index that owns each bone's geometry.
+    ///
+    /// A body bone owns itself. An eligible bone joins its parent's owner, and
+    /// an ineligible bone has no owner.
+    fn owners(rig: &Rig<'_>, bodies: &[usize]) -> Vec<Option<usize>> {
+        let count = rig.skeleton.bones.len();
+        let mut body_of = vec![None; count];
+        for (body, bone) in bodies.iter().enumerate() {
+            body_of[*bone] = Some(body);
+        }
+        // Owners follow parent-first order: a bone's owner is itself or its parent's owner.
+        let mut owner = vec![None; count];
+        for bone in 0..count {
+            owner[bone] = body_of[bone].or_else(|| {
+                rig.eligible[bone]
+                    .then(|| rig.parents[bone].and_then(|parent| owner[parent]))
+                    .flatten()
+            });
+        }
+        owner
+    }
+
     /// Returns `start` and its descendant bodies with their depth below `start`.
     fn subtree(&self, start: usize) -> Vec<(usize, usize)> {
+        // Breadth-first: the vector doubles as the queue, so depth never decreases.
         let mut members = vec![(start, 0)];
         let mut next = 0;
         while let Some((body, depth)) = members.get(next).copied() {
