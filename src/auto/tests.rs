@@ -257,58 +257,80 @@ fn mixamo_leg_is_the_lower_leg_and_unsided_limbs_do_not_match() {
     assert_eq!(roles, expected);
 }
 
+/// Mixamo names for the reference humanoid bones; `ball_r` falls back to `RightToeBase`.
+const MIXAMO: &[(&str, &str)] = &[
+    ("pelvis", "Hips"),
+    ("spine_01", "Spine"),
+    ("spine_02", "Spine1"),
+    ("spine_03", "Spine2"),
+    ("neck_01", "Neck"),
+    ("head", "Head"),
+    ("clavicle_l", "LeftShoulder"),
+    ("upperarm_l", "LeftArm"),
+    ("lowerarm_l", "LeftForeArm"),
+    ("hand_l", "LeftHand"),
+    ("clavicle_r", "RightShoulder"),
+    ("upperarm_r", "RightArm"),
+    ("lowerarm_r", "RightForeArm"),
+    ("hand_r", "RightHand"),
+    ("thigh_l", "LeftUpLeg"),
+    ("calf_l", "LeftLeg"),
+    ("foot_l", "LeftFoot"),
+    ("ball_l", "LeftToeBase"),
+    ("thigh_r", "RightUpLeg"),
+    ("calf_r", "RightLeg"),
+    ("foot_r", "RightFoot"),
+];
+
+/// Unity humanoid names that differ from the reference names.
+const UNITY: &[(&str, &str)] = &[
+    ("pelvis", "Hips"),
+    ("upperarm_l", "LeftUpperArm"),
+    ("lowerarm_l", "LeftLowerArm"),
+    ("upperarm_r", "RightUpperArm"),
+    ("lowerarm_r", "RightLowerArm"),
+    ("thigh_l", "LeftUpperLeg"),
+    ("calf_l", "LeftLowerLeg"),
+    ("thigh_r", "RightUpperLeg"),
+    ("calf_r", "RightLowerLeg"),
+];
+
+/// Rigify deform names that a suffix rewrite cannot derive.
+const RIGIFY: &[(&str, &str)] = &[
+    ("pelvis", "DEF-spine"),
+    ("upperarm_l", "DEF-upper_arm.L"),
+    ("lowerarm_l", "DEF-forearm.L"),
+    ("calf_l", "DEF-shin.L"),
+];
+
+/// Returns the name `table` maps `name` to, if any.
+fn lookup(table: &[(&str, &'static str)], name: &str) -> Option<&'static str> {
+    table
+        .iter()
+        .find(|(from, _)| *from == name)
+        .map(|(_, to)| *to)
+}
+
 #[test]
 fn every_convention_yields_the_same_humanoid_layout() {
     let reference = roles(&generate(&Skeleton::humanoid()))
         .into_iter()
         .map(|(_, role)| role)
         .collect::<Vec<_>>();
+    // Rename through each convention's table; unlisted bones keep a derived name.
     let mixamo = |name: &str| {
-        let mapped = match name {
-            "pelvis" => "Hips",
-            "spine_01" => "Spine",
-            "spine_02" => "Spine1",
-            "spine_03" => "Spine2",
-            "neck_01" => "Neck",
-            "head" => "Head",
-            "clavicle_l" => "LeftShoulder",
-            "upperarm_l" => "LeftArm",
-            "lowerarm_l" => "LeftForeArm",
-            "hand_l" => "LeftHand",
-            "clavicle_r" => "RightShoulder",
-            "upperarm_r" => "RightArm",
-            "lowerarm_r" => "RightForeArm",
-            "hand_r" => "RightHand",
-            "thigh_l" => "LeftUpLeg",
-            "calf_l" => "LeftLeg",
-            "foot_l" => "LeftFoot",
-            "ball_l" => "LeftToeBase",
-            "thigh_r" => "RightUpLeg",
-            "calf_r" => "RightLeg",
-            "foot_r" => "RightFoot",
-            _ => "RightToeBase",
-        };
-        format!("mixamorig:{mapped}")
+        format!(
+            "mixamorig:{}",
+            lookup(MIXAMO, name).unwrap_or("RightToeBase")
+        )
     };
-    let unity = |name: &str| match name {
-        "pelvis" => "Hips".to_owned(),
-        "upperarm_l" => "LeftUpperArm".to_owned(),
-        "lowerarm_l" => "LeftLowerArm".to_owned(),
-        "upperarm_r" => "RightUpperArm".to_owned(),
-        "lowerarm_r" => "RightLowerArm".to_owned(),
-        "thigh_l" => "LeftUpperLeg".to_owned(),
-        "calf_l" => "LeftLowerLeg".to_owned(),
-        "thigh_r" => "RightUpperLeg".to_owned(),
-        "calf_r" => "RightLowerLeg".to_owned(),
-        other => other.to_owned(),
-    };
+    let unity = |name: &str| lookup(UNITY, name).unwrap_or(name).to_owned();
     // Rigify has no hips name: the hips come from where the thighs meet.
-    let rigify = |name: &str| match name {
-        "pelvis" => "DEF-spine".to_owned(),
-        "upperarm_l" => "DEF-upper_arm.L".to_owned(),
-        "lowerarm_l" => "DEF-forearm.L".to_owned(),
-        "calf_l" => "DEF-shin.L".to_owned(),
-        other => format!("DEF-{}", other.replace("_l", ".L").replace("_r", ".R")),
+    let rigify = |name: &str| {
+        lookup(RIGIFY, name).map_or_else(
+            || format!("DEF-{}", name.replace("_l", ".L").replace("_r", ".R")),
+            str::to_owned,
+        )
     };
     // Every convention must produce the reference role sequence.
     let generated = [renamed(mixamo), renamed(unity), renamed(rigify)].map(|skeleton| {
@@ -370,6 +392,7 @@ fn alien_gets_seven_legs_three_arms_and_a_head() {
 
 #[test]
 fn a_creature_of_only_legs_has_no_spine() {
+    // Four two-segment legs radiate from one body and reach the ground.
     let mut bones = vec![("body", None, Vec3::new(0.0, 0.5, 0.0))];
     let names = (0..4)
         .map(|i| [format!("a{i}"), format!("b{i}")])
@@ -383,19 +406,21 @@ fn a_creature_of_only_legs_has_no_spine() {
         ));
         bones.push((b.as_str(), Some(a.as_str()), out * 0.6));
     }
+    // No unique largest child exists, so no spine starts at the core.
     let profile = generate(&Skeleton::from_positions(bones));
-    assert_eq!(count(&profile, BodyRole::Spine), 0);
-    assert_eq!(count(&profile, BodyRole::Thigh), 4);
-    assert_eq!(count(&profile, BodyRole::Calf), 4);
+    let wanted = [BodyRole::Spine, BodyRole::Thigh, BodyRole::Calf];
+    assert_eq!(counts(&profile, wanted), [0, 4, 4]);
 }
 
 #[test]
 fn a_snake_is_a_spine_chain() {
+    // Six segments in a straight horizontal chain.
     let names = (0..6).map(|i| format!("segment_{i}")).collect::<Vec<_>>();
     let bones = names.iter().enumerate().map(|(i, name)| {
         let parent = i.checked_sub(1).map(|p| names[p].as_str());
         (name.as_str(), parent, Vec3::new(0.0, 0.05, float(i) * 0.2))
     });
+    // Every body after the root continues the single chain, so it is spine.
     let profile = generate(&Skeleton::from_positions(bones));
     assert_eq!(profile.bodies().len(), 6);
     assert_eq!(count(&profile, BodyRole::Spine), 5);
@@ -403,6 +428,7 @@ fn a_snake_is_a_spine_chain() {
 
 #[test]
 fn helper_and_twist_bones_get_no_body() {
+    // Re-root the humanoid under a `root` bone and add helper bones.
     let mut skeleton = Skeleton::humanoid();
     skeleton.bones = Skeleton::from_positions(
         std::iter::once(("root", None, Vec3::ZERO))
@@ -427,6 +453,7 @@ fn helper_and_twist_bones_get_no_body() {
             ]),
     )
     .bones;
+    // The helper root, IK target, twist and end bones add no body.
     let profile = generate(&skeleton);
     assert_eq!(profile.bodies().len(), 16);
     assert_eq!(profile.bodies()[0].bone(), "pelvis");
@@ -440,6 +467,7 @@ fn helper_and_twist_bones_get_no_body() {
 
 #[test]
 fn topology_merges_short_bones_into_their_parent() {
+    // The finger bones are short relative to the 1 m skeleton.
     let skeleton = Skeleton::from_positions([
         ("a", None, Vec3::new(0.0, 1.0, 0.0)),
         ("b", Some("a"), Vec3::new(0.0, 0.5, 0.0)),
@@ -502,72 +530,97 @@ fn an_empty_or_skipped_skeleton_is_rejected() {
     );
 }
 
-#[test]
-fn overrides_change_bodies_and_values() {
-    let base = generate(&Skeleton::humanoid());
+/// Joint limits used by the value-override tests.
+const OVERRIDE_LIMITS: JointLimits = JointLimits {
+    x: AngleRange {
+        min: -0.1,
+        max: 0.1,
+    },
+    twist: AngleRange { min: 0.0, max: 0.0 },
+    z: AngleRange {
+        min: -0.2,
+        max: 0.2,
+    },
+};
+
+/// The reference humanoid with `bone` set on the bone named `name`.
+fn with_override(name: &str, bone: RagdollBone) -> Skeleton {
     let mut skeleton = Skeleton::humanoid();
-    let set = |skeleton: &mut Skeleton, name: &str, bone: RagdollBone| {
-        let index = skeleton.bone_index(name).unwrap();
-        skeleton.bones[index].overrides = bone;
-    };
-    let limits = JointLimits {
-        x: AngleRange {
-            min: -0.1,
-            max: 0.1,
+    let index = skeleton.bone_index(name).unwrap();
+    skeleton.bones[index].overrides = bone;
+    skeleton
+}
+
+/// The reference humanoid whose head overrides every value.
+fn head_override_profile() -> RagdollProfile {
+    generate(&with_override(
+        "head",
+        RagdollBone {
+            mass: Some(9.0),
+            radius: Some(0.2),
+            limits: Some(OVERRIDE_LIMITS),
+            max_torque: Some(77.0),
+            role: Some(BodyRole::Other),
+            ..default()
         },
-        twist: AngleRange { min: 0.0, max: 0.0 },
-        z: AngleRange {
-            min: -0.2,
-            max: 0.2,
-        },
-    };
-    set(
-        &mut skeleton,
+    ))
+}
+
+#[test]
+fn body_overrides_skip_and_force_bodies() {
+    // Skipping the left hand and forcing the neck keeps the body count.
+    let mut skeleton = with_override(
         "hand_l",
         RagdollBone {
             body: BoneBody::Skip,
             ..default()
         },
     );
-    set(
-        &mut skeleton,
-        "neck_01",
-        RagdollBone {
-            body: BoneBody::Body,
-            ..default()
-        },
-    );
-    set(
-        &mut skeleton,
-        "head",
-        RagdollBone {
-            mass: Some(9.0),
-            radius: Some(0.2),
-            limits: Some(limits),
-            max_torque: Some(77.0),
-            role: Some(BodyRole::Other),
-            ..default()
-        },
-    );
+    let neck = skeleton.bone_index("neck_01").unwrap();
+    skeleton.bones[neck].overrides.body = BoneBody::Body;
     let profile = generate(&skeleton);
-    assert_eq!(profile.bodies().len(), base.bodies().len());
-    assert!(profile.body_index("hand_l").is_none());
-    assert!(profile.body_index("neck_01").is_some());
-    let head = profile.body_index("head").unwrap();
-    let body = &profile.bodies()[head.get()];
-    assert_eq!(body.mass().kilograms(), 9.0);
-    assert_eq!(body.role(), BodyRole::Other);
-    assert!(
-        matches!(body.shape(), ShapeSpec::Capsule { radius, .. } if (*radius - 0.2).abs() < f32::EPSILON)
+    let present = ["hand_l", "neck_01"].map(|bone| profile.body_index(bone).is_some());
+    assert_eq!(present, [false, true]);
+    assert_eq!(profile.bodies().len(), 16);
+}
+
+#[test]
+fn value_overrides_replace_body_values() {
+    // Mass, role and radius come straight from the override.
+    let profile = head_override_profile();
+    let body = &profile.bodies()[profile.body_index("head").unwrap().get()];
+    let ShapeSpec::Capsule { radius, .. } = body.shape() else {
+        panic!("generated bodies are capsules");
+    };
+    assert_eq!(
+        (body.mass().kilograms(), body.role(), *radius),
+        (9.0, BodyRole::Other, 0.2)
     );
-    let joint = profile.joint_of(head).unwrap();
-    assert_eq!(joint.limits(), limits);
-    assert_eq!(joint.max_torque(), 77.0);
+}
+
+#[test]
+fn value_overrides_replace_joint_values() {
+    // Limits and torque come straight from the override.
+    let profile = head_override_profile();
+    let joint = profile
+        .joint_of(profile.body_index("head").unwrap())
+        .unwrap();
+    assert_eq!(
+        (joint.limits(), joint.max_torque()),
+        (OVERRIDE_LIMITS, 77.0)
+    );
+}
+
+#[test]
+fn a_mass_override_keeps_the_requested_total() {
+    // The other bodies absorb the difference, so the total is unchanged.
+    let profile = head_override_profile();
     assert!((profile.total_mass().kilograms() - 80.02).abs() < 1.0e-3);
 }
 
 #[test]
 fn merge_override_removes_a_topology_body() {
+    // A merged neck leaves the skull as the head body on the chest.
     let mut skeleton = quadruped();
     let neck = skeleton.bone_index("neck").unwrap();
     skeleton.bones[neck].overrides.body = BoneBody::Merge;
@@ -578,6 +631,7 @@ fn merge_override_removes_a_topology_body() {
 
 #[test]
 fn override_assets_prefer_exact_keys_then_longer_prefixes() {
+    // Three overlapping keys of increasing specificity.
     let bone = |radius| RagdollBone {
         radius: Some(radius),
         ..default()
@@ -591,10 +645,10 @@ fn override_assets_prefer_exact_keys_then_longer_prefixes() {
         ]
         .into(),
     };
-    assert_eq!(overrides.get("tail_12").and_then(|b| b.radius), Some(3.0));
-    assert_eq!(overrides.get("tail_13").and_then(|b| b.radius), Some(2.0));
-    assert_eq!(overrides.get("tail_2").and_then(|b| b.radius), Some(1.0));
-    assert_eq!(overrides.get("ear"), None);
+    // The radius identifies which key matched each bone name.
+    let radii = ["tail_12", "tail_13", "tail_2", "ear"]
+        .map(|bone| overrides.get(bone).and_then(|bone| bone.radius));
+    assert_eq!(radii, [Some(3.0), Some(2.0), Some(1.0), None]);
 }
 
 #[test]
@@ -612,16 +666,11 @@ fn from_positions_points_bones_at_their_first_child() {
         ("b", Some("a"), Vec3::X),
         ("c", Some("missing"), Vec3::Z),
     ]);
+    // `b` is a leaf that follows its parent link; `c` is a root with no children.
     let along = |index: usize| skeleton.bones[index].rest.rotation * Vec3::Y;
-    assert!(along(0).distance(Vec3::X) < 1.0e-5);
-    assert!(
-        along(1).distance(Vec3::X) < 1.0e-5,
-        "a leaf follows its parent link"
-    );
-    assert!(
-        along(2).distance(Vec3::Y) < 1.0e-5,
-        "an unknown parent makes a root"
-    );
+    let errors = [(0, Vec3::X), (1, Vec3::X), (2, Vec3::Y)]
+        .map(|(index, expected)| along(index).distance(expected) < 1.0e-5);
+    assert_eq!(errors, [true; 3]);
     assert_eq!(skeleton.bones[2].parent, None);
 }
 
@@ -636,9 +685,10 @@ fn x_along_bone_rigs_get_the_same_limits_through_a_basis() {
     let quarter = Quat::from_rotation_z(std::f32::consts::FRAC_PI_2);
     let y_rig = Skeleton::humanoid();
     let mut x_rig = y_rig.clone();
-    for bone in &mut x_rig.bones {
-        bone.rest.rotation *= quarter;
-    }
+    x_rig
+        .bones
+        .iter_mut()
+        .for_each(|bone| bone.rest.rotation *= quarter);
     let (y_profile, x_profile) = (generate(&y_rig), generate(&x_rig));
     // Any world-space pose measures the same joint angles on both rigs.
     let poses = |profile: &RagdollProfile| {
@@ -653,33 +703,38 @@ fn x_along_bone_rigs_get_the_same_limits_through_a_basis() {
             .collect::<Vec<_>>()
     };
     let (y_poses, x_poses) = (poses(&y_profile), poses(&x_profile));
-    for (y_joint, x_joint) in y_profile.joints().iter().zip(x_profile.joints()) {
-        assert_eq!(y_joint.basis(), Quat::IDENTITY);
-        assert!(x_joint.basis().angle_between(Quat::IDENTITY) > 1.0);
-        let (y_limits, x_limits) = (y_joint.limits(), x_joint.limits());
-        for (a, b) in [
-            (y_limits.x, x_limits.x),
-            (y_limits.twist, x_limits.twist),
-            (y_limits.z, x_limits.z),
-        ] {
-            assert!((a.min - b.min).abs() < 1.0e-4 && (a.max - b.max).abs() < 1.0e-4);
-        }
-        let child = y_joint.child();
-        let y_angles = y_profile.joint_angles(child, &y_poses).unwrap();
-        let x_angles = x_profile.joint_angles(child, &x_poses).unwrap();
-        assert!(
-            y_angles.distance(x_angles) < 1.0e-4,
-            "{y_angles} != {x_angles}"
-        );
-    }
+    // Collect every joint whose basis, limits or measured angles differ.
+    let close = |a: f32, b: f32| (a - b).abs() < 1.0e-4;
+    let same_range = |a: AngleRange, b: AngleRange| close(a.min, b.min) && close(a.max, b.max);
+    let mismatches = y_profile
+        .joints()
+        .iter()
+        .zip(x_profile.joints())
+        .filter(|(y_joint, x_joint)| {
+            let (y_limits, x_limits) = (y_joint.limits(), x_joint.limits());
+            let child = y_joint.child();
+            let y_angles = y_profile.joint_angles(child, &y_poses).unwrap();
+            let x_angles = x_profile.joint_angles(child, &x_poses).unwrap();
+            y_joint.basis() != Quat::IDENTITY
+                || x_joint.basis().angle_between(Quat::IDENTITY) <= 1.0
+                || !same_range(y_limits.x, x_limits.x)
+                || !same_range(y_limits.twist, x_limits.twist)
+                || !same_range(y_limits.z, x_limits.z)
+                || y_angles.distance(x_angles) >= 1.0e-4
+        })
+        .map(|(y_joint, _)| y_joint.child())
+        .collect::<Vec<_>>();
+    assert_eq!(mismatches, []);
 }
 
 #[test]
 fn twist_basis_maps_y_onto_the_nearest_signed_axis() {
     use super::generate::twist_basis;
-    for axis in [Vec3::X, Vec3::NEG_X, Vec3::Z, Vec3::NEG_Z, Vec3::NEG_Y] {
-        assert!((twist_basis(axis * 0.9 + Vec3::splat(0.05)) * Vec3::Y).distance(axis) < 1.0e-5);
-    }
+    // A slightly skewed direction still picks the nearest signed axis.
+    let mapped = [Vec3::X, Vec3::NEG_X, Vec3::Z, Vec3::NEG_Z, Vec3::NEG_Y].map(|axis| {
+        (twist_basis(axis * 0.9 + Vec3::splat(0.05)) * Vec3::Y).distance(axis) < 1.0e-5
+    });
+    assert_eq!(mapped, [true; 5]);
     assert_eq!(twist_basis(Vec3::Y), Quat::IDENTITY);
 }
 
