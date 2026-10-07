@@ -531,6 +531,7 @@ fn setup_scene(
     mut materials: ResMut<'_, Assets<StandardMaterial>>,
     mut images: ResMut<'_, Assets<Image>>,
 ) {
+    // The camera's fog color matches the clear color so the arena fades into the background.
     commands.spawn((
         Camera3d::default(),
         Transform::default(),
@@ -543,6 +544,7 @@ fn setup_scene(
             ..default()
         },
     ));
+    // Cascaded shadows keep contact shadows sharp near the crowd.
     commands.spawn((
         DirectionalLight {
             illuminance: 9_000.0,
@@ -571,6 +573,7 @@ fn setup_scene(
     ));
     backend.0.insert_static_box(&mut floor, floor_half);
 
+    // Obstacles give thrown ragdolls something to tumble over.
     let obstacle = materials.add(StandardMaterial {
         base_color: Color::srgb(0.22, 0.25, 0.30),
         perceptual_roughness: 0.6,
@@ -599,10 +602,12 @@ fn setup_scene(
 
 /// Builds a two-tone checker texture with one-metre cells across the floor.
 fn checker_image() -> Image {
+    // Sixteen pixels per one-metre cell keeps the texture small.
     let cells = CHECKER_CELLS;
     let cell_px = 16;
     let size = cells * cell_px;
     let mut data = Vec::with_capacity(size * size * 4);
+    // Alternate two tones by cell parity.
     for y in 0..size {
         for x in 0..size {
             let is_light_cell = (x / cell_px + y / cell_px) % 2 == 0;
@@ -610,6 +615,7 @@ fn checker_image() -> Image {
             data.extend_from_slice(&[value, value + 4, value + 10, 255]);
         }
     }
+    // The texture is square, so one edge length sets both dimensions.
     let edge_px = u32::try_from(size).expect("the checker fits in u32");
     Image::new(
         Extent3d {
@@ -660,6 +666,7 @@ fn sync_population(
     mut spawned: Local<'_, usize>,
     characters: Query<'_, '_, (Entity, &GlobalTransform), With<Character>>,
 ) {
+    // Despawn characters that fell off the arena or exceed the requested count.
     let mut alive = 0;
     for (entity, transform) in &characters {
         if transform.translation().y < -20.0 || alive >= params.count {
@@ -668,8 +675,10 @@ fn sync_population(
             alive += 1;
         }
     }
+    // Rigs load in Startup; skip spawning until they exist.
     let Some(rigs) = rigs else { return };
     let radius = (params.count as f32).sqrt().mul_add(0.9, 2.0);
+    // Spawn a few per frame so a large count does not stall one frame.
     for _ in alive..params.count.min(alive + SPAWNS_PER_FRAME) {
         let index = *spawned;
         *spawned += 1;
@@ -698,6 +707,7 @@ fn spawn_character(
     position: Vec3,
     yaw: f32,
 ) {
+    // Every character starts dynamic with the current muscle setting.
     let mut character = commands.spawn((
         Name::new(format!("ragdoll {index}")),
         Character(index),
@@ -706,6 +716,7 @@ fn spawn_character(
         RagdollDrive::new(params.muscle, 0.0),
         Transform::from_translation(position).with_rotation(Quat::from_rotation_y(yaw)),
     ));
+    // With creatures on, every fourth and fifth character is a glTF creature.
     let creature = params
         .has_creatures
         .then(|| rigs.creatures.get((index % 5).checked_sub(3)?))
@@ -738,6 +749,7 @@ fn restore_rest_pose(
             .entity(entity)
             .insert(RestRotation(transform.rotation));
     }
+    // Restore the rest rotation before the runtime captures drive targets.
     for (rest, mut transform) in &mut bones {
         transform.rotation = rest.0;
     }
@@ -752,6 +764,7 @@ fn add_body_meshes(
     bodies: Query<'_, '_, (Entity, &BodyShape, &RagdollBodyOf), Added<BodyShape>>,
     characters: Query<'_, '_, &Character>,
 ) {
+    // Share one mesh per collider shape so a large crowd costs few assets.
     for (entity, shape, owner) in &bodies {
         let (mesh, transform) = assets
             .meshes
@@ -786,6 +799,7 @@ fn spawn_panel(
     backend: Res<'_, ActiveBackend>,
     params: Res<'_, Params>,
 ) {
+    // A translucent panel in the top-left corner.
     let panel = commands
         .spawn((
             Node {
@@ -802,12 +816,14 @@ fn spawn_panel(
             BackgroundColor(Color::srgba(0.04, 0.05, 0.07, 0.86)),
         ))
         .id();
+    // Title and live metrics come first.
     commands.spawn((text("bevy_ragdoll", 18.0, ACCENT), ChildOf(panel)));
     commands.spawn((
         text("", 13.0, Color::srgb(0.82, 0.86, 0.9)),
         MetricsText,
         ChildOf(panel),
     ));
+    // One stepper row per tunable parameter.
     for param in Param::ALL {
         let row = commands.spawn((row_node(), ChildOf(panel))).id();
         commands.spawn((
@@ -832,6 +848,7 @@ fn spawn_panel(
         ));
         button(&mut commands, row, "+", Action::Step(param, 1), false);
     }
+    // Backend buttons; choosing another one restarts the app.
     let row = commands.spawn((row_node(), ChildOf(panel))).id();
     commands.spawn((
         text("Backend", 14.0, Color::WHITE),
@@ -855,6 +872,7 @@ fn spawn_panel(
     button(&mut commands, row, "Explode", Action::Explode, false);
     button(&mut commands, row, "Reset", Action::Reset, false);
 
+    // Control hints stay at the bottom-left, outside the panel.
     commands.spawn((
         text(
             "Drag: throw   Click: hit   Right-drag: orbit   Wheel: zoom",
@@ -904,6 +922,7 @@ fn button(
     } else {
         Color::srgba(1.0, 1.0, 1.0, 0.08)
     };
+    // Each button carries its Action so one system can handle every press.
     let button = commands
         .spawn((
             Button,
@@ -933,6 +952,7 @@ fn handle_buttons(
     bodies: Query<'_, '_, (Entity, &BodyIndex, &GlobalTransform), With<RagdollBodyOf>>,
     mut hits: MessageWriter<'_, RagdollHit>,
 ) {
+    // React only to the press, not to hover or release.
     for (interaction, action) in &buttons {
         if *interaction != Interaction::Pressed {
             continue;
@@ -974,6 +994,7 @@ fn apply_params(
     if !params.is_changed() {
         return;
     }
+    // Every character shares the panel's muscle setting.
     for mut drive in &mut drives {
         *drive = RagdollDrive::new(params.muscle, 0.0);
     }
@@ -990,11 +1011,13 @@ fn orbit_camera(
     mut orbit: ResMut<'_, Orbit>,
     mut cameras: Query<'_, '_, &mut Transform, With<Camera3d>>,
 ) {
+    // Right drag orbits; the pitch clamp keeps the camera above the floor.
     if buttons.pressed(MouseButton::Right) {
         orbit.yaw = motion.delta.x.mul_add(-0.005, orbit.yaw);
         orbit.pitch = motion.delta.y.mul_add(0.005, orbit.pitch).clamp(0.05, 1.45);
     }
     orbit.distance = (orbit.distance * scroll.delta.y.mul_add(-0.08, 1.0)).clamp(4.0, 60.0);
+    // Rebuild the camera transform from the orbit angles every frame.
     let focus = Vec3::new(0.0, 1.0, 0.0);
     let offset = Quat::from_euler(EulerRot::YXZ, orbit.yaw, -orbit.pitch, 0.0)
         * Vec3::new(0.0, 0.0, orbit.distance);
@@ -1025,7 +1048,9 @@ fn press_pointer(
     let Some((cursor, ray)) = cursor_ray(&windows, &cameras) else {
         return;
     };
+    // Clicks on the panel must not also hit a ragdoll.
     let is_over_panel = interactions.iter().any(|i| *i != Interaction::None);
+    // A press asks the backend which body is under the cursor; the answer arrives later.
     if buttons.just_pressed(MouseButton::Left) && !is_over_panel {
         let id = pointer.next_request;
         pointer.next_request = id.wrapping_add(1);
@@ -1041,6 +1066,7 @@ fn press_pointer(
             filter: None,
         });
     }
+    // While held, track whether the press became a drag and move the grab goal.
     if let Some(press) = pointer.press
         && buttons.pressed(MouseButton::Left)
     {
@@ -1058,6 +1084,7 @@ fn read_pick(
     bodies: Query<'_, '_, &GlobalTransform>,
     cameras: Query<'_, '_, &GlobalTransform, With<Camera3d>>,
 ) {
+    // Only the newest press matters; older responses are stale.
     for response in responses.read() {
         if pointer.pending != Some(response.request_id.get()) {
             continue;
@@ -1100,16 +1127,19 @@ fn release_pointer(
     if !buttons.just_released(MouseButton::Left) {
         return;
     }
+    // Releasing ends the press whether or not it picked a body.
     pointer.press = None;
     let Some(target) = pointer.target.take() else {
         return;
     };
+    // A drag already threw the body, so releasing just lets go.
     if pointer.is_dragging {
         return;
     }
     let Ok((transform, children)) = bodies.get(target.body) else {
         return;
     };
+    // A click hits the picked point with the selected preset.
     let magnitude = settings
         .impulse_magnitude(params.hit_profile())
         .unwrap_or_default();
@@ -1139,6 +1169,7 @@ fn fade_flashes(
     time: Res<'_, Time<Real>>,
     mut flashes: Query<'_, '_, (Entity, &mut HitFlash)>,
 ) {
+    // Count each highlight down in real time so time scale does not stretch it.
     for (entity, mut flash) in &mut flashes {
         flash.remaining -= time.delta_secs();
         if flash.remaining <= 0.0 {
@@ -1170,11 +1201,13 @@ fn pull_grabbed_body(
     let Ok((pose, velocity, mass, owner)) = bodies.get(target.body) else {
         return;
     };
+    // Lift most of the character's weight, not only the grabbed body's.
     let character_mass: f32 = masses
         .iter()
         .filter(|(_, of)| of.0 == owner.0)
         .map(|(mass, _)| mass.mass)
         .sum();
+    // A velocity-matching spring toward the goal, capped at 25 m/s.
     let point: Vec3 = pose.current.transform_point(target.local_point).into();
     let desired = ((target.goal - point) * 10.0).clamp_length_max(25.0);
     let dt = time.delta_secs();
@@ -1213,20 +1246,24 @@ fn update_panel(
     mut values: Query<'_, '_, (&ParamValue, &mut Text), Without<MetricsText>>,
     mut metrics: Query<'_, '_, &mut Text, With<MetricsText>>,
 ) {
+    // Parameter text updates immediately on change.
     if params.is_changed() {
         for (value, mut text) in &mut values {
             **text = value.0.value(&params);
         }
     }
+    // Metrics refresh twice a second so the numbers stay readable.
     *since_refresh += real.delta_secs();
     if *since_refresh < 0.5 {
         return;
     }
     *since_refresh = 0.0;
+    // Average the fixed steps measured since the last refresh.
     if timer.steps > 0 {
         timer.average_ms = timer.total * 1000.0 / f32::from(timer.steps);
     }
     (timer.total, timer.steps) = (0.0, 0);
+    // FPS comes from Bevy's frame-time diagnostics.
     let fps = diagnostics
         .get(&FrameTimeDiagnosticsPlugin::FPS)
         .and_then(bevy::diagnostic::Diagnostic::smoothed)
