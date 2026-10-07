@@ -187,7 +187,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     })
     .add_plugins((
         RagdollPlugin::default(),
-        RapierPhysicsPlugin::<RapierRagdollHooks>::default().in_fixed_schedule(),
+        RapierPhysicsPlugin::<RapierRagdollHooks<'_, '_>>::default().in_fixed_schedule(),
         RapierRagdollPlugin,
     ))
     .add_systems(Startup, spawn_ragdolls)
@@ -203,7 +203,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 /// Spawns the floor and the ragdolls for the selected scenario.
-fn spawn_ragdolls(mut commands: Commands, run: Res<Run>) {
+fn spawn_ragdolls(mut commands: Commands<'_, '_>, run: Res<'_, Run>) {
     commands.spawn((
         RigidBody::Fixed,
         Collider::cuboid(100.0, 0.1, 100.0),
@@ -212,7 +212,7 @@ fn spawn_ragdolls(mut commands: Commands, run: Res<Run>) {
     let columns = (run.args.count as f32).sqrt().ceil() as u32;
     for index in 0..run.args.count {
         let position = match run.args.scenario {
-            Scenario::Pile => Vec3::new(0.0, 0.3 + index as f32 * 0.8, 0.0),
+            Scenario::Pile => Vec3::new(0.0, (index as f32).mul_add(0.8, 0.3), 0.0),
             Scenario::Grid => {
                 let offset = (columns as f32 - 1.0) * 0.5;
                 let (column, row) = ((index % columns) as f32, (index / columns) as f32);
@@ -238,12 +238,12 @@ fn spawn_ragdolls(mut commands: Commands, run: Res<Run>) {
 }
 
 /// Marks the start of a frame.
-fn start_frame(mut run: ResMut<Run>) {
+fn start_frame(mut run: ResMut<'_, Run>) {
     run.frame_start = Some(Instant::now());
 }
 
 /// Records the frame time once the warmup has passed.
-fn finish_frame(time: Res<Time>, mut run: ResMut<Run>) {
+fn finish_frame(time: Res<'_, Time>, mut run: ResMut<'_, Run>) {
     if let Some(start) = run.frame_start.take()
         && run.measuring(time.elapsed_secs_f64())
     {
@@ -252,12 +252,12 @@ fn finish_frame(time: Res<Time>, mut run: ResMut<Run>) {
 }
 
 /// Marks the start of a fixed step.
-fn start_step(mut run: ResMut<Run>) {
+fn start_step(mut run: ResMut<'_, Run>) {
     run.step_start = Some(Instant::now());
 }
 
 /// Records the fixed-step time once the warmup has passed.
-fn finish_step(time: Res<Time>, mut run: ResMut<Run>) {
+fn finish_step(time: Res<'_, Time>, mut run: ResMut<'_, Run>) {
     if let Some(start) = run.step_start.take()
         && run.measuring(time.elapsed_secs_f64())
     {
@@ -267,10 +267,10 @@ fn finish_step(time: Res<Time>, mut run: ResMut<Run>) {
 
 /// Ends the run after warmup plus duration, prints a summary, and writes the report.
 fn finish_run(
-    time: Res<Time>,
-    mut run: ResMut<Run>,
-    bodies: Query<(&BodyPhysicsPose, &BodyVelocity), With<RagdollBodyOf>>,
-    mut exit: MessageWriter<AppExit>,
+    time: Res<'_, Time>,
+    mut run: ResMut<'_, Run>,
+    bodies: Query<'_, '_, (&BodyPhysicsPose, &BodyVelocity), With<RagdollBodyOf>>,
+    mut exit: MessageWriter<'_, AppExit>,
 ) {
     if time.elapsed_secs_f64() < run.args.warmup + run.args.duration {
         return;
@@ -312,7 +312,7 @@ fn finish_run(
 }
 
 /// Adds a camera and a light for the windowed run.
-fn setup_view(mut commands: Commands) {
+fn setup_view(mut commands: Commands<'_, '_>) {
     commands.spawn((
         Camera3d::default(),
         Transform::from_xyz(10.0, 9.0, 14.0).looking_at(Vec3::new(0.0, 0.5, 0.0), Vec3::Y),
@@ -328,11 +328,11 @@ fn setup_view(mut commands: Commands) {
 
 /// Gives each new physics body a mesh matching its collider in the windowed run.
 fn add_body_meshes(
-    mut commands: Commands,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut material: Local<Option<Handle<StandardMaterial>>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
-    bodies: Query<(Entity, &BodyShape), Added<BodyShape>>,
+    mut commands: Commands<'_, '_>,
+    mut meshes: ResMut<'_, Assets<Mesh>>,
+    mut material: Local<'_, Option<Handle<StandardMaterial>>>,
+    mut materials: ResMut<'_, Assets<StandardMaterial>>,
+    bodies: Query<'_, '_, (Entity, &BodyShape), Added<BodyShape>>,
 ) {
     let material = material
         .get_or_insert_with(|| materials.add(Color::srgb(0.9, 0.6, 0.35)))

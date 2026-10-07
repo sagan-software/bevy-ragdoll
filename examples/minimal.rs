@@ -24,7 +24,7 @@ fn main() {
         })
         .add_plugins((
             RagdollPlugin::default(),
-            RapierPhysicsPlugin::<RapierRagdollHooks>::default().in_fixed_schedule(),
+            RapierPhysicsPlugin::<RapierRagdollHooks<'_, '_>>::default().in_fixed_schedule(),
             RapierRagdollPlugin,
             RagdollDebugPlugin,
         ))
@@ -33,7 +33,7 @@ fn main() {
 }
 
 /// Spawns the reference skeleton under a dynamic ragdoll character.
-fn spawn_ragdoll(mut commands: Commands) {
+fn spawn_ragdoll(mut commands: Commands<'_, '_>) {
     let character = commands
         .spawn((
             Name::new("ragdoll"),
@@ -47,9 +47,9 @@ fn spawn_ragdoll(mut commands: Commands) {
 
 /// Adds a fixed Rapier floor, a camera, a light, and a label.
 fn setup_scene(
-    mut commands: Commands,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
+    mut commands: Commands<'_, '_>,
+    mut meshes: ResMut<'_, Assets<Mesh>>,
+    mut materials: ResMut<'_, Assets<StandardMaterial>>,
 ) {
     commands.spawn((
         RigidBody::Fixed,

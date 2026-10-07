@@ -24,7 +24,7 @@ fn main() {
         })
         .add_plugins((
             RagdollPlugin::default(),
-            RapierPhysicsPlugin::<RapierRagdollHooks>::default().in_fixed_schedule(),
+            RapierPhysicsPlugin::<RapierRagdollHooks<'_, '_>>::default().in_fixed_schedule(),
             RapierRagdollPlugin,
             RagdollDebugPlugin,
         ))
@@ -35,10 +35,10 @@ fn main() {
 
 /// Spawns the floor, camera, light and the three creatures.
 fn setup(
-    mut commands: Commands,
-    assets: Res<AssetServer>,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
+    mut commands: Commands<'_, '_>,
+    assets: Res<'_, AssetServer>,
+    mut meshes: ResMut<'_, Assets<Mesh>>,
+    mut materials: ResMut<'_, Assets<StandardMaterial>>,
 ) {
     commands.spawn((
         RigidBody::Fixed,
@@ -66,15 +66,15 @@ fn setup(
             ),
             Ragdoll::default(),
             RagdollMode::Kinematic,
-            Transform::from_xyz(index as f32 * 2.0 - 2.0, 0.05, 0.0),
+            Transform::from_xyz((index as f32).mul_add(2.0, -2.0), 0.05, 0.0),
         ));
     }
 }
 
 /// Switches every ragdoll to limp dynamic simulation when Space is pressed.
 fn drop_on_space(
-    keys: Res<ButtonInput<KeyCode>>,
-    mut ragdolls: Query<(&mut RagdollMode, &mut RagdollDrive), With<Ragdoll>>,
+    keys: Res<'_, ButtonInput<KeyCode>>,
+    mut ragdolls: Query<'_, '_, (&mut RagdollMode, &mut RagdollDrive), With<Ragdoll>>,
 ) {
     if !keys.just_pressed(KeyCode::Space) {
         return;

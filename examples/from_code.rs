@@ -29,7 +29,7 @@ fn main() {
         })
         .add_plugins((
             RagdollPlugin::default(),
-            RapierPhysicsPlugin::<RapierRagdollHooks>::default().in_fixed_schedule(),
+            RapierPhysicsPlugin::<RapierRagdollHooks<'_, '_>>::default().in_fixed_schedule(),
             RapierRagdollPlugin,
         ))
         .add_systems(Startup, (setup_scene, spawn_ragdoll))
@@ -97,7 +97,7 @@ fn build_profile() -> Result<RagdollProfile, ProfileError> {
 }
 
 /// Spawns the chain with a full-strength pin on the pelvis and limp upper bodies.
-fn spawn_ragdoll(mut commands: Commands, mut profiles: ResMut<Assets<RagdollProfile>>) {
+fn spawn_ragdoll(mut commands: Commands<'_, '_>, mut profiles: ResMut<'_, Assets<RagdollProfile>>) {
     let profile = build_profile().expect("the chain is a valid profile");
     // Body 0 (pelvis) keeps its pin; the chest and head only get muscle weight.
     let weights = (0..profile.bodies().len())
@@ -118,9 +118,9 @@ fn spawn_ragdoll(mut commands: Commands, mut profiles: ResMut<Assets<RagdollProf
 
 /// Adds a fixed Rapier floor, a camera, a light, and a label.
 fn setup_scene(
-    mut commands: Commands,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
+    mut commands: Commands<'_, '_>,
+    mut meshes: ResMut<'_, Assets<Mesh>>,
+    mut materials: ResMut<'_, Assets<StandardMaterial>>,
 ) {
     commands.spawn((
         RigidBody::Fixed,
@@ -155,7 +155,7 @@ fn setup_scene(
 /// Spawns one bone entity per profile body, posed at the profile rest pose.
 ///
 /// The ragdoll runtime binds each body to the bone with the same `Name`.
-fn spawn_skeleton(commands: &mut Commands, character: Entity, profile: &RagdollProfile) {
+fn spawn_skeleton(commands: &mut Commands<'_, '_>, character: Entity, profile: &RagdollProfile) {
     let bodies = profile.bodies();
     let mut parents = vec![None; bodies.len()];
     for joint in profile.joints() {

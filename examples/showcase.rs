@@ -81,7 +81,7 @@ impl Backend {
     const ALL: [Self; 2] = [Self::Rapier, Self::Avian];
 
     /// Returns the name used on the command line, in the page URL, and in the panel.
-    fn name(self) -> &'static str {
+    const fn name(self) -> &'static str {
         match self {
             Self::Rapier => "rapier",
             Self::Avian => "avian",
@@ -142,7 +142,7 @@ impl Backend {
                     substeps: 1,
                 })
                 .add_plugins((
-                    RapierPhysicsPlugin::<RapierRagdollHooks>::default().in_fixed_schedule(),
+                    RapierPhysicsPlugin::<RapierRagdollHooks<'_, '_>>::default().in_fixed_schedule(),
                     RapierRagdollPlugin,
                 ));
             }
@@ -150,7 +150,7 @@ impl Backend {
                 use avian3d::prelude::PhysicsPlugins;
                 use bevy_ragdoll_avian3d::{AvianRagdollHooks, AvianRagdollPlugin};
                 app.add_plugins((
-                    PhysicsPlugins::new(FixedUpdate).with_collision_hooks::<AvianRagdollHooks>(),
+                    PhysicsPlugins::new(FixedUpdate).with_collision_hooks::<AvianRagdollHooks<'_, '_>>(),
                     AvianRagdollPlugin,
                 ));
             }
@@ -158,7 +158,7 @@ impl Backend {
     }
 
     /// Adds a fixed box collider with the given half extents in metres to `entity`.
-    fn insert_static_box(self, entity: &mut EntityCommands, half_extents: Vec3) {
+    fn insert_static_box(self, entity: &mut EntityCommands<'_>, half_extents: Vec3) {
         match self {
             Self::Rapier => {
                 use bevy_rapier3d::prelude::{Collider, RigidBody};
@@ -255,7 +255,7 @@ impl Param {
     ];
 
     /// Returns the panel label.
-    fn label(self) -> &'static str {
+    const fn label(self) -> &'static str {
         match self {
             Self::Count => "Ragdolls",
             Self::Muscle => "Muscle",
@@ -277,9 +277,9 @@ impl Param {
                     params.count.saturating_sub(step).max(1)
                 };
             }
-            Self::Muscle => params.muscle = (params.muscle + 0.1 * sign).clamp(0.0, 1.0),
+            Self::Muscle => params.muscle = 0.1f32.mul_add(sign, params.muscle).clamp(0.0, 1.0),
             Self::Gravity => params.gravity = (params.gravity + sign).clamp(0.0, 30.0),
-            Self::TimeScale => params.time_scale = (params.time_scale + 0.1 * sign).clamp(0.1, 2.0),
+            Self::TimeScale => params.time_scale = 0.1f32.mul_add(sign, params.time_scale).clamp(0.1, 2.0),
             Self::Hit => {
                 let len = HIT_PROFILES.len();
                 params.hit = (params.hit + if sign > 0.0 { 1 } else { len - 1 }) % len;
@@ -476,7 +476,7 @@ fn main() {
 }
 
 /// Builds the humanoid skeleton and starts loading the glTF creatures.
-fn load_rigs(mut commands: Commands, assets: Res<AssetServer>) {
+fn load_rigs(mut commands: Commands<'_, '_>, assets: Res<'_, AssetServer>) {
     let creature = |name: &str| {
         assets.load(GltfAssetLabel::Scene(0).from_asset(format!("rigs/{name}.glb")))
     };
@@ -488,11 +488,11 @@ fn load_rigs(mut commands: Commands, assets: Res<AssetServer>) {
 
 /// Spawns the camera, lights, checkered floor, and a few obstacles.
 fn setup_scene(
-    mut commands: Commands,
-    backend: Res<ActiveBackend>,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
-    mut images: ResMut<Assets<Image>>,
+    mut commands: Commands<'_, '_>,
+    backend: Res<'_, ActiveBackend>,
+    mut meshes: ResMut<'_, Assets<Mesh>>,
+    mut materials: ResMut<'_, Assets<StandardMaterial>>,
+    mut images: ResMut<'_, Assets<Image>>,
 ) {
     commands.spawn((
         Camera3d::default(),
@@ -585,7 +585,7 @@ fn checker_image() -> Image {
 }
 
 /// Creates the shared character and hit-flash materials.
-fn setup_assets(mut assets: ResMut<BodyAssets>, mut materials: ResMut<Assets<StandardMaterial>>) {
+fn setup_assets(mut assets: ResMut<'_, BodyAssets>, mut materials: ResMut<'_, Assets<StandardMaterial>>) {
     assets.materials = PALETTE
         .iter()
         .map(|&color| {
@@ -607,11 +607,11 @@ fn setup_assets(mut assets: ResMut<BodyAssets>, mut materials: ResMut<Assets<Sta
 ///
 /// Characters that fall off the arena are despawned and replaced.
 fn sync_population(
-    mut commands: Commands,
-    params: Res<Params>,
-    rigs: Option<Res<Rigs>>,
-    mut spawned: Local<usize>,
-    characters: Query<(Entity, &GlobalTransform), With<Character>>,
+    mut commands: Commands<'_, '_>,
+    params: Res<'_, Params>,
+    rigs: Option<Res<'_, Rigs>>,
+    mut spawned: Local<'_, usize>,
+    characters: Query<'_, '_, (Entity, &GlobalTransform), With<Character>>,
 ) {
     let mut alive = 0;
     for (entity, transform) in &characters {
@@ -622,7 +622,7 @@ fn sync_population(
         }
     }
     let Some(rigs) = rigs else { return };
-    let radius = 2.0 + (params.count as f32).sqrt() * 0.9;
+    let radius = (params.count as f32).sqrt().mul_add(0.9, 2.0);
     for _ in alive..params.count.min(alive + SPAWNS_PER_FRAME) {
         let index = *spawned;
         *spawned += 1;
@@ -631,7 +631,7 @@ fn sync_population(
         let distance = radius * ((index % 64) as f32 / 64.0).sqrt();
         let position = Vec3::new(
             angle.cos() * distance,
-            1.0 + (index % 5) as f32 * 0.9,
+            ((index % 5) as f32).mul_add(0.9, 1.0),
             angle.sin() * distance,
         );
         spawn_character(&mut commands, &rigs, &params, index, position, angle);
@@ -642,7 +642,7 @@ fn sync_population(
 ///
 /// `Ragdoll::default()` generates the ragdoll profile from whatever skeleton is under it.
 fn spawn_character(
-    commands: &mut Commands,
+    commands: &mut Commands<'_, '_>,
     rigs: &Rigs,
     params: &Params,
     index: usize,
@@ -676,9 +676,9 @@ type NewBone = (With<Name>, With<ChildOf>, Without<RestRotation>);
 /// Writeback copies physics poses into the bones after capture, so without this
 /// the captured target would equal the current pose and the muscles would idle.
 fn restore_rest_pose(
-    mut commands: Commands,
-    new_bones: Query<(Entity, &Transform), NewBone>,
-    mut bones: Query<(&RestRotation, &mut Transform)>,
+    mut commands: Commands<'_, '_>,
+    new_bones: Query<'_, '_, (Entity, &Transform), NewBone>,
+    mut bones: Query<'_, '_, (&RestRotation, &mut Transform)>,
 ) {
     // Named children are skeleton bones, from code or from a glTF scene; remember their spawn pose.
     for (entity, transform) in &new_bones {
@@ -691,11 +691,11 @@ fn restore_rest_pose(
 
 /// Gives each new physics body a shared mesh matching its collider, in its character's color.
 fn add_body_meshes(
-    mut commands: Commands,
-    mut assets: ResMut<BodyAssets>,
-    mut meshes: ResMut<Assets<Mesh>>,
-    bodies: Query<(Entity, &BodyShape, &RagdollBodyOf), Added<BodyShape>>,
-    characters: Query<&Character>,
+    mut commands: Commands<'_, '_>,
+    mut assets: ResMut<'_, BodyAssets>,
+    mut meshes: ResMut<'_, Assets<Mesh>>,
+    bodies: Query<'_, '_, (Entity, &BodyShape, &RagdollBodyOf), Added<BodyShape>>,
+    characters: Query<'_, '_, &Character>,
 ) {
     for (entity, shape, owner) in &bodies {
         let (mesh, transform) = assets
@@ -719,7 +719,7 @@ fn add_body_meshes(
 }
 
 /// Spawns the control panel: metrics, parameter steppers, backend choice, and actions.
-fn spawn_panel(mut commands: Commands, backend: Res<ActiveBackend>, params: Res<Params>) {
+fn spawn_panel(mut commands: Commands<'_, '_>, backend: Res<'_, ActiveBackend>, params: Res<'_, Params>) {
     let panel = commands
         .spawn((
             Node {
@@ -820,7 +820,7 @@ fn text(value: &str, size: f32, color: Color) -> impl Bundle {
 }
 
 /// Spawns a labelled button in `row` that performs `action` when pressed.
-fn button(commands: &mut Commands, row: Entity, label: &str, action: Action, selected: bool) {
+fn button(commands: &mut Commands<'_, '_>, row: Entity, label: &str, action: Action, selected: bool) {
     let background = if selected {
         ACCENT.with_alpha(0.35)
     } else {
@@ -846,14 +846,14 @@ fn button(commands: &mut Commands, row: Entity, label: &str, action: Action, sel
 
 /// Applies pressed panel buttons.
 fn handle_buttons(
-    mut commands: Commands,
-    buttons: Query<(&Interaction, &Action), Changed<Interaction>>,
-    backend: Res<ActiveBackend>,
-    settings: Res<HitSettings>,
-    mut params: ResMut<Params>,
-    characters: Query<Entity, With<Character>>,
-    bodies: Query<(Entity, &BodyIndex, &GlobalTransform), With<RagdollBodyOf>>,
-    mut hits: MessageWriter<RagdollHit>,
+    mut commands: Commands<'_, '_>,
+    buttons: Query<'_, '_, (&Interaction, &Action), Changed<Interaction>>,
+    backend: Res<'_, ActiveBackend>,
+    settings: Res<'_, HitSettings>,
+    mut params: ResMut<'_, Params>,
+    characters: Query<'_, '_, Entity, With<Character>>,
+    bodies: Query<'_, '_, (Entity, &BodyIndex, &GlobalTransform), With<RagdollBodyOf>>,
+    mut hits: MessageWriter<'_, RagdollHit>,
 ) {
     for (interaction, action) in &buttons {
         if *interaction != Interaction::Pressed {
@@ -888,10 +888,10 @@ fn handle_buttons(
 
 /// Copies changed parameters to the drive, physics settings, and virtual clock.
 fn apply_params(
-    params: Res<Params>,
-    mut settings: ResMut<RagdollPhysicsSettings>,
-    mut time: ResMut<Time<Virtual>>,
-    mut drives: Query<&mut RagdollDrive>,
+    params: Res<'_, Params>,
+    mut settings: ResMut<'_, RagdollPhysicsSettings>,
+    mut time: ResMut<'_, Time<Virtual>>,
+    mut drives: Query<'_, '_, &mut RagdollDrive>,
 ) {
     if !params.is_changed() {
         return;
@@ -906,17 +906,17 @@ fn apply_params(
 
 /// Orbits the camera on right drag and zooms on the mouse wheel.
 fn orbit_camera(
-    buttons: Res<ButtonInput<MouseButton>>,
-    motion: Res<AccumulatedMouseMotion>,
-    scroll: Res<AccumulatedMouseScroll>,
-    mut orbit: ResMut<Orbit>,
-    mut cameras: Query<&mut Transform, With<Camera3d>>,
+    buttons: Res<'_, ButtonInput<MouseButton>>,
+    motion: Res<'_, AccumulatedMouseMotion>,
+    scroll: Res<'_, AccumulatedMouseScroll>,
+    mut orbit: ResMut<'_, Orbit>,
+    mut cameras: Query<'_, '_, &mut Transform, With<Camera3d>>,
 ) {
     if buttons.pressed(MouseButton::Right) {
-        orbit.yaw -= motion.delta.x * 0.005;
-        orbit.pitch = (orbit.pitch + motion.delta.y * 0.005).clamp(0.05, 1.45);
+        orbit.yaw = motion.delta.x.mul_add(-0.005, orbit.yaw);
+        orbit.pitch = motion.delta.y.mul_add(0.005, orbit.pitch).clamp(0.05, 1.45);
     }
-    orbit.distance = (orbit.distance * (1.0 - scroll.delta.y * 0.08)).clamp(4.0, 60.0);
+    orbit.distance = (orbit.distance * scroll.delta.y.mul_add(-0.08, 1.0)).clamp(4.0, 60.0);
     let focus = Vec3::new(0.0, 1.0, 0.0);
     let offset = Quat::from_euler(EulerRot::YXZ, orbit.yaw, -orbit.pitch, 0.0)
         * Vec3::new(0.0, 0.0, orbit.distance);
@@ -927,8 +927,8 @@ fn orbit_camera(
 
 /// Returns the camera ray under the cursor.
 fn cursor_ray(
-    windows: &Query<&Window, With<PrimaryWindow>>,
-    cameras: &Query<(&Camera, &GlobalTransform)>,
+    windows: &Query<'_, '_, &Window, With<PrimaryWindow>>,
+    cameras: &Query<'_, '_, (&Camera, &GlobalTransform)>,
 ) -> Option<(Vec2, Ray3d)> {
     let cursor = windows.single().ok()?.cursor_position()?;
     let (camera, transform) = cameras.single().ok()?;
@@ -937,12 +937,12 @@ fn cursor_ray(
 
 /// Sends a backend ray on left press, and moves the grab goal while dragging.
 fn press_pointer(
-    buttons: Res<ButtonInput<MouseButton>>,
-    interactions: Query<&Interaction>,
-    windows: Query<&Window, With<PrimaryWindow>>,
-    cameras: Query<(&Camera, &GlobalTransform)>,
-    mut pointer: ResMut<PointerState>,
-    mut rays: MessageWriter<RagdollRaycast>,
+    buttons: Res<'_, ButtonInput<MouseButton>>,
+    interactions: Query<'_, '_, &Interaction>,
+    windows: Query<'_, '_, &Window, With<PrimaryWindow>>,
+    cameras: Query<'_, '_, (&Camera, &GlobalTransform)>,
+    mut pointer: ResMut<'_, PointerState>,
+    mut rays: MessageWriter<'_, RagdollRaycast>,
 ) {
     let Some((cursor, ray)) = cursor_ray(&windows, &cameras) else {
         return;
@@ -975,10 +975,10 @@ fn press_pointer(
 
 /// Records the ragdoll body hit by the press ray, if any.
 fn read_pick(
-    mut responses: MessageReader<RagdollRaycastResponse>,
-    mut pointer: ResMut<PointerState>,
-    bodies: Query<&GlobalTransform>,
-    cameras: Query<&GlobalTransform, With<Camera3d>>,
+    mut responses: MessageReader<'_, '_, RagdollRaycastResponse>,
+    mut pointer: ResMut<'_, PointerState>,
+    bodies: Query<'_, '_, &GlobalTransform>,
+    cameras: Query<'_, '_, &GlobalTransform, With<Camera3d>>,
 ) {
     for response in responses.read() {
         if pointer.pending != Some(response.request_id.get()) {
@@ -1005,15 +1005,15 @@ fn read_pick(
 
 /// On left release, hits the picked body if the cursor did not drag; a drag just lets go.
 fn release_pointer(
-    mut commands: Commands,
-    buttons: Res<ButtonInput<MouseButton>>,
-    params: Res<Params>,
-    settings: Res<HitSettings>,
-    assets: Res<BodyAssets>,
-    mut pointer: ResMut<PointerState>,
-    bodies: Query<(&GlobalTransform, &Children)>,
-    visuals: Query<&MeshMaterial3d<StandardMaterial>, Without<HitFlash>>,
-    mut hits: MessageWriter<RagdollHit>,
+    mut commands: Commands<'_, '_>,
+    buttons: Res<'_, ButtonInput<MouseButton>>,
+    params: Res<'_, Params>,
+    settings: Res<'_, HitSettings>,
+    assets: Res<'_, BodyAssets>,
+    mut pointer: ResMut<'_, PointerState>,
+    bodies: Query<'_, '_, (&GlobalTransform, &Children)>,
+    visuals: Query<'_, '_, &MeshMaterial3d<StandardMaterial>, Without<HitFlash>>,
+    mut hits: MessageWriter<'_, RagdollHit>,
 ) {
     if !buttons.just_released(MouseButton::Left) {
         return;
@@ -1053,9 +1053,9 @@ fn release_pointer(
 
 /// Restores each flashed body's material once its highlight expires.
 fn fade_flashes(
-    mut commands: Commands,
-    time: Res<Time<Real>>,
-    mut flashes: Query<(Entity, &mut HitFlash)>,
+    mut commands: Commands<'_, '_>,
+    time: Res<'_, Time<Real>>,
+    mut flashes: Query<'_, '_, (Entity, &mut HitFlash)>,
 ) {
     for (entity, mut flash) in &mut flashes {
         flash.remaining -= time.delta_secs();
@@ -1074,12 +1074,12 @@ fn fade_flashes(
 /// ragdoll dangles instead of stretching one limb. Releasing keeps its velocity,
 /// which throws it.
 fn pull_grabbed_body(
-    time: Res<Time<Fixed>>,
-    pointer: Res<PointerState>,
-    settings: Res<RagdollPhysicsSettings>,
-    bodies: Query<(&BodyPhysicsPose, &BodyVelocity, &BodyMass, &RagdollBodyOf)>,
-    masses: Query<(&BodyMass, &RagdollBodyOf)>,
-    mut impulses: MessageWriter<RagdollImpulse>,
+    time: Res<'_, Time<Fixed>>,
+    pointer: Res<'_, PointerState>,
+    settings: Res<'_, RagdollPhysicsSettings>,
+    bodies: Query<'_, '_, (&BodyPhysicsPose, &BodyVelocity, &BodyMass, &RagdollBodyOf)>,
+    masses: Query<'_, '_, (&BodyMass, &RagdollBodyOf)>,
+    mut impulses: MessageWriter<'_, RagdollImpulse>,
 ) {
     let Some(target) = pointer.target.filter(|_| pointer.dragging) else {
         return;
@@ -1105,12 +1105,12 @@ fn pull_grabbed_body(
 }
 
 /// Marks the start of a fixed step.
-fn start_step_timer(mut timer: ResMut<StepTimer>) {
+fn start_step_timer(mut timer: ResMut<'_, StepTimer>) {
     timer.started = Some(Instant::now());
 }
 
 /// Adds the finished fixed step's wall-clock duration to the running total.
-fn finish_step_timer(mut timer: ResMut<StepTimer>) {
+fn finish_step_timer(mut timer: ResMut<'_, StepTimer>) {
     if let Some(started) = timer.started.take() {
         timer.total += started.elapsed().as_secs_f32();
         timer.steps += 1;
@@ -1119,16 +1119,16 @@ fn finish_step_timer(mut timer: ResMut<StepTimer>) {
 
 /// Refreshes parameter values every frame and the metrics twice a second.
 fn update_panel(
-    params: Res<Params>,
-    real: Res<Time<Real>>,
-    diagnostics: Res<DiagnosticsStore>,
-    backend: Res<ActiveBackend>,
-    mut timer: ResMut<StepTimer>,
-    mut since_refresh: Local<f32>,
-    characters: Query<(), With<Character>>,
-    bodies: Query<(), With<RagdollBodyOf>>,
-    mut values: Query<(&ParamValue, &mut Text), Without<MetricsText>>,
-    mut metrics: Query<&mut Text, With<MetricsText>>,
+    params: Res<'_, Params>,
+    real: Res<'_, Time<Real>>,
+    diagnostics: Res<'_, DiagnosticsStore>,
+    backend: Res<'_, ActiveBackend>,
+    mut timer: ResMut<'_, StepTimer>,
+    mut since_refresh: Local<'_, f32>,
+    characters: Query<'_, '_, (), With<Character>>,
+    bodies: Query<'_, '_, (), With<RagdollBodyOf>>,
+    mut values: Query<'_, '_, (&ParamValue, &mut Text), Without<MetricsText>>,
+    mut metrics: Query<'_, '_, &mut Text, With<MetricsText>>,
 ) {
     if params.is_changed() {
         for (value, mut text) in &mut values {
@@ -1146,7 +1146,7 @@ fn update_panel(
     (timer.total, timer.steps) = (0.0, 0);
     let fps = diagnostics
         .get(&FrameTimeDiagnosticsPlugin::FPS)
-        .and_then(|fps| fps.smoothed())
+        .and_then(bevy::diagnostic::Diagnostic::smoothed)
         .unwrap_or_default();
     let (ragdolls, body_count) = (characters.iter().count(), bodies.iter().count());
     let (step, backend) = (timer.average_ms, backend.0.name());

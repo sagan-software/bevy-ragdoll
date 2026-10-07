@@ -64,7 +64,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }))
         .add_plugins((
             RagdollPlugin::default(),
-            RapierPhysicsPlugin::<RapierRagdollHooks>::default().in_fixed_schedule(),
+            RapierPhysicsPlugin::<RapierRagdollHooks<'_, '_>>::default().in_fixed_schedule(),
             RapierRagdollPlugin,
         ))
         .insert_resource(Time::<Fixed>::from_hz(60.0))
@@ -175,7 +175,7 @@ fn body_index(position: usize) -> BodyIndex {
 }
 
 /// Returns whether a body is pinned: the pelvis and chest.
-fn is_core(body: &Body) -> bool {
+const fn is_core(body: &Body) -> bool {
     matches!(body.role(), BodyRole::Pelvis | BodyRole::Chest)
 }
 
@@ -206,9 +206,9 @@ fn next_body(current: usize, count: usize, channel: Channel, pins: PinTargets) -
 
 /// Spawns the camera, light, ground, and title.
 fn setup_scene(
-    mut commands: Commands,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
+    mut commands: Commands<'_, '_>,
+    mut meshes: ResMut<'_, Assets<Mesh>>,
+    mut materials: ResMut<'_, Assets<StandardMaterial>>,
 ) {
     commands.spawn((
         Camera3d::default(),
@@ -250,9 +250,9 @@ fn setup_scene(
 
 /// Spawns the ragdoll root and one bone per profile body at its rest pose.
 fn spawn_ragdoll(
-    mut commands: Commands,
-    mut profiles: ResMut<Assets<RagdollProfile>>,
-    rig: Res<Rig>,
+    mut commands: Commands<'_, '_>,
+    mut profiles: ResMut<'_, Assets<RagdollProfile>>,
+    rig: Res<'_, Rig>,
 ) {
     let profile = &rig.0;
     let (weights, pins) = ragdoll_controls(profile);
@@ -310,7 +310,7 @@ fn spawn_ragdoll(
 }
 
 /// Sways each bone before the runtime captures its world pose as a drive target.
-fn animate_idle_targets(time: Res<Time>, mut bones: Query<(&IdleTarget, &mut Transform)>) {
+fn animate_idle_targets(time: Res<'_, Time>, mut bones: Query<'_, '_, (&IdleTarget, &mut Transform)>) {
     for (bone, mut transform) in &mut bones {
         let phase = (bone.index % 9) as f32 * 0.47;
         let amplitude = match bone.role {
@@ -320,7 +320,7 @@ fn animate_idle_targets(time: Res<Time>, mut bones: Query<(&IdleTarget, &mut Tra
             BodyRole::Head | BodyRole::Neck => 0.022,
             BodyRole::Tail | BodyRole::Other => 0.03,
         };
-        let sway = (time.elapsed_secs() * 0.82 + phase).sin() * amplitude;
+        let sway = f32::mul_add(time.elapsed_secs(), 0.82, phase).sin() * amplitude;
         transform.rotation = bone.rest_rotation * Quat::from_rotation_z(sway);
     }
 }
@@ -338,7 +338,7 @@ fn label(text: &str, size: f32, color: Color) -> impl Bundle {
 }
 
 /// Spawns the panel with the hit readout, one muscle bar per body, and key help.
-fn spawn_hud(mut commands: Commands, rig: Res<Rig>) {
+fn spawn_hud(mut commands: Commands<'_, '_>, rig: Res<'_, Rig>) {
     let panel = commands
         .spawn((
             Node {
@@ -413,11 +413,11 @@ fn spawn_hud(mut commands: Commands, rig: Res<Rig>) {
 
 /// Applies key presses to the hit selection and the selected body's strengths.
 fn adjust_controls(
-    keys: Res<ButtonInput<KeyCode>>,
-    settings: Res<HitSettings>,
-    rig: Res<Rig>,
-    mut controls: ResMut<Controls>,
-    mut ragdolls: Query<(&mut RagdollBodyWeights, &PinTargets)>,
+    keys: Res<'_, ButtonInput<KeyCode>>,
+    settings: Res<'_, HitSettings>,
+    rig: Res<'_, Rig>,
+    mut controls: ResMut<'_, Controls>,
+    mut ragdolls: Query<'_, '_, (&mut RagdollBodyWeights, &PinTargets)>,
 ) {
     for (key, profile) in PRESETS {
         if keys.just_pressed(key) {
@@ -462,12 +462,12 @@ fn adjust_controls(
 
 /// Sends a backend ray from the cursor on left click and remembers its impulse.
 fn request_mouse_hit(
-    buttons: Res<ButtonInput<MouseButton>>,
-    windows: Query<&Window, With<PrimaryWindow>>,
-    cameras: Query<(&Camera, &GlobalTransform)>,
-    settings: Res<HitSettings>,
-    mut controls: ResMut<Controls>,
-    mut requests: MessageWriter<RagdollRaycast>,
+    buttons: Res<'_, ButtonInput<MouseButton>>,
+    windows: Query<'_, '_, &Window, With<PrimaryWindow>>,
+    cameras: Query<'_, '_, (&Camera, &GlobalTransform)>,
+    settings: Res<'_, HitSettings>,
+    mut controls: ResMut<'_, Controls>,
+    mut requests: MessageWriter<'_, RagdollRaycast>,
 ) {
     if !buttons.just_pressed(MouseButton::Left) {
         return;
@@ -496,9 +496,9 @@ fn request_mouse_hit(
 
 /// Turns each ray response that hit a ragdoll body into a hit message.
 fn apply_ray_hits(
-    mut responses: MessageReader<RagdollRaycastResponse>,
-    mut controls: ResMut<Controls>,
-    mut hits: MessageWriter<RagdollHit>,
+    mut responses: MessageReader<'_, '_, RagdollRaycastResponse>,
+    mut controls: ResMut<'_, Controls>,
+    mut hits: MessageWriter<'_, RagdollHit>,
 ) {
     for response in responses.read() {
         let Some(impulse) = controls.pending.remove(&response.request_id.get()) else {
@@ -522,13 +522,13 @@ fn apply_ray_hits(
 
 /// Hits the chest once with a rifle impulse aimed away from the camera.
 fn rifle_demo(
-    time: Res<Time>,
-    mut done: Local<bool>,
-    rig: Res<Rig>,
-    settings: Res<HitSettings>,
-    cameras: Query<&GlobalTransform, With<Camera>>,
-    bodies: Query<(Entity, &BodyIndex, &GlobalTransform), With<RagdollBodyOf>>,
-    mut hits: MessageWriter<RagdollHit>,
+    time: Res<'_, Time>,
+    mut done: Local<'_, bool>,
+    rig: Res<'_, Rig>,
+    settings: Res<'_, HitSettings>,
+    cameras: Query<'_, '_, &GlobalTransform, With<Camera>>,
+    bodies: Query<'_, '_, (Entity, &BodyIndex, &GlobalTransform), With<RagdollBodyOf>>,
+    mut hits: MessageWriter<'_, RagdollHit>,
 ) {
     if *done || time.elapsed_secs() < 0.85 {
         return;
@@ -558,12 +558,12 @@ fn rifle_demo(
 
 /// Updates the muscle bars and the selected hit and body readout.
 fn update_hud(
-    controls: Res<Controls>,
-    settings: Res<HitSettings>,
-    rig: Res<Rig>,
-    ragdolls: Query<&RagdollBodyWeights>,
-    mut bars: Query<(&MuscleBar, &mut Node, &mut BackgroundColor)>,
-    mut readouts: Query<&mut Text, With<Readout>>,
+    controls: Res<'_, Controls>,
+    settings: Res<'_, HitSettings>,
+    rig: Res<'_, Rig>,
+    ragdolls: Query<'_, '_, &RagdollBodyWeights>,
+    mut bars: Query<'_, '_, (&MuscleBar, &mut Node, &mut BackgroundColor)>,
+    mut readouts: Query<'_, '_, &mut Text, With<Readout>>,
 ) {
     let Ok(weights) = ragdolls.single() else {
         return;

@@ -39,7 +39,7 @@ use thiserror::Error;
 /// revision, allowing
 /// Criterion results to compare equivalent populations instead of measuring new
 /// random layouts.
-pub const BENCH_SEED: u64 = 42;
+pub(crate) const BENCH_SEED: u64 = 42;
 
 /// Selects the rigid-body and ragdoll-drive state applied while a benchmark
 /// population is prepared.
@@ -49,7 +49,7 @@ pub const BENCH_SEED: u64 = 42;
 /// operation starts after the app has bound every profile body and applied the
 /// selected state.
 #[derive(Clone, Copy, Debug)]
-pub enum PopulationMode {
+pub(crate) enum PopulationMode {
     /// Keeps bodies dynamic and disables muscle and pin drive while passive
     /// physics is measured
     /// without changing the seeded population layout used by the other
@@ -80,7 +80,7 @@ pub enum PopulationMode {
 /// return this error
 /// before a caller starts the timed iteration.
 #[derive(Clone, Copy, Debug, Error, PartialEq, Eq)]
-pub enum BenchmarkSetupError {
+pub(crate) enum BenchmarkSetupError {
     /// Returned when `RagdollPlugin` has not installed profile asset storage
     /// before setup creates
     /// characters that share one validated profile handle for the measured
@@ -142,7 +142,7 @@ pub enum BenchmarkSetupError {
 /// let profile = human_profile();
 /// assert_eq!(profile.bodies().len(), 16);
 /// ```
-pub fn human_profile() -> RagdollProfile {
+pub(crate) fn human_profile() -> RagdollProfile {
     RagdollProfile::from_skeleton(&bevy_ragdoll::Skeleton::humanoid())
         .expect("the reference humanoid profile validates")
 }
@@ -163,7 +163,7 @@ pub fn human_profile() -> RagdollProfile {
 /// let profile = chain_profile(8, 42);
 /// assert_eq!(profile.bodies().len(), 8);
 /// ```
-pub fn chain_profile(body_count: usize, seed: u64) -> RagdollProfile {
+pub(crate) fn chain_profile(body_count: usize, seed: u64) -> RagdollProfile {
     RagdollProfile::new(chain_spec(body_count, seed)).expect("seeded chain profile validates")
 }
 
@@ -183,7 +183,7 @@ pub fn chain_profile(body_count: usize, seed: u64) -> RagdollProfile {
 /// let spec = chain_spec(8, 42);
 /// assert_eq!(spec.bodies.len(), 8);
 /// ```
-pub fn chain_spec(body_count: usize, seed: u64) -> ProfileSpec {
+pub(crate) fn chain_spec(body_count: usize, seed: u64) -> ProfileSpec {
     // Seed one generator so equal arguments produce equal geometry in each benchmark process.
     let mut random = ChaCha8Rng::seed_from_u64(seed);
     let mut builder = ProfileBuilder::default();
@@ -200,8 +200,8 @@ pub fn chain_spec(body_count: usize, seed: u64) -> ProfileSpec {
     // Add bodies in parent-first order because profile indexes refer to insertion order.
     for index in 0..body_count {
         // Draw dimensions from the seeded stream so body shapes remain stable between runs.
-        let radius = 0.08 + next_unit(&mut random).abs() * 0.02;
-        let height = 0.35 + next_unit(&mut random).abs() * 0.15;
+        let radius = next_unit(&mut random).abs().mul_add(0.02, 0.08);
+        let height = next_unit(&mut random).abs().mul_add(0.15, 0.35);
         let rest_height = height * index as f32;
         let body_index = builder
             .add_body(
@@ -248,7 +248,7 @@ pub fn chain_spec(body_count: usize, seed: u64) -> ProfileSpec {
 /// assert!(app.world().entities().len() > 1);
 /// # Ok::<(), Box<dyn std::error::Error>>(())
 /// ```
-pub fn core_app(
+pub(crate) fn core_app(
     profile: RagdollProfile,
     character_count: usize,
     mode: PopulationMode,
@@ -285,7 +285,7 @@ pub fn core_app(
 /// assert!(app.world().entities().len() > 1);
 /// # Ok::<(), Box<dyn std::error::Error>>(())
 /// ```
-pub fn rapier_app(
+pub(crate) fn rapier_app(
     profile: RagdollProfile,
     character_count: usize,
     mode: PopulationMode,
@@ -419,7 +419,7 @@ fn profile_parent_indices(
 }
 
 /// Selects the first invalid relationship category for one profile joint.
-fn joint_index_error(
+const fn joint_index_error(
     child: usize,
     parent: usize,
     body_count: usize,
@@ -458,12 +458,12 @@ fn character_transform(
     let row = index / columns;
     let column = index % columns;
     // Apply small seeded jitter so large benchmark grids do not start in exact overlap.
-    let x = (column as f32 - (grid_width - 1.0) * 0.5) * 1.7 + next_unit(random) * 0.05;
-    let z = (row as f32 - (grid_width - 1.0) * 0.5) * 1.7 + next_unit(random) * 0.05;
+    let x = next_unit(random).mul_add(0.05, (grid_width - 1.0).mul_add(-0.5, column as f32) * 1.7);
+    let z = next_unit(random).mul_add(0.05, (grid_width - 1.0).mul_add(-0.5, row as f32) * 1.7);
     let y = if matches!(mode, PopulationMode::Asleep) {
         0.0
     } else {
-        2.0 + next_unit(random) * 0.05
+        next_unit(random).mul_add(0.05, 2.0)
     };
     Transform::from_xyz(x, y, z)
 }
@@ -636,5 +636,5 @@ fn next_unit(random: &mut ChaCha8Rng) -> f32 {
     // Discard the low eight bits so conversion uses the full 24-bit mantissa of `f32`.
     let bits = random.next_u32() >> 8;
     let unit = bits as f32 / 16_777_215.0;
-    unit * 2.0 - 1.0
+    unit.mul_add(2.0, -1.0)
 }

@@ -37,7 +37,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }))
         .add_plugins((
             RagdollPlugin::default(),
-            RapierPhysicsPlugin::<RapierRagdollHooks>::default().in_fixed_schedule(),
+            RapierPhysicsPlugin::<RapierRagdollHooks<'_, '_>>::default().in_fixed_schedule(),
             RapierRagdollPlugin,
         ))
         .insert_resource(Time::<Fixed>::from_hz(60.0))
@@ -91,7 +91,7 @@ struct Ball {
 }
 
 /// Returns whether a body is the pelvis or part of a leg.
-fn is_lower_body(body: &Body) -> bool {
+const fn is_lower_body(body: &Body) -> bool {
     matches!(
         body.role(),
         BodyRole::Pelvis | BodyRole::Thigh | BodyRole::Calf | BodyRole::Foot
@@ -120,9 +120,9 @@ fn body_index(position: usize) -> BodyIndex {
 
 /// Spawns the camera, light, ground, and title.
 fn setup_scene(
-    mut commands: Commands,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
+    mut commands: Commands<'_, '_>,
+    mut meshes: ResMut<'_, Assets<Mesh>>,
+    mut materials: ResMut<'_, Assets<StandardMaterial>>,
 ) {
     commands.spawn((
         Camera3d::default(),
@@ -166,9 +166,9 @@ fn setup_scene(
 
 /// Spawns the ragdoll root and one bone per profile body at its rest pose.
 fn spawn_ragdoll(
-    mut commands: Commands,
-    mut profiles: ResMut<Assets<RagdollProfile>>,
-    rig: Res<Rig>,
+    mut commands: Commands<'_, '_>,
+    mut profiles: ResMut<'_, Assets<RagdollProfile>>,
+    rig: Res<'_, Rig>,
 ) {
     let profile = &rig.0;
     let (weights, pins) = ragdoll_controls(profile);
@@ -226,7 +226,7 @@ fn spawn_ragdoll(
 }
 
 /// Sways each bone before the runtime captures its world pose as a drive target.
-fn animate_idle_targets(time: Res<Time>, mut bones: Query<(&IdleTarget, &mut Transform)>) {
+fn animate_idle_targets(time: Res<'_, Time>, mut bones: Query<'_, '_, (&IdleTarget, &mut Transform)>) {
     for (bone, mut transform) in &mut bones {
         let phase = (bone.index % 9) as f32 * 0.47;
         let amplitude = match bone.role {
@@ -236,13 +236,13 @@ fn animate_idle_targets(time: Res<Time>, mut bones: Query<(&IdleTarget, &mut Tra
             BodyRole::Head | BodyRole::Neck => 0.022,
             BodyRole::Tail | BodyRole::Other => 0.03,
         };
-        let sway = (time.elapsed_secs() * 0.82 + phase).sin() * amplitude;
+        let sway = f32::mul_add(time.elapsed_secs(), 0.82, phase).sin() * amplitude;
         transform.rotation = bone.rest_rotation * Quat::from_rotation_z(sway);
     }
 }
 
 /// Pauses or resumes the launch timer on `Space`.
-fn toggle_launcher(keys: Res<ButtonInput<KeyCode>>, mut timer: ResMut<LaunchTimer>) {
+fn toggle_launcher(keys: Res<'_, ButtonInput<KeyCode>>, mut timer: ResMut<'_, LaunchTimer>) {
     if keys.just_pressed(KeyCode::Space) {
         if timer.0.is_paused() {
             timer.0.unpause();
@@ -254,13 +254,13 @@ fn toggle_launcher(keys: Res<ButtonInput<KeyCode>>, mut timer: ResMut<LaunchTime
 
 /// Launches a ball at the chest each time the launch timer fires.
 fn launch_balls(
-    mut commands: Commands,
-    time: Res<Time>,
-    rig: Res<Rig>,
-    mut timer: ResMut<LaunchTimer>,
-    bodies: Query<(&BodyIndex, &GlobalTransform), With<RagdollBodyOf>>,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
+    mut commands: Commands<'_, '_>,
+    time: Res<'_, Time>,
+    rig: Res<'_, Rig>,
+    mut timer: ResMut<'_, LaunchTimer>,
+    bodies: Query<'_, '_, (&BodyIndex, &GlobalTransform), With<RagdollBodyOf>>,
+    mut meshes: ResMut<'_, Assets<Mesh>>,
+    mut materials: ResMut<'_, Assets<StandardMaterial>>,
 ) {
     if !timer.0.tick(time.delta()).just_finished() {
         return;
@@ -295,9 +295,9 @@ fn launch_balls(
 
 /// Removes balls after four seconds or once they fall below the floor.
 fn despawn_old_balls(
-    mut commands: Commands,
-    time: Res<Time>,
-    mut balls: Query<(Entity, &mut Ball, &Transform)>,
+    mut commands: Commands<'_, '_>,
+    time: Res<'_, Time>,
+    mut balls: Query<'_, '_, (Entity, &mut Ball, &Transform)>,
 ) {
     for (entity, mut ball, transform) in &mut balls {
         if ball.lifetime.tick(time.delta()).is_finished() || transform.translation.y < -2.0 {

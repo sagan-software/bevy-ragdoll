@@ -26,7 +26,7 @@ fn math_benchmarks(criterion: &mut Criterion) {
     let joint_children = profile
         .joints()
         .iter()
-        .map(|joint| joint.child())
+        .map(bevy_ragdoll::Joint::child)
         .collect::<Vec<_>>();
     let settings = RagdollPhysicsSettings::default();
     let mut random = ChaCha8Rng::seed_from_u64(BENCH_SEED);
@@ -42,7 +42,7 @@ fn math_benchmarks(criterion: &mut Criterion) {
         let inputs = (0..evaluation_count)
             .map(|_| {
                 let angle = next_angle(&mut random);
-                let muscle = (angle + 1.0) * 0.5;
+                let muscle = f32::midpoint(angle, 1.0);
                 let motor = joint_motor_values(muscle, 40.0, &settings);
                 let target_rotation = Quat::from_rotation_y(angle);
                 let torque = StablePdInput {
@@ -152,7 +152,7 @@ fn first_body_per_character(world: &mut World) -> Vec<Entity> {
 fn next_angle(random: &mut ChaCha8Rng) -> f32 {
     let bits = random.next_u32() >> 8;
     let unit = bits as f32 / 16_777_215.0;
-    (unit * 2.0 - 1.0) * 0.5
+    unit.mul_add(2.0, -1.0) * 0.5
 }
 
 criterion_group!(benches, math_benchmarks);

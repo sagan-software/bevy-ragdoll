@@ -29,9 +29,9 @@ fn main() {
 
 /// Adds a floor, a camera, a light, and a label.
 fn setup_scene(
-    mut commands: Commands,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
+    mut commands: Commands<'_, '_>,
+    mut meshes: ResMut<'_, Assets<Mesh>>,
+    mut materials: ResMut<'_, Assets<StandardMaterial>>,
 ) {
     commands.spawn((
         Mesh3d(meshes.add(Plane3d::default().mesh().size(12.0, 12.0))),
@@ -120,7 +120,7 @@ fn build_profile() -> Result<RagdollProfile, ProfileError> {
 }
 
 /// Spawns a limp dynamic ragdoll and the named bones its profile binds to.
-fn spawn_ragdoll(mut commands: Commands, mut profiles: ResMut<Assets<RagdollProfile>>) {
+fn spawn_ragdoll(mut commands: Commands<'_, '_>, mut profiles: ResMut<'_, Assets<RagdollProfile>>) {
     let profile = build_profile().expect("the chain is a valid profile");
     let character = commands
         .spawn((
