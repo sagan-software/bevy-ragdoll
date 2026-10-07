@@ -516,9 +516,10 @@ mod tests {
             .id()
     }
 
-    /// Runs the kind, sleep, and kinematic target systems once and applies
-    /// their deferred commands.
+    /// Installs default settings, runs the kind, sleep, and kinematic target
+    /// systems once, and applies their deferred commands.
     fn run_kinematic_systems(world: &mut World) {
+        world.insert_resource(RagdollPhysicsSettings::default());
         let mut system: KinematicUpdateState = SystemState::new(world);
         // The test world always holds the settings resource.
         if let Ok((roots, bodies, targets, drivers, settings)) = system.get_mut(world) {
@@ -533,7 +534,6 @@ mod tests {
     fn kinematic_updates_skip_missing_roots_and_target_poses() {
         // A limp owner with an empty target history, and a root that is not a ragdoll.
         let mut world = World::new();
-        world.insert_resource(RagdollPhysicsSettings::default());
         let owner = world
             .spawn((
                 Ragdoll::new(bevy::asset::Handle::default()),
