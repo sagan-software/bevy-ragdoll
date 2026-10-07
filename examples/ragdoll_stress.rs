@@ -36,7 +36,7 @@ const FIXED_HZ: f64 = 60.0;
 const UNSTABLE_SPEED: f32 = 50.0;
 
 /// Command-line options.
-#[derive(Parser, Clone, Serialize)]
+#[derive(Parser, Clone, Serialize, Reflect)]
 struct Args {
     /// Run without a window or renderer.
     #[cfg_attr(
@@ -67,7 +67,7 @@ struct Args {
 }
 
 /// Ragdoll placement.
-#[derive(clap::ValueEnum, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(clap::ValueEnum, Clone, Copy, PartialEq, Eq, Serialize, Reflect)]
 #[serde(rename_all = "snake_case")]
 enum Scenario {
     /// One tall stack that collapses into a contact-heavy heap.
@@ -127,26 +127,22 @@ impl Summary {
 }
 
 /// Run options and samples collected so far.
-#[cfg_attr(
-    dylint_lib = "sagan_lints",
-    expect(
-        bevy_missing_reflect,
-        reason = "the clap Args and Instant fields cannot implement Reflect, and nothing inspects this resource"
-    )
-)]
-#[derive(Resource)]
+#[derive(Resource, Reflect)]
 struct Run {
     /// Command-line options.
     args: Args,
     /// The skeleton every character uses; each `Ragdoll` generates its profile from it.
+    #[reflect(ignore)]
     skeleton: Skeleton,
     /// Frame times in milliseconds after the warmup.
     frames: Vec<f64>,
     /// Fixed-step times in milliseconds after the warmup.
     steps: Vec<f64>,
     /// Start of the frame or fixed step being timed.
+    #[reflect(ignore)]
     frame_start: Option<Instant>,
     /// Start of the fixed step being timed.
+    #[reflect(ignore)]
     step_start: Option<Instant>,
 }
 

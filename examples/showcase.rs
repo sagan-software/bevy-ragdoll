@@ -117,6 +117,7 @@ impl Backend {
     /// native.
     fn restart_into(self) {
         let name = self.name();
+        // The web reloads with a new query; native starts a fresh process and exits.
         #[cfg(target_arch = "wasm32")]
         if let Some(window) = web_sys::window() {
             let _ = window.location().set_search(&format!("backend={name}"));
@@ -749,36 +750,28 @@ fn spawn_character(
     }
 }
 
-/// Filter for named child entities (skeleton bones) whose rest rotation is not yet
-/// recorded.
-type NewBone = (With<Name>, With<ChildOf>, Without<RestRotation>);
+/// Filter for skeleton bones: named entities with a parent.
+type Bone = (With<Name>, With<ChildOf>);
 
 /// Puts each bone back at its rest rotation so the muscles pull toward the rest
 /// pose.
 ///
 /// Writeback copies physics poses into the bones after capture, so without this
 /// the captured target would equal the current pose and the muscles would idle.
-#[cfg_attr(
-    dylint_lib = "sagan_lints",
-    expect(
-        bevy_conflicting_query_params,
-        reason = "NewBone excludes RestRotation and the second query requires it, so the Transform accesses are disjoint"
-    )
-)]
 fn restore_rest_pose(
     mut commands: Commands<'_, '_>,
-    new_bones: Query<'_, '_, (Entity, &Transform), NewBone>,
-    mut bones: Query<'_, '_, (&RestRotation, &mut Transform)>,
+    mut bones: Query<'_, '_, (Entity, &mut Transform, Option<&RestRotation>), Bone>,
 ) {
-    // Named children are skeleton bones, from code or from a glTF scene; remember their spawn pose.
-    for (entity, transform) in &new_bones {
-        commands
-            .entity(entity)
-            .insert(RestRotation(transform.rotation));
-    }
-    // Restore the rest rotation before the runtime captures drive targets.
-    for (rest, mut transform) in &mut bones {
-        transform.rotation = rest.0;
+    for (entity, mut transform, rest) in &mut bones {
+        // Restore a known bone's rest rotation before the runtime captures drive targets.
+        if let Some(rest) = rest {
+            transform.rotation = rest.0;
+        } else {
+            // A new bone, from code or a glTF scene: remember its spawn pose as the rest pose.
+            commands
+                .entity(entity)
+                .insert(RestRotation(transform.rotation));
+        }
     }
 }
 
