@@ -961,8 +961,10 @@ mod tests {
             settings,
             true,
         );
-        assert_eq!(unpinned.pin_force, Vec3::ZERO);
-        assert_eq!(unpinned.max_linear_speed, Some(10.0));
+        assert_eq!(
+            (unpinned.pin_force, unpinned.max_linear_speed),
+            (Vec3::ZERO, Some(10.0))
+        );
 
         // A 0.5 N force cap must bound the pin even though the target is far away.
         let defaults = PinSettings::default();
@@ -985,8 +987,8 @@ mod tests {
             true,
         );
         // The capped force and the angular speed cap both reach the output.
-        assert!((pinned.pin_force.length() - 0.5).abs() < 1.0e-5);
-        assert_eq!(pinned.max_angular_speed, Some(20.0));
+        let is_capped = (pinned.pin_force.length() - 0.5).abs() < 1.0e-5;
+        assert_eq!((is_capped, pinned.max_angular_speed), (true, Some(20.0)));
     }
 
     /// Reads a character's pin settings before computing every body output.
@@ -1268,17 +1270,18 @@ mod tests {
         // Drive must not pin either body but still apply the character's speed caps.
         drive(&mut world);
 
-        let missing_index_output = world
-            .get::<BodyDriveOutput>(missing_index)
-            .expect("an invalid extra body still receives its active character limit");
-        assert_eq!(missing_index_output.pin_force, Vec3::ZERO);
-        assert_eq!(missing_index_output.max_linear_speed, Some(10.0));
-        // The body without a target gets the same treatment.
-        let missing_target_output = world
-            .get::<BodyDriveOutput>(missing_target)
-            .expect("a body without a target still receives its active character limit");
-        assert_eq!(missing_target_output.pin_force, Vec3::ZERO);
-        assert_eq!(missing_target_output.max_angular_speed, Some(20.0));
+        // Both bodies get no pin force and the character's speed caps.
+        let outputs = [missing_index, missing_target].map(|body| {
+            let output = world
+                .get::<BodyDriveOutput>(body)
+                .expect("an unpinned body still receives its active character limit");
+            (
+                output.pin_force,
+                output.max_linear_speed,
+                output.max_angular_speed,
+            )
+        });
+        assert_eq!(outputs, [(Vec3::ZERO, Some(10.0), Some(20.0)); 2]);
     }
 
     /// Joint drive skips missing parents and targets without writing motor
