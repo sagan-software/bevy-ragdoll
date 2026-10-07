@@ -535,6 +535,7 @@ mod tests {
     #[test]
     fn point_impulse_accumulates_center_relative_angular_momentum() {
         let mut accumulator = ImpulseAccumulator::default();
+        // Push along +X at one metre above the origin.
         accumulator.add(Vec3::Y, Vec3::X * 2.0);
 
         assert_eq!(accumulator.linear, Vec3::X * 2.0);
@@ -544,6 +545,7 @@ mod tests {
 
     /// Builds a minimal app with the core messages and mock raycast system.
     fn raycast_app() -> App {
+        // Run exactly one 60 Hz fixed step per update.
         let mut app = App::new();
         app.add_plugins((
             MinimalPlugins,
@@ -580,6 +582,7 @@ mod tests {
     #[test]
     fn kinematic_target_skips_missing_history() {
         let mut app = raycast_app();
+        // The owner has no target pose history at all.
         let character = app.world_mut().spawn_empty().id();
         let body = kinematic_body(&mut app, character, 0);
 
@@ -599,6 +602,7 @@ mod tests {
     #[test]
     fn kinematic_target_skips_an_out_of_range_pose() {
         let mut app = raycast_app();
+        // The owner's empty history has no pose for body index 1.
         let character = app.world_mut().spawn(RagdollTargetPose::default()).id();
         let body = kinematic_body(&mut app, character, 1);
 
@@ -627,6 +631,7 @@ mod tests {
     /// distance.
     #[test]
     fn ray_shapes_cover_sphere_cuboid_and_distance_limits() {
+        // Both shapes are centred at the origin with a 0.5 m extent.
         let transform = Transform::IDENTITY;
         let sphere = BodyShape(ShapeSpec::Sphere {
             center: Vec3::ZERO,
@@ -638,6 +643,7 @@ mod tests {
             rotation: bevy::math::Quat::IDENTITY,
         });
 
+        // Cast from two metres away; the last ray stops short of the sphere.
         let sphere_hit = ray_shape(Vec3::new(-2.0, 0.0, 0.0), Vec3::X, 2.0, &transform, &sphere)
             .expect("the ray reaches the sphere");
         let cuboid_hit = ray_shape(Vec3::new(-2.0, 0.0, 0.0), Vec3::X, 2.0, &transform, &cuboid)
@@ -648,94 +654,108 @@ mod tests {
         assert!(ray_shape(Vec3::new(-2.0, 0.0, 0.0), Vec3::X, 1.0, &transform, &sphere,).is_none());
     }
 
-    /// Sphere intersections cover inside origins, misses, and invalid radii.
+    /// A sphere ray from an inside origin exits through the far side.
     #[test]
-    fn ray_sphere_handles_inside_origins_and_invalid_inputs() {
-        let inside = ray_sphere(Vec3::ZERO, Vec3::X, Vec3::ZERO, 1.0)
-            .expect("an inside origin exits through the far side");
+    fn ray_sphere_exits_from_an_inside_origin() {
+        let inside = ray_sphere(Vec3::ZERO, Vec3::X, Vec3::ZERO, 1.0);
+        assert_eq!(inside, Some((1.0, Vec3::X)));
+    }
 
-        assert_eq!(inside.0, 1.0);
-        assert_eq!(inside.1, Vec3::X);
+    /// Sphere rays miss off-axis spheres and reject negative or NaN radii.
+    #[test]
+    fn ray_sphere_rejects_misses_and_invalid_radii() {
         assert!(ray_sphere(Vec3::new(0.0, 2.0, 0.0), Vec3::X, Vec3::ZERO, 1.0).is_none());
         assert!(ray_sphere(Vec3::ZERO, Vec3::X, Vec3::ZERO, -1.0).is_none());
         assert!(ray_sphere(Vec3::ZERO, Vec3::X, Vec3::ZERO, f32::NAN).is_none());
     }
 
-    /// Ray requests with a zero direction or invalid distance return no hit.
-    #[test]
-    fn raycast_rejects_invalid_direction_and_distance() {
+    /// Sends one raycast through the mock backend and returns whether the
+    /// response for `request_id` reports no hit.
+    fn raycast_has_no_hit(request_id: u64, direction: Vec3, max_distance: f32) -> bool {
         let mut app = raycast_app();
+        // Start reading after any responses that already exist.
         let mut cursor = app
             .world()
             .get_resource::<Messages<RagdollRaycastResponse>>()
-            .expect("RagdollPlugin registers raycast responses")
-            .get_cursor();
-
-        for (request_id, direction, max_distance) in [
-            (1, Vec3::ZERO, 4.0),
-            (2, Vec3::X, -1.0),
-            (3, Vec3::X, f32::NAN),
-            (4, Vec3::X, 0.0),
-        ] {
-            app.world_mut().write_message(RagdollRaycast {
-                request_id: bevy_ragdoll::runtime::messages::RagdollRequestId::new(request_id),
-                origin: Vec3::ZERO,
-                direction,
-                max_distance,
-                filter: None,
-            });
-            app.world_mut()
-                .try_run_schedule(FixedUpdate)
-                .expect("the fixed schedule exists");
-            let response = cursor
-                .read(
-                    app.world()
-                        .get_resource::<Messages<RagdollRaycastResponse>>()
-                        .expect("RagdollPlugin retains raycast responses"),
-                )
-                .find(|response| response.request_id.get() == request_id)
-                .copied()
-                .expect("the raycast system answers each request");
-            assert!(response.hit.is_none());
+            .map(Messages::get_cursor)
+            .unwrap_or_default();
+        app.world_mut().write_message(RagdollRaycast {
+            request_id: bevy_ragdoll::runtime::messages::RagdollRequestId::new(request_id),
+            origin: Vec3::ZERO,
+            direction,
+            max_distance,
+            filter: None,
+        });
+        // One fixed step answers the request.
+        if app.world_mut().try_run_schedule(FixedUpdate).is_err() {
+            return false;
         }
+        app.world()
+            .get_resource::<Messages<RagdollRaycastResponse>>()
+            .and_then(|messages| {
+                cursor
+                    .read(messages)
+                    .find(|response| response.request_id.get() == request_id)
+                    .copied()
+            })
+            .is_some_and(|response| response.hit.is_none())
     }
 
+    /// A zero direction returns no hit.
     #[test]
-    fn ray_capsule_handles_cylinder_caps_and_invalid_radii() {
-        let side = ray_capsule(Vec3::new(-2.0, 0.5, 0.0), Vec3::X, Vec3::ZERO, Vec3::Y, 0.5)
-            .expect("the ray hits the capsule cylinder");
-        assert!((side.0 - 1.5).abs() < 1.0e-6);
-        assert!(side.1.abs_diff_eq(-Vec3::X, 1.0e-6));
+    fn raycast_rejects_a_zero_direction() {
+        assert!(raycast_has_no_hit(1, Vec3::ZERO, 4.0));
+    }
 
-        let cap = ray_capsule(
+    /// Negative, NaN, and zero distances return no hit.
+    #[test]
+    fn raycast_rejects_invalid_distances() {
+        assert!(raycast_has_no_hit(2, Vec3::X, -1.0));
+        assert!(raycast_has_no_hit(3, Vec3::X, f32::NAN));
+        assert!(raycast_has_no_hit(4, Vec3::X, 0.0));
+    }
+
+    /// A ray across a vertical capsule hits its cylinder side.
+    #[test]
+    fn ray_capsule_hits_the_cylinder_side() {
+        let side = ray_capsule(Vec3::new(-2.0, 0.5, 0.0), Vec3::X, Vec3::ZERO, Vec3::Y, 0.5);
+        let (distance, normal) = side.unwrap_or((f32::NAN, Vec3::ZERO));
+        assert!((distance - 1.5).abs() < 1.0e-6);
+        assert!(normal.abs_diff_eq(-Vec3::X, 1.0e-6));
+    }
+
+    /// Rays hit the end caps of zero-length and vertical capsules and exit
+    /// through a cap from an inside origin.
+    #[test]
+    fn ray_capsule_hits_end_caps() {
+        let distance = |origin: Vec3, b: Vec3| {
+            ray_capsule(origin, Vec3::X, Vec3::ZERO, b, 0.5).map_or(f32::NAN, |hit| hit.0)
+        };
+        assert!((distance(Vec3::new(-2.0, 0.0, 0.0), Vec3::ZERO) - 1.5).abs() < 1.0e-6);
+        assert!((distance(Vec3::new(-2.0, 1.0, 0.0), Vec3::Y) - 1.5).abs() < 1.0e-6);
+        assert!((distance(Vec3::ZERO, Vec3::Y) - 0.5).abs() < 1.0e-6);
+    }
+
+    /// Rays that pass above or beside the capsule miss it.
+    #[test]
+    fn ray_capsule_misses_outside_rays() {
+        let above = ray_capsule(Vec3::new(-2.0, 2.0, 0.0), Vec3::X, Vec3::ZERO, Vec3::Y, 0.5);
+        let diagonal = Vec3::new(0.0, 1.0, 1.0).normalize();
+        let beside = ray_capsule(
             Vec3::new(-2.0, 0.0, 0.0),
-            Vec3::X,
+            diagonal,
             Vec3::ZERO,
-            Vec3::ZERO,
+            Vec3::Y,
             0.5,
-        )
-        .expect("a zero-length capsule reduces to its end caps");
-        assert!((cap.0 - 1.5).abs() < 1.0e-6);
-        let end_cap = ray_capsule(Vec3::new(-2.0, 1.0, 0.0), Vec3::X, Vec3::ZERO, Vec3::Y, 0.5)
-            .expect("the ray hits the capsule's end cap");
-        assert!((end_cap.0 - 1.5).abs() < 1.0e-6);
-        let inside = ray_capsule(Vec3::ZERO, Vec3::X, Vec3::ZERO, Vec3::Y, 0.5)
-            .expect("an inside origin exits through the capsule cap");
-        assert!((inside.0 - 0.5).abs() < 1.0e-6);
-        assert!(
-            ray_capsule(Vec3::new(-2.0, 2.0, 0.0), Vec3::X, Vec3::ZERO, Vec3::Y, 0.5,).is_none()
         );
-        assert!(
-            ray_capsule(
-                Vec3::new(-2.0, 0.0, 0.0),
-                Vec3::new(0.0, 1.0, 1.0).normalize(),
-                Vec3::ZERO,
-                Vec3::Y,
-                0.5,
-            )
-            .is_none()
-        );
+        assert!(above.is_none());
+        assert!(beside.is_none());
+    }
+
+    /// Negative and NaN capsule radii return no hit.
+    #[test]
+    fn ray_capsule_rejects_invalid_radii() {
         assert!(ray_capsule(Vec3::ZERO, Vec3::X, Vec3::ZERO, Vec3::Y, -0.5).is_none());
-        assert!(ray_capsule(Vec3::ZERO, Vec3::X, Vec3::ZERO, Vec3::Y, f32::NAN,).is_none());
+        assert!(ray_capsule(Vec3::ZERO, Vec3::X, Vec3::ZERO, Vec3::Y, f32::NAN).is_none());
     }
 }

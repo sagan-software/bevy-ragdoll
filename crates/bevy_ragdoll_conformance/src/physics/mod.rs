@@ -1234,6 +1234,7 @@ mod tests {
     /// Sphere, capsule, and cuboid clearance includes each local shape transform.
     #[test]
     fn lowest_point_handles_every_profile_shape() {
+        // Place every shape 10 m up with a local offset or extent below it.
         let pose = Isometry3d::from_translation(Vec3::new(0.0, 10.0, 0.0));
         let capsule = ShapeSpec::Capsule {
             a: Vec3::new(0.0, -0.5, 0.0),
@@ -1267,6 +1268,7 @@ mod tests {
             rotation: Quat::IDENTITY,
             half_extents: Vec3::new(0.5, 1.0, 0.5),
         };
+        // Both bodies sit 2 m up over terrain at 0.25 m.
         let snapshot = |shape| BodySnapshot {
             index: BodyIndex::try_from(0).expect("profile body index zero is valid"),
             entity: Entity::PLACEHOLDER,
@@ -1283,6 +1285,7 @@ mod tests {
     /// Sphere and cuboid centres remain their authored local-frame centres.
     #[test]
     fn local_center_handles_non_capsule_shapes() {
+        // Both shapes share one off-origin centre.
         let center = Vec3::new(0.1, 0.2, 0.3);
         let sphere = ShapeSpec::Sphere {
             center,
@@ -1317,18 +1320,17 @@ mod tests {
     #[test]
     fn stairs_have_twenty_steps_and_expected_height_edges() {
         assert_eq!(stairs().len(), 21);
-        assert_eq!(stairs_height(0.0), 0.0);
-        assert_eq!(stairs_height(-0.1), -0.2);
-        assert_eq!(stairs_height(-0.4), -0.4);
+        assert_eq!(
+            [stairs_height(0.0), stairs_height(-0.1), stairs_height(-0.4)],
+            [0.0, -0.2, -0.4]
+        );
     }
 
     /// Converts common durations to their nearest 60 Hz fixed-step counts.
     #[test]
     fn simulation_steps_uses_sixtieths_of_a_second() {
-        assert_eq!(simulation_steps(0.0), 0);
-        assert_eq!(simulation_steps(0.25), 15);
-        assert_eq!(simulation_steps(0.5), 30);
-        assert_eq!(simulation_steps(3.0), 180);
+        let steps = [0.0, 0.25, 0.5, 3.0].map(simulation_steps);
+        assert_eq!(steps, [0, 15, 30, 180]);
     }
 
     /// Joint error reporting skips profile joints when the pose slice is incomplete.
