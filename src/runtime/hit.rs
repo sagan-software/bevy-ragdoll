@@ -806,7 +806,7 @@ mod tests {
 
     use std::time::Duration;
 
-    use bevy::prelude::{App, Fixed, Time, Update};
+    use bevy::prelude::{App, Fixed, PostUpdate, Time, World};
     use bevy::reflect::tuple_struct::GetTupleStructField;
 
     use crate::profile::{BodyIndex, BodyRole, MAX_BODIES};
@@ -865,7 +865,7 @@ mod tests {
     /// Collects only the body's owner's relationship members in profile order.
     #[test]
     fn hit_tree_collects_related_bodies_without_foreign_owners() {
-        let mut world = bevy::prelude::World::new();
+        let mut world = World::new();
         let first_owner = world.spawn(RagdollBodies::default()).id();
         let second_owner = world.spawn(RagdollBodies::default()).id();
         let first_body = world
@@ -934,7 +934,7 @@ mod tests {
         app.add_message::<RagdollHit>()
             .add_message::<RagdollImpulse>()
             .insert_resource(Time::<Fixed>::from_hz(60.0))
-            .add_systems(Update, super::process_hits);
+            .add_systems(PostUpdate, super::process_hits);
 
         let owner = app
             .world_mut()
@@ -971,14 +971,7 @@ mod tests {
                 .as_ref(),
             &[]
         );
-        assert!(
-            app.world()
-                .get_resource::<bevy::ecs::message::Messages<RagdollImpulse>>()
-                .unwrap()
-                .iter_current_update_messages()
-                .next()
-                .is_none()
-        );
+        assert_eq!(published_impulses(app.world()), []);
     }
 
     /// Ignores an out-of-range index introduced through mutable reflection.
@@ -988,7 +981,7 @@ mod tests {
         app.add_message::<RagdollHit>()
             .add_message::<RagdollImpulse>()
             .insert_resource(Time::<Fixed>::from_hz(60.0))
-            .add_systems(Update, super::process_hits);
+            .add_systems(PostUpdate, super::process_hits);
 
         let owner = app
             .world_mut()
@@ -1038,14 +1031,7 @@ mod tests {
                 .as_ref(),
             &[BodyWeights::default()]
         );
-        assert!(
-            app.world()
-                .get_resource::<bevy::ecs::message::Messages<RagdollImpulse>>()
-                .unwrap()
-                .iter_current_update_messages()
-                .next()
-                .is_none()
-        );
+        assert_eq!(published_impulses(app.world()), []);
     }
 
     /// Rejects a hit when another body occupies its validated index.
@@ -1055,7 +1041,7 @@ mod tests {
         app.add_message::<RagdollHit>()
             .add_message::<RagdollImpulse>()
             .insert_resource(Time::<Fixed>::from_hz(60.0))
-            .add_systems(Update, super::process_hits);
+            .add_systems(PostUpdate, super::process_hits);
 
         let owner = app
             .world_mut()
@@ -1101,14 +1087,7 @@ mod tests {
                 .as_ref(),
             &[BodyWeights::default()]
         );
-        assert!(
-            app.world()
-                .get_resource::<bevy::ecs::message::Messages<RagdollImpulse>>()
-                .unwrap()
-                .iter_current_update_messages()
-                .next()
-                .is_none()
-        );
+        assert_eq!(published_impulses(app.world()), []);
     }
 
     /// Stops safely when impulse-tree data or the remaining vector is invalid.
@@ -1116,7 +1095,7 @@ mod tests {
     fn distribute_impulse_stops_on_missing_tree_data() {
         let mut app = App::new();
         app.add_message::<RagdollImpulse>().add_systems(
-            Update,
+            PostUpdate,
             |mut impulses: bevy::ecs::message::MessageWriter<'_, RagdollImpulse>| {
                 let mut tree = HitImpulseTree {
                     masses: [1.0; MAX_BODIES],
@@ -1189,12 +1168,7 @@ mod tests {
 
         app.update();
 
-        let outputs = app
-            .world()
-            .get_resource::<bevy::ecs::message::Messages<RagdollImpulse>>()
-            .unwrap()
-            .iter_current_update_messages()
-            .collect::<Vec<_>>();
+        let outputs = published_impulses(app.world());
         assert_eq!(
             outputs
                 .iter()
@@ -1208,5 +1182,12 @@ mod tests {
                 bevy::math::Vec3::X * 7.0,
             ]
         );
+    }
+
+    /// Returns every buffered impulse through a fresh cursor, so the result does
+    /// not depend on which of the two update buffers holds the messages.
+    fn published_impulses(world: &World) -> Vec<RagdollImpulse> {
+        let messages = world.resource::<bevy::ecs::message::Messages<RagdollImpulse>>();
+        messages.get_cursor().read(messages).copied().collect()
     }
 }

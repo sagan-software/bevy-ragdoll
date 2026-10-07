@@ -4,7 +4,7 @@ use bevy::asset::{AssetPlugin, Assets};
 use bevy::ecs::message::Messages;
 use bevy::math::{Isometry3d, Vec3};
 use bevy::prelude::{
-    AnimationPlugin, App, ChildOf, Entity, MinimalPlugins, Name, Transform, TransformPlugin,
+    AnimationPlugin, App, ChildOf, Entity, MinimalPlugins, Name, Transform, TransformPlugin, World,
 };
 use bevy::time::{Fixed, Time, TimeUpdateStrategy};
 use bevy_ragdoll::profile::{
@@ -156,7 +156,7 @@ fn two_body_profile() -> RagdollProfile {
 }
 
 /// Finds one ragdoll body by its validated profile position.
-fn body_at_index(world: &mut bevy::prelude::World, character: Entity, index: usize) -> Entity {
+fn body_at_index(world: &mut World, character: Entity, index: usize) -> Entity {
     let mut query = world.query::<(Entity, &BodyIndex, &RagdollBodyOf)>();
     query
         .iter(world)
@@ -503,14 +503,8 @@ fn impulse_clamp_passes_the_excess_to_the_parent() {
     });
     app.update();
 
-    let messages = app
-        .world()
-        .get_resource::<Messages<RagdollImpulse>>()
-        .unwrap();
-    let delivered = messages
-        .iter_current_update_messages()
-        .copied()
-        .collect::<Vec<_>>();
+    let messages = published_impulses(app.world());
+    let delivered = messages;
     assert_eq!(delivered.len(), 3);
     let hand_impulse = delivered
         .iter()
@@ -699,14 +693,7 @@ fn malformed_hit_vectors_do_not_change_strength_or_publish_impulses() {
             .last_at(),
         None
     );
-    assert!(
-        app.world()
-            .get_resource::<Messages<RagdollImpulse>>()
-            .unwrap()
-            .iter_current_update_messages()
-            .next()
-            .is_none()
-    );
+    assert_eq!(published_impulses(app.world()), []);
 }
 
 #[test]
@@ -732,14 +719,7 @@ fn stale_body_hit_does_not_change_character_state() {
             .last_at(),
         None
     );
-    assert!(
-        app.world()
-            .get_resource::<Messages<RagdollImpulse>>()
-            .unwrap()
-            .iter_current_update_messages()
-            .next()
-            .is_none()
-    );
+    assert_eq!(published_impulses(app.world()), []);
 }
 
 #[test]
@@ -778,14 +758,7 @@ fn body_with_missing_character_state_does_not_publish_an_impulse() {
 
     app.update();
 
-    assert!(
-        app.world()
-            .get_resource::<Messages<RagdollImpulse>>()
-            .unwrap()
-            .iter_current_update_messages()
-            .next()
-            .is_none()
-    );
+    assert_eq!(published_impulses(app.world()), []);
 }
 
 #[test]
@@ -852,14 +825,7 @@ fn frozen_ragdolls_ignore_hit_messages() {
             .last_at(),
         None
     );
-    assert!(
-        app.world()
-            .get_resource::<Messages<RagdollImpulse>>()
-            .unwrap()
-            .iter_current_update_messages()
-            .next()
-            .is_none()
-    );
+    assert_eq!(published_impulses(app.world()), []);
 }
 
 #[test]
@@ -933,13 +899,9 @@ fn root_hit_uses_the_current_body_centre() {
 
     app.update();
 
-    let impulses = app
-        .world()
-        .get_resource::<Messages<RagdollImpulse>>()
-        .unwrap();
+    let impulses = published_impulses(app.world());
     let impulse = impulses
-        .iter_current_update_messages()
-        .next()
+        .first()
         .expect("a valid root hit publishes one impulse");
     assert_eq!(impulse.body, root);
     assert!(impulse.point.abs_diff_eq(centre, 1.0e-6));
@@ -966,13 +928,9 @@ fn root_hit_falls_back_to_the_supplied_contact_point() {
 
     app.update();
 
-    let impulses = app
-        .world()
-        .get_resource::<Messages<RagdollImpulse>>()
-        .unwrap();
+    let impulses = published_impulses(app.world());
     let impulse = impulses
-        .iter_current_update_messages()
-        .next()
+        .first()
         .expect("a valid root hit publishes one impulse");
     assert_eq!(impulse.body, root);
     assert_eq!(impulse.point, point);
@@ -998,14 +956,8 @@ fn hit_does_not_propagate_through_a_parent_without_pose_data() {
 
     app.update();
 
-    let impulses = app
-        .world()
-        .get_resource::<Messages<RagdollImpulse>>()
-        .unwrap();
-    let delivered = impulses
-        .iter_current_update_messages()
-        .copied()
-        .collect::<Vec<_>>();
+    let impulses = published_impulses(app.world());
+    let delivered = impulses;
     assert_eq!(delivered.len(), 1);
     assert_eq!(delivered[0].body, spine);
     assert_eq!(delivered[0].impulse, Vec3::X * 6.0);
@@ -1026,14 +978,8 @@ fn small_hit_does_not_continue_past_the_addressed_body() {
 
     app.update();
 
-    let impulses = app
-        .world()
-        .get_resource::<Messages<RagdollImpulse>>()
-        .unwrap();
-    let delivered = impulses
-        .iter_current_update_messages()
-        .copied()
-        .collect::<Vec<_>>();
+    let impulses = published_impulses(app.world());
+    let delivered = impulses;
     assert_eq!(delivered.len(), 1);
     assert_eq!(delivered[0].body, spine);
     assert_eq!(delivered[0].point, Vec3::new(1.0, 2.0, 3.0));
@@ -1041,6 +987,13 @@ fn small_hit_does_not_continue_past_the_addressed_body() {
 }
 
 /// Builds one root and two sibling bodies to check branch-local hit falloff.
+/// Returns every buffered impulse through a fresh cursor, so the result does
+/// not depend on which of the two update buffers holds the messages.
+fn published_impulses(world: &World) -> Vec<RagdollImpulse> {
+    let messages = world.resource::<Messages<RagdollImpulse>>();
+    messages.get_cursor().read(messages).copied().collect()
+}
+
 fn spawn_branch_character(app: &mut App) -> Entity {
     let shape = ShapeSpec::Sphere {
         center: Vec3::ZERO,
