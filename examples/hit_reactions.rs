@@ -45,6 +45,8 @@ const PRESETS: [(KeyCode, HitProfile); 7] = [
     (KeyCode::Digit7, HitProfile::Explosion),
 ];
 
+/// Heading color for the HUD panel.
+const HEADING: Color = Color::srgb(0.49, 0.86, 0.89);
 /// Bar color for bodies at or above 30% muscle strength.
 const STRONG: Color = Color::srgb(0.24, 0.79, 0.71);
 /// Bar color for bodies below 30% muscle strength.
@@ -52,36 +54,57 @@ const WEAK: Color = Color::srgb(0.93, 0.57, 0.3);
 
 /// Loads the rig profile and runs the windowed example.
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // The profile is generated once and shared by the ragdoll and the systems.
     let profile = RagdollProfile::from_skeleton(&bevy_ragdoll::Skeleton::humanoid())?;
-    App::new()
-        .add_plugins(DefaultPlugins.set(WindowPlugin {
-            primary_window: Some(Window {
-                title: "Hit reactions".into(),
-                resolution: (1280, 720).into(),
-                ..default()
-            }),
+    let mut app = App::new();
+    app.add_plugins(DefaultPlugins.set(WindowPlugin {
+        primary_window: Some(Window {
+            title: "Hit reactions".into(),
+            resolution: (1280, 720).into(),
             ..default()
-        }))
-        .add_plugins((
-            RagdollPlugin::default(),
-            RapierPhysicsPlugin::<RapierRagdollHooks<'_, '_>>::default().in_fixed_schedule(),
-            RapierRagdollPlugin,
-        ))
-        .insert_resource(Time::<Fixed>::from_hz(60.0))
+        }),
+        ..default()
+    }));
+    add_ragdoll_physics(&mut app);
+    app.insert_resource(ClearColor(Color::srgb(0.055, 0.075, 0.095)))
+        .insert_resource(Rig(profile))
+        .init_resource::<Controls>();
+    // Systems come last so every resource they read already exists.
+    add_example_systems(&mut app);
+    app.run();
+    Ok(())
+}
+
+/// Adds the ragdoll runtime and Rapier, both stepping in `FixedUpdate` at 60 Hz.
+fn add_ragdoll_physics(app: &mut App) {
+    app.add_plugins((
+        RagdollPlugin::default(),
+        RapierPhysicsPlugin::<RapierRagdollHooks<'_, '_>>::default().in_fixed_schedule(),
+        RapierRagdollPlugin,
+        RagdollDebugPlugin,
+    ));
+    app.insert_resource(Time::<Fixed>::from_hz(60.0))
         .insert_resource(TimestepMode::Fixed {
             dt: 1.0 / 60.0,
             substeps: 1,
-        })
-        .insert_resource(ClearColor(Color::srgb(0.055, 0.075, 0.095)))
-        .insert_resource(Rig(profile))
-        .init_resource::<Controls>()
-        .register_type::<Rig>()
+        });
+}
+
+/// Registers reflected state and adds the scene, idle animation, and input systems.
+#[cfg_attr(
+    dylint_lib = "sagan_lints",
+    expect(
+        bevy_disallow_update_schedule,
+        reason = "input handling and UI react once per rendered frame, which is what Update is for"
+    )
+)]
+fn add_example_systems(app: &mut App) {
+    app.register_type::<Rig>()
         .register_type::<IdleTarget>()
         .register_type::<Controls>()
         .register_type::<MuscleBar>()
-        .register_type::<Readout>()
-        .add_systems(Startup, (setup_scene, spawn_ragdoll, spawn_hud))
-        .add_plugins(RagdollDebugPlugin)
+        .register_type::<Readout>();
+    app.add_systems(Startup, (setup_scene, spawn_ragdoll, spawn_hud))
         .add_systems(
             PostUpdate,
             animate_idle_targets
@@ -91,16 +114,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .add_systems(
             Update,
             (
-                adjust_controls,
+                select_hit,
+                adjust_strength,
                 request_mouse_hit,
                 apply_ray_hits,
                 rifle_demo,
                 update_hud,
             )
                 .chain(),
-        )
-        .run();
-    Ok(())
+        );
 }
 
 /// The validated profile shared by the ragdoll, HUD, and hit systems.
@@ -139,9 +161,9 @@ struct Controls {
     /// Strength channel changed by the arrow keys.
     channel: Channel,
     /// Identity for the next ray request.
-    next_request_id: u64,
+    next_request_id: RagdollRequestId,
     /// Impulse to apply when the ray response with this identity arrives.
-    pending: HashMap<u64, Vec3>,
+    pending: HashMap<RagdollRequestId, Vec3>,
 }
 
 impl Default for Controls {
@@ -151,7 +173,7 @@ impl Default for Controls {
             magnitude_override: None,
             body: 0,
             channel: Channel::Muscle,
-            next_request_id: 0,
+            next_request_id: RagdollRequestId::new(0),
             pending: HashMap::new(),
         }
     }
@@ -171,7 +193,7 @@ impl Controls {
 struct MuscleBar(usize);
 
 /// Marks the HUD text that shows the selected hit and strength.
-#[derive(Component, Reflect)]
+#[derive(Component, Clone, Copy, Default, Reflect)]
 struct Readout;
 
 /// Converts a profile position to a body index.
@@ -182,11 +204,6 @@ fn body_index(position: usize) -> BodyIndex {
 /// Returns whether a body is pinned: the pelvis and chest.
 const fn is_core(body: &Body) -> bool {
     matches!(body.role(), BodyRole::Pelvis | BodyRole::Chest)
-}
-
-/// Returns the profile position of the chest.
-fn chest_position(profile: &RagdollProfile) -> Option<usize> {
-    profile.body_with_role(BodyRole::Chest).map(BodyIndex::get)
 }
 
 /// Starts every body at full strength and pins only the core bodies.
@@ -283,25 +300,7 @@ fn spawn_ragdoll(
     // Profiles list parents before children, so each parent bone already exists.
     let mut bones = Vec::with_capacity(bodies.len());
     for (index, body) in bodies.iter().enumerate() {
-        let rest = body.rest();
-        // The parent's bone entity and rest pose, when this body has a parent.
-        let parent = profile
-            .joint_of(body.index())
-            .map(|joint| joint.parent().get())
-            .and_then(|parent| Some((*bones.get(parent)?, bodies.get(parent)?.rest())));
-        let (parent, transform) = match parent {
-            Some((parent, parent_rest)) => {
-                let inverse = parent_rest.rotation.inverse();
-                let offset = inverse * (rest.translation - parent_rest.translation);
-                let local = Transform::from_translation(offset.into())
-                    .with_rotation(inverse * rest.rotation);
-                (parent, local)
-            }
-            None => (
-                character,
-                Transform::from_translation(rest.translation.into()).with_rotation(rest.rotation),
-            ),
-        };
+        let (parent, transform) = parent_and_local_rest(profile, &bones, body, character);
         let target = IdleTarget {
             index,
             role: body.role(),
@@ -317,6 +316,33 @@ fn spawn_ragdoll(
             .id();
         bones.push(bone);
     }
+}
+
+/// Returns the bone entity a body's bone hangs from and its rest pose relative to it.
+///
+/// Root bodies hang from the character entity and keep their character-space rest.
+fn parent_and_local_rest(
+    profile: &RagdollProfile,
+    bones: &[Entity],
+    body: &Body,
+    character: Entity,
+) -> (Entity, Transform) {
+    let rest = body.rest();
+    // The parent's bone entity and rest pose, when this body has a parent.
+    let parent = profile
+        .joint_of(body.index())
+        .map(|joint| joint.parent().get())
+        .and_then(|parent| Some((*bones.get(parent)?, profile.bodies().get(parent)?.rest())));
+    let Some((parent, parent_rest)) = parent else {
+        let local =
+            Transform::from_translation(rest.translation.into()).with_rotation(rest.rotation);
+        return (character, local);
+    };
+    // Express the rest pose in the parent's frame.
+    let inverse = parent_rest.rotation.inverse();
+    let offset = inverse * (rest.translation - parent_rest.translation);
+    let local = Transform::from_translation(offset.into()).with_rotation(inverse * rest.rotation);
+    (parent, local)
 }
 
 /// Sways each bone before the runtime captures its world pose as a drive target.
@@ -369,55 +395,17 @@ fn spawn_hud(mut commands: Commands<'_, '_>, rig: Res<'_, Rig>) {
             BackgroundColor(Color::srgba(0.035, 0.055, 0.07, 0.88)),
         ))
         .id();
-    commands.spawn((
-        label("Hit profile", 16.0, Color::srgb(0.49, 0.86, 0.89)),
-        ChildOf(panel),
-    ));
+    commands.spawn((label("Hit profile", 16.0, HEADING), ChildOf(panel)));
     commands.spawn((label("", 13.0, Color::WHITE), Readout, ChildOf(panel)));
     // One labelled strength bar per profile body.
     for (index, body) in rig.0.bodies().iter().enumerate() {
-        let row = commands
-            .spawn((
-                Node {
-                    height: px(13),
-                    column_gap: px(7),
-                    align_items: AlignItems::Center,
-                    ..default()
-                },
-                ChildOf(panel),
-            ))
-            .id();
-        commands.spawn((
-            label(body.bone(), 10.0, Color::srgb(0.83, 0.89, 0.9)),
-            Node {
-                width: px(116),
-                ..default()
-            },
-            ChildOf(row),
-        ));
-        let track = commands
-            .spawn((
-                Node {
-                    width: px(142),
-                    height: px(7),
-                    ..default()
-                },
-                BackgroundColor(Color::srgb(0.12, 0.18, 0.21)),
-                ChildOf(row),
-            ))
-            .id();
-        commands.spawn((
-            Node {
-                width: percent(100.0),
-                height: percent(100.0),
-                ..default()
-            },
-            BackgroundColor(STRONG),
-            MuscleBar(index),
-            ChildOf(track),
-        ));
+        spawn_muscle_bar(commands.reborrow(), panel, index, body.bone());
     }
-    // Key help sits at the bottom of the panel.
+    spawn_key_help(commands, panel);
+}
+
+/// Spawns the key help at the bottom of the HUD panel.
+fn spawn_key_help(mut commands: Commands<'_, '_>, panel: Entity) {
     commands.spawn((
         label(
             "1-7 select hit | click rig | M muscle | P pin\nTab next body | Up/Down strength | -/= impulse",
@@ -428,13 +416,61 @@ fn spawn_hud(mut commands: Commands<'_, '_>, rig: Res<'_, Rig>) {
     ));
 }
 
-/// Applies key presses to the hit selection and the selected body's strengths.
-fn adjust_controls(
+/// Spawns one bone row in `panel` whose bar tracks body `index`'s muscle.
+fn spawn_muscle_bar(mut commands: Commands<'_, '_>, panel: Entity, index: usize, bone: &str) {
+    let row = commands
+        .spawn((
+            Node {
+                height: px(13),
+                column_gap: px(7),
+                align_items: AlignItems::Center,
+                ..default()
+            },
+            ChildOf(panel),
+        ))
+        .id();
+    commands.spawn((
+        label(bone, 10.0, Color::srgb(0.83, 0.89, 0.9)),
+        Node {
+            width: px(116),
+            ..default()
+        },
+        ChildOf(row),
+    ));
+    spawn_bar_track(commands, row, index);
+}
+
+/// Spawns a dark track in `row` with a full-width bar that `update_hud` shrinks as
+/// body `index` loses strength.
+fn spawn_bar_track(mut commands: Commands<'_, '_>, row: Entity, index: usize) {
+    let track = commands
+        .spawn((
+            Node {
+                width: px(142),
+                height: px(7),
+                ..default()
+            },
+            BackgroundColor(Color::srgb(0.12, 0.18, 0.21)),
+            ChildOf(row),
+        ))
+        .id();
+    commands.spawn((
+        Node {
+            width: percent(100.0),
+            height: percent(100.0),
+            ..default()
+        },
+        BackgroundColor(STRONG),
+        MuscleBar(index),
+        ChildOf(track),
+    ));
+}
+
+/// Applies the preset and impulse keys to the selected hit.
+fn select_hit(
     keys: Res<'_, ButtonInput<KeyCode>>,
     settings: Res<'_, HitSettings>,
-    rig: Res<'_, Rig>,
     mut controls: ResMut<'_, Controls>,
-    mut ragdolls: Query<'_, '_, (&mut RagdollBodyWeights, &PinTargets)>,
 ) {
     // Number keys pick a preset and clear any custom impulse.
     for (key, profile) in PRESETS {
@@ -450,6 +486,15 @@ fn adjust_controls(
             controls.magnitude_override = Some(magnitude.clamp(0.0, 300.0));
         }
     }
+}
+
+/// Applies the channel, body selection, and arrow keys to the ragdoll's strengths.
+fn adjust_strength(
+    keys: Res<'_, ButtonInput<KeyCode>>,
+    rig: Res<'_, Rig>,
+    mut controls: ResMut<'_, Controls>,
+    mut ragdolls: Query<'_, '_, (&mut RagdollBodyWeights, &PinTargets)>,
+) {
     // M and P choose which strength the arrow keys edit.
     if keys.just_pressed(KeyCode::KeyM) {
         controls.channel = Channel::Muscle;
@@ -499,6 +544,7 @@ fn request_mouse_hit(
     let (Ok(window), Ok((camera, camera_transform))) = (windows.single(), cameras.single()) else {
         return;
     };
+    // No cursor over the window means there is nothing to aim at.
     let Some(ray) = window
         .cursor_position()
         .and_then(|cursor| camera.viewport_to_world(camera_transform, cursor).ok())
@@ -507,11 +553,11 @@ fn request_mouse_hit(
     };
     // Remember the impulse until the backend answers this ray.
     let id = controls.next_request_id;
-    controls.next_request_id = id.wrapping_add(1);
+    controls.next_request_id = RagdollRequestId::new(id.get().wrapping_add(1));
     let impulse = *ray.direction * controls.magnitude(&settings);
     controls.pending.insert(id, impulse);
     requests.write(RagdollRaycast {
-        request_id: RagdollRequestId::new(id),
+        request_id: id,
         origin: ray.origin,
         direction: *ray.direction,
         max_distance: 100.0,
@@ -527,7 +573,7 @@ fn apply_ray_hits(
 ) {
     // Responses without a pending impulse belong to another sender.
     for response in responses.read() {
-        let Some(impulse) = controls.pending.remove(&response.request_id.get()) else {
+        let Some(impulse) = controls.pending.remove(&response.request_id) else {
             continue;
         };
         if let Some(RayHit {
@@ -560,7 +606,7 @@ fn rifle_demo(
     if *done || time.elapsed_secs() < 0.85 {
         return;
     }
-    let chest = chest_position(&rig.0);
+    let chest = rig.0.body_with_role(BodyRole::Chest).map(BodyIndex::get);
     let Some((body, _, transform)) = bodies
         .iter()
         .find(|(_, index, _)| Some(index.get()) == chest)
@@ -615,6 +661,7 @@ fn update_hud(
     // And the current hit preset with its impulse.
     let profile = controls.profile;
     let magnitude = controls.magnitude(&settings);
+    // Bind the values first so the format string can name them.
     let bone = body.bone();
     for mut text in &mut readouts {
         **text = format!("{profile:?}: {magnitude:.0} kg*m/s\n{bone}: {channel} {value:.2}");

@@ -119,7 +119,7 @@ fn spawn_ragdoll(mut commands: Commands<'_, '_>, mut profiles: ResMut<'_, Assets
             Transform::from_xyz(0.0, 0.35, 0.0),
         ))
         .id();
-    spawn_skeleton(&mut commands, character, &profile);
+    spawn_skeleton(commands.reborrow(), character, &profile);
 }
 
 /// Adds a fixed Rapier floor, a camera, a light, and a label.
@@ -161,7 +161,7 @@ fn setup_scene(
 /// Spawns one bone entity per profile body, posed at the profile rest pose.
 ///
 /// The ragdoll runtime binds each body to the bone with the same `Name`.
-fn spawn_skeleton(commands: &mut Commands<'_, '_>, character: Entity, profile: &RagdollProfile) {
+fn spawn_skeleton(mut commands: Commands<'_, '_>, character: Entity, profile: &RagdollProfile) {
     let bodies = profile.bodies();
     // Profiles list parents before children, so each parent bone already exists.
     let mut bones = Vec::<Entity>::with_capacity(bodies.len());

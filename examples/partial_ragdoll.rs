@@ -8,6 +8,7 @@
 //! the legs keep standing.
 //!
 //! Controls:
+//!
 //! - `Space`: pause or resume the chest impacts.
 
 use bevy::app::AnimationSystems;
@@ -24,35 +25,56 @@ use bevy_rapier3d::prelude::{Collider, Damping, Restitution, RigidBody, Velocity
 
 /// Loads the rig profile and runs the windowed example.
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // The profile is generated once and shared by the ragdoll and the systems.
     let profile = RagdollProfile::from_skeleton(&bevy_ragdoll::Skeleton::humanoid())?;
-    App::new()
-        .add_plugins(DefaultPlugins.set(WindowPlugin {
-            primary_window: Some(Window {
-                title: "Partial ragdoll".into(),
-                resolution: (1280, 720).into(),
-                ..default()
-            }),
+    let mut app = App::new();
+    app.add_plugins(DefaultPlugins.set(WindowPlugin {
+        primary_window: Some(Window {
+            title: "Partial ragdoll".into(),
+            resolution: (1280, 720).into(),
             ..default()
-        }))
-        .add_plugins((
-            RagdollPlugin::default(),
-            RapierPhysicsPlugin::<RapierRagdollHooks<'_, '_>>::default().in_fixed_schedule(),
-            RapierRagdollPlugin,
-        ))
-        .insert_resource(Time::<Fixed>::from_hz(60.0))
+        }),
+        ..default()
+    }));
+    add_ragdoll_physics(&mut app);
+    app.insert_resource(ClearColor(Color::srgb(0.055, 0.075, 0.095)))
+        .insert_resource(Rig(profile))
+        .insert_resource(LaunchTimer(Timer::from_seconds(2.0, TimerMode::Repeating)));
+    // Systems come last so every resource they read already exists.
+    add_example_systems(&mut app);
+    app.run();
+    Ok(())
+}
+
+/// Adds the ragdoll runtime and Rapier, both stepping in `FixedUpdate` at 60 Hz.
+fn add_ragdoll_physics(app: &mut App) {
+    app.add_plugins((
+        RagdollPlugin::default(),
+        RapierPhysicsPlugin::<RapierRagdollHooks<'_, '_>>::default().in_fixed_schedule(),
+        RapierRagdollPlugin,
+        RagdollDebugPlugin,
+    ));
+    app.insert_resource(Time::<Fixed>::from_hz(60.0))
         .insert_resource(TimestepMode::Fixed {
             dt: 1.0 / 60.0,
             substeps: 1,
-        })
-        .insert_resource(ClearColor(Color::srgb(0.055, 0.075, 0.095)))
-        .insert_resource(Rig(profile))
-        .insert_resource(LaunchTimer(Timer::from_seconds(2.0, TimerMode::Repeating)))
-        .register_type::<Rig>()
+        });
+}
+
+/// Registers reflected state and adds the scene, idle animation, and input systems.
+#[cfg_attr(
+    dylint_lib = "sagan_lints",
+    expect(
+        bevy_disallow_update_schedule,
+        reason = "input handling and UI react once per rendered frame, which is what Update is for"
+    )
+)]
+fn add_example_systems(app: &mut App) {
+    app.register_type::<Rig>()
         .register_type::<IdleTarget>()
         .register_type::<LaunchTimer>()
-        .register_type::<Ball>()
-        .add_systems(Startup, (setup_scene, spawn_ragdoll))
-        .add_plugins(RagdollDebugPlugin)
+        .register_type::<Ball>();
+    app.add_systems(Startup, (setup_view, setup_scene, spawn_ragdoll))
         .add_systems(
             PostUpdate,
             animate_idle_targets
@@ -62,9 +84,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .add_systems(
             Update,
             (toggle_launcher, launch_balls, despawn_old_balls).chain(),
-        )
-        .run();
-    Ok(())
+        );
 }
 
 /// The validated profile shared by the ragdoll and the ball launcher.
@@ -123,12 +143,8 @@ fn body_index(position: usize) -> BodyIndex {
     BodyIndex::try_from(position).expect("validated profiles fit the body limit")
 }
 
-/// Spawns the camera, light, ground, and title.
-fn setup_scene(
-    mut commands: Commands<'_, '_>,
-    mut meshes: ResMut<'_, Assets<Mesh>>,
-    mut materials: ResMut<'_, Assets<StandardMaterial>>,
-) {
+/// Spawns the camera and the shadow-casting light.
+fn setup_view(mut commands: Commands<'_, '_>) {
     commands.spawn((
         Camera3d::default(),
         Transform::from_xyz(1.6, 2.0, 2.7).looking_at(Vec3::new(0.0, 1.0, 0.0), Vec3::Y),
@@ -141,6 +157,14 @@ fn setup_scene(
         },
         Transform::from_xyz(-4.0, 7.0, 5.0).looking_at(Vec3::ZERO, Vec3::Y),
     ));
+}
+
+/// Spawns the camera, light, ground, and title.
+fn setup_scene(
+    mut commands: Commands<'_, '_>,
+    mut meshes: ResMut<'_, Assets<Mesh>>,
+    mut materials: ResMut<'_, Assets<StandardMaterial>>,
+) {
     commands.spawn((
         RigidBody::Fixed,
         Collider::cuboid(6.0, 0.1, 6.0),
@@ -196,25 +220,7 @@ fn spawn_ragdoll(
     // Profiles list parents before children, so each parent bone already exists.
     let mut bones = Vec::with_capacity(bodies.len());
     for (index, body) in bodies.iter().enumerate() {
-        let rest = body.rest();
-        // The parent's bone entity and rest pose, when this body has a parent.
-        let parent = profile
-            .joint_of(body.index())
-            .map(|joint| joint.parent().get())
-            .and_then(|parent| Some((*bones.get(parent)?, bodies.get(parent)?.rest())));
-        let (parent, transform) = match parent {
-            Some((parent, parent_rest)) => {
-                let inverse = parent_rest.rotation.inverse();
-                let offset = inverse * (rest.translation - parent_rest.translation);
-                let local = Transform::from_translation(offset.into())
-                    .with_rotation(inverse * rest.rotation);
-                (parent, local)
-            }
-            None => (
-                character,
-                Transform::from_translation(rest.translation.into()).with_rotation(rest.rotation),
-            ),
-        };
+        let (parent, transform) = parent_and_local_rest(profile, &bones, body, character);
         let target = IdleTarget {
             index,
             role: body.role(),
@@ -230,6 +236,33 @@ fn spawn_ragdoll(
             .id();
         bones.push(bone);
     }
+}
+
+/// Returns the bone entity a body's bone hangs from and its rest pose relative to it.
+///
+/// Root bodies hang from the character entity and keep their character-space rest.
+fn parent_and_local_rest(
+    profile: &RagdollProfile,
+    bones: &[Entity],
+    body: &Body,
+    character: Entity,
+) -> (Entity, Transform) {
+    let rest = body.rest();
+    // The parent's bone entity and rest pose, when this body has a parent.
+    let parent = profile
+        .joint_of(body.index())
+        .map(|joint| joint.parent().get())
+        .and_then(|parent| Some((*bones.get(parent)?, profile.bodies().get(parent)?.rest())));
+    let Some((parent, parent_rest)) = parent else {
+        let local =
+            Transform::from_translation(rest.translation.into()).with_rotation(rest.rotation);
+        return (character, local);
+    };
+    // Express the rest pose in the parent's frame.
+    let inverse = parent_rest.rotation.inverse();
+    let offset = inverse * (rest.translation - parent_rest.translation);
+    let local = Transform::from_translation(offset.into()).with_rotation(inverse * rest.rotation);
+    (parent, local)
 }
 
 /// Sways each bone before the runtime captures its world pose as a drive target.
@@ -312,11 +345,14 @@ fn despawn_old_balls(
     time: Res<'_, Time>,
     mut balls: Query<'_, '_, (Entity, &mut Ball, &Transform)>,
 ) {
-    for (entity, mut ball, transform) in &mut balls {
-        if ball.lifetime.tick(time.delta()).is_finished() || transform.translation.y < -2.0 {
-            commands.entity(entity).despawn();
-        }
-    }
+    // Every ball's timer ticks each frame; expired or fallen balls are removed.
+    balls
+        .iter_mut()
+        .filter_map(|(entity, mut ball, transform)| {
+            let is_expired = ball.lifetime.tick(time.delta()).is_finished();
+            (is_expired || transform.translation.y < -2.0).then_some(entity)
+        })
+        .for_each(|entity| commands.entity(entity).despawn());
 }
 
 #[cfg(test)]

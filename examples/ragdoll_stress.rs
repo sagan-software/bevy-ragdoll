@@ -36,9 +36,16 @@ const FIXED_HZ: f64 = 60.0;
 const UNSTABLE_SPEED: f32 = 50.0;
 
 /// Command-line options.
-#[derive(Parser, Clone, Serialize)]
+#[derive(Parser, Clone, Serialize, Reflect)]
 struct Args {
     /// Run without a window or renderer.
+    #[cfg_attr(
+        dylint_lib = "sagan_lints",
+        expect(
+            bool_name_prefix,
+            reason = "clap derives the --headless flag that CI calls from this field name"
+        )
+    )]
     #[arg(long)]
     headless: bool,
     /// How the ragdolls are placed.
@@ -60,7 +67,7 @@ struct Args {
 }
 
 /// Ragdoll placement.
-#[derive(clap::ValueEnum, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(clap::ValueEnum, Clone, Copy, PartialEq, Eq, Serialize, Reflect)]
 #[serde(rename_all = "snake_case")]
 enum Scenario {
     /// One tall stack that collapses into a contact-heavy heap.
@@ -120,19 +127,22 @@ impl Summary {
 }
 
 /// Run options and samples collected so far.
-#[derive(Resource)]
+#[derive(Resource, Reflect)]
 struct Run {
     /// Command-line options.
     args: Args,
     /// The skeleton every character uses; each `Ragdoll` generates its profile from it.
+    #[reflect(ignore)]
     skeleton: Skeleton,
     /// Frame times in milliseconds after the warmup.
     frames: Vec<f64>,
     /// Fixed-step times in milliseconds after the warmup.
     steps: Vec<f64>,
     /// Start of the frame or fixed step being timed.
+    #[reflect(ignore)]
     frame_start: Option<Instant>,
     /// Start of the fixed step being timed.
+    #[reflect(ignore)]
     step_start: Option<Instant>,
 }
 
@@ -151,25 +161,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     #[cfg(not(target_arch = "wasm32"))]
     let args = Args::parse();
 
-    let step = Duration::from_secs_f64(1.0 / FIXED_HZ);
-
+    // The window choice must come first: headless runs replace DefaultPlugins.
     let mut app = App::new();
-    if args.headless {
-        app.add_plugins((
-            MinimalPlugins.set(ScheduleRunnerPlugin::run_loop(Duration::ZERO)),
-            AssetPlugin::default(),
-            TransformPlugin,
-        ));
-    } else {
-        app.add_plugins(DefaultPlugins)
-            .add_systems(Startup, setup_view)
-            .add_systems(
-                PostUpdate,
-                add_body_meshes
-                    .after(RagdollSystems::Bind)
-                    .before(TransformSystems::Propagate),
-            );
-    }
+    add_presentation(&mut app, args.headless);
     app.insert_resource(Run {
         args,
         skeleton: Skeleton::humanoid(),
@@ -177,29 +171,56 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         steps: Vec::new(),
         frame_start: None,
         step_start: None,
-    })
-    // Advance time by exactly one fixed step per frame, however long the frame takes.
-    .insert_resource(TimeUpdateStrategy::ManualDuration(step))
-    .insert_resource(Time::<Fixed>::from_hz(FIXED_HZ))
-    .insert_resource(TimestepMode::Fixed {
-        dt: step.as_secs_f32(),
-        substeps: 1,
-    })
-    .add_plugins((
-        RagdollPlugin::default(),
-        RapierPhysicsPlugin::<RapierRagdollHooks<'_, '_>>::default().in_fixed_schedule(),
-        RapierRagdollPlugin,
-    ))
-    .add_systems(Startup, spawn_ragdolls)
-    .add_systems(First, start_frame)
-    .add_systems(Last, (finish_frame, finish_run).chain())
-    .add_systems(FixedFirst, start_step)
-    .add_systems(FixedLast, finish_step);
+    });
+    add_simulation(&mut app);
 
     match app.run() {
         AppExit::Success => Ok(()),
         AppExit::Error(code) => Err(format!("stress run failed with exit code {code}").into()),
     }
+}
+
+/// Adds a window with body meshes, or only the headless core plugins.
+fn add_presentation(app: &mut App, is_headless: bool) {
+    if is_headless {
+        app.add_plugins((
+            MinimalPlugins.set(ScheduleRunnerPlugin::run_loop(Duration::ZERO)),
+            AssetPlugin::default(),
+            TransformPlugin,
+        ));
+        return;
+    }
+    app.add_plugins(DefaultPlugins)
+        .add_systems(Startup, setup_view)
+        .add_systems(
+            PostUpdate,
+            add_body_meshes
+                .after(RagdollSystems::Bind)
+                .before(TransformSystems::Propagate),
+        );
+}
+
+/// Adds the ragdoll runtime, Rapier, the scenario, and the timing systems.
+fn add_simulation(app: &mut App) {
+    let step = Duration::from_secs_f64(1.0 / FIXED_HZ);
+    // Advance time by exactly one fixed step per frame, however long the frame takes.
+    app.insert_resource(TimeUpdateStrategy::ManualDuration(step))
+        .insert_resource(Time::<Fixed>::from_hz(FIXED_HZ))
+        .insert_resource(TimestepMode::Fixed {
+            dt: step.as_secs_f32(),
+            substeps: 1,
+        })
+        .add_plugins((
+            RagdollPlugin::default(),
+            RapierPhysicsPlugin::<RapierRagdollHooks<'_, '_>>::default().in_fixed_schedule(),
+            RapierRagdollPlugin,
+        ));
+    // Frame timers bracket each update; step timers bracket each fixed step.
+    app.add_systems(Startup, spawn_ragdolls)
+        .add_systems(First, start_frame)
+        .add_systems(Last, (finish_frame, finish_run).chain())
+        .add_systems(FixedFirst, start_step)
+        .add_systems(FixedLast, finish_step);
 }
 
 /// Spawns the floor and the ragdolls for the selected scenario.
@@ -316,8 +337,7 @@ fn finish_run(
             .map_err(std::io::Error::other)
             .and_then(|json| std::fs::write(path, json));
         if let Err(error) = written {
-            let path = path.display();
-            error!("could not write {path}: {error}");
+            error!(path = %path.display(), %error, "could not write the stress report");
             exit.write(AppExit::error());
             return;
         }

@@ -13,6 +13,13 @@ use bevy_rapier3d::plugin::{RapierPhysicsPlugin, TimestepMode};
 use bevy_rapier3d::prelude::{Collider, RigidBody};
 
 /// Runs the example.
+#[cfg_attr(
+    dylint_lib = "sagan_lints",
+    expect(
+        bevy_disallow_update_schedule,
+        reason = "input handling and UI react once per rendered frame, which is what Update is for"
+    )
+)]
 fn main() -> AppExit {
     App::new()
         // Web servers answer 404 for the `.meta` files Bevy probes by default; the rigs have none.
@@ -32,9 +39,25 @@ fn main() -> AppExit {
             RapierRagdollPlugin,
             RagdollDebugPlugin,
         ))
-        .add_systems(Startup, setup)
+        .add_systems(Startup, (setup_view, setup))
         .add_systems(Update, drop_on_space)
         .run()
+}
+
+/// Spawns the camera and the shadow-casting light.
+fn setup_view(mut commands: Commands<'_, '_>) {
+    commands.spawn((
+        Camera3d::default(),
+        Transform::from_xyz(0.0, 2.2, 5.5).looking_at(Vec3::new(0.0, 0.7, 0.0), Vec3::Y),
+    ));
+    commands.spawn((
+        DirectionalLight {
+            illuminance: 12_000.0,
+            shadow_maps_enabled: true,
+            ..default()
+        },
+        Transform::from_xyz(-4.0, 7.0, 5.0).looking_at(Vec3::ZERO, Vec3::Y),
+    ));
 }
 
 /// Spawns the floor, camera, light and the three creatures.
@@ -53,18 +76,6 @@ fn setup(
         MeshMaterial3d(materials.add(Color::srgb(0.11, 0.15, 0.19))),
     ));
     // Camera and light frame all three rigs side by side.
-    commands.spawn((
-        Camera3d::default(),
-        Transform::from_xyz(0.0, 2.2, 5.5).looking_at(Vec3::new(0.0, 0.7, 0.0), Vec3::Y),
-    ));
-    commands.spawn((
-        DirectionalLight {
-            illuminance: 12_000.0,
-            shadow_maps_enabled: true,
-            ..default()
-        },
-        Transform::from_xyz(-4.0, 7.0, 5.0).looking_at(Vec3::ZERO, Vec3::Y),
-    ));
     // Each rig is a skinned glTF scene; `Ragdoll::default()` builds its profile from the bones.
     for (x, rig) in [(-2.0, "humanoid"), (0.0, "quadruped"), (2.0, "alien")] {
         commands.spawn((

@@ -117,18 +117,19 @@ impl Backend {
     /// native.
     fn restart_into(self) {
         let name = self.name();
+        // The web reloads with a new query; native starts a fresh process and exits.
         #[cfg(target_arch = "wasm32")]
         if let Some(window) = web_sys::window() {
             let _ = window.location().set_search(&format!("backend={name}"));
         }
         #[cfg(not(target_arch = "wasm32"))]
-        if let Ok(exe) = std::env::current_exe()
-            && std::process::Command::new(exe)
+        if let Ok(exe) = std::env::current_exe() {
+            let restarted = std::process::Command::new(exe)
                 .args(["--backend", name])
-                .spawn()
-                .is_ok()
-        {
-            std::process::exit(0);
+                .spawn();
+            if restarted.is_ok() {
+                std::process::exit(0);
+            }
         }
     }
 
@@ -161,7 +162,7 @@ impl Backend {
     }
 
     /// Adds a fixed box collider with the given half extents in metres to `entity`.
-    fn insert_static_box(self, entity: &mut EntityCommands<'_>, half_extents: Vec3) {
+    fn insert_static_box(self, mut entity: EntityCommands<'_>, half_extents: Vec3) {
         match self {
             Self::Rapier => {
                 use bevy_rapier3d::prelude::{Collider, RigidBody};
@@ -284,7 +285,9 @@ impl Param {
 
     /// Moves the value one step in the direction of `sign` and keeps it in range.
     fn step(self, params: &mut Params, sign: f32) {
+        // Each value clamps to a range that keeps the simulation stable and readable.
         match self {
+            // Larger crowds step faster so 256 is a few clicks away.
             Self::Count => {
                 let step = if params.count >= 64 { 16 } else { 4 };
                 params.count = if sign > 0.0 {
@@ -298,6 +301,7 @@ impl Param {
             Self::TimeScale => {
                 params.time_scale = 0.1f32.mul_add(sign, params.time_scale).clamp(0.1, 2.0);
             }
+            // Hit presets wrap around in both directions.
             Self::Hit => {
                 let len = HIT_PROFILES.len();
                 params.hit = (params.hit + if sign > 0.0 { 1 } else { len - 1 }) % len;
@@ -308,12 +312,15 @@ impl Param {
 
     /// Formats the current value for the panel.
     fn value(self, params: &Params) -> String {
+        // Units use ASCII because the default UI font lacks superscripts and the
+        // multiplication sign.
         match self {
             Self::Count => params.count.to_string(),
             Self::Muscle => format!("{:.0}%", params.muscle * 100.0),
             Self::Gravity => format!("{:.1} m/s2", params.gravity),
             Self::TimeScale => format!("{:.1}x", params.time_scale),
             Self::Hit => format!("{:?}", params.hit_profile()),
+            // The creature switch reads as a mode, not a boolean.
             Self::Creatures => if params.has_creatures { "Mixed" } else { "Off" }.to_owned(),
         }
     }
@@ -337,7 +344,7 @@ enum Action {
 struct ParamValue(Param);
 
 /// Marks the performance readout text.
-#[derive(Component, Reflect)]
+#[derive(Component, Clone, Copy, Default, Reflect)]
 struct MetricsText;
 
 /// Marks a character root and records its spawn order for coloring.
@@ -425,11 +432,27 @@ struct StepTimer {
     average_ms: f32,
 }
 
-/// Loads the profile, picks a backend, and runs the showcase.
+/// Picks a backend and runs the showcase.
 fn main() -> AppExit {
     let backend = Backend::from_environment();
-
     let mut app = App::new();
+    // Window and scene colors first, then the runtime, then the chosen engine.
+    add_window(&mut app);
+    app.add_plugins((
+        RagdollPlugin::default(),
+        FrameTimeDiagnosticsPlugin::default(),
+    ))
+    .insert_resource(Time::<Fixed>::from_hz(60.0))
+    .insert_resource(ActiveBackend(backend));
+    backend.add_plugins(&mut app);
+    // Panel state, then the systems that read it.
+    add_showcase_state(&mut app);
+    add_showcase_systems(&mut app);
+    app.run()
+}
+
+/// Adds Bevy's default plugins with a canvas-filling window and the scene colors.
+fn add_window(app: &mut App) {
     // Web servers answer 404 for the `.meta` files Bevy probes by default; the rigs have none.
     let assets = AssetPlugin {
         meta_check: bevy::asset::AssetMetaCheck::Never,
@@ -443,20 +466,18 @@ fn main() -> AppExit {
             ..default()
         }),
         ..default()
-    }))
-    .add_plugins((
-        RagdollPlugin::default(),
-        FrameTimeDiagnosticsPlugin::default(),
-    ))
-    .insert_resource(Time::<Fixed>::from_hz(60.0))
-    .insert_resource(ClearColor(Color::srgb(0.06, 0.07, 0.09)))
-    .insert_resource(GlobalAmbientLight {
-        color: Color::srgb(0.7, 0.8, 1.0),
-        brightness: 350.0,
-        ..default()
-    })
-    .insert_resource(ActiveBackend(backend))
-    .insert_resource(Orbit {
+    }));
+    app.insert_resource(ClearColor(Color::srgb(0.06, 0.07, 0.09)))
+        .insert_resource(GlobalAmbientLight {
+            color: Color::srgb(0.7, 0.8, 1.0),
+            brightness: 350.0,
+            ..default()
+        });
+}
+
+/// Inserts the panel, camera, pointer, and timing state, and registers it for reflection.
+fn add_showcase_state(app: &mut App) {
+    app.insert_resource(Orbit {
         yaw: 0.6,
         pitch: 0.38,
         distance: 17.0,
@@ -465,7 +486,6 @@ fn main() -> AppExit {
     .init_resource::<PointerState>()
     .init_resource::<StepTimer>()
     .init_resource::<BodyAssets>();
-    backend.add_plugins(&mut app);
     // Registration makes the example's state visible to reflection tools such as inspectors.
     app.register_type::<ActiveBackend>()
         .register_type::<Rigs>()
@@ -480,37 +500,65 @@ fn main() -> AppExit {
         .register_type::<Orbit>()
         .register_type::<PointerState>()
         .register_type::<StepTimer>();
-    app.add_systems(Startup, (setup_scene, setup_assets, load_rigs, spawn_panel))
-        .add_systems(
-            Update,
-            (
-                handle_buttons,
-                apply_params,
-                sync_population,
-                orbit_camera,
-                (press_pointer, read_pick, release_pointer).chain(),
-                fade_flashes,
-                update_panel,
-            ),
-        )
-        .add_systems(
-            PostUpdate,
-            (
-                restore_rest_pose
-                    .after(AnimationSystems)
-                    .before(RagdollSystems::CaptureTargets),
-                add_body_meshes
-                    .after(RagdollSystems::Bind)
-                    .before(TransformSystems::Propagate),
-            ),
-        )
-        .add_systems(FixedFirst, start_step_timer)
+}
+
+/// Adds the scene setup, input, rest-pose, mesh, timing, and grab systems.
+#[cfg_attr(
+    dylint_lib = "sagan_lints",
+    expect(
+        bevy_disallow_update_schedule,
+        reason = "input handling and UI react once per rendered frame, which is what Update is for"
+    )
+)]
+#[cfg_attr(
+    dylint_lib = "sagan_lints",
+    expect(
+        bevy_disallow_fixed_update_schedule,
+        reason = "the grab impulse must be written once per physics step, before the ragdoll Behaviour set"
+    )
+)]
+fn add_showcase_systems(app: &mut App) {
+    app.add_systems(
+        Startup,
+        (
+            setup_view,
+            setup_scene,
+            setup_assets,
+            load_rigs,
+            spawn_panel,
+            spawn_hints,
+        ),
+    )
+    .add_systems(
+        Update,
+        (
+            handle_buttons,
+            apply_params,
+            sync_population,
+            orbit_camera,
+            (press_pointer, read_pick, release_pointer).chain(),
+            fade_flashes,
+            update_panel,
+        ),
+    )
+    .add_systems(
+        PostUpdate,
+        (
+            restore_rest_pose
+                .after(AnimationSystems)
+                .before(RagdollSystems::CaptureTargets),
+            add_body_meshes
+                .after(RagdollSystems::Bind)
+                .before(TransformSystems::Propagate),
+        ),
+    );
+    // The fixed-step timer brackets every fixed schedule, physics included.
+    app.add_systems(FixedFirst, start_step_timer)
         .add_systems(FixedLast, finish_step_timer)
         .add_systems(
             FixedUpdate,
             pull_grabbed_body.before(RagdollFixedSystems::Behaviour),
-        )
-        .run()
+        );
 }
 
 /// Builds the humanoid skeleton and starts loading the glTF creatures.
@@ -523,14 +571,8 @@ fn load_rigs(mut commands: Commands<'_, '_>, assets: Res<'_, AssetServer>) {
     });
 }
 
-/// Spawns the camera, lights, checkered floor, and a few obstacles.
-fn setup_scene(
-    mut commands: Commands<'_, '_>,
-    backend: Res<'_, ActiveBackend>,
-    mut meshes: ResMut<'_, Assets<Mesh>>,
-    mut materials: ResMut<'_, Assets<StandardMaterial>>,
-    mut images: ResMut<'_, Assets<Image>>,
-) {
+/// Spawns the fogged camera and the shadow-casting sun.
+fn setup_view(mut commands: Commands<'_, '_>) {
     // The camera's fog color matches the clear color so the arena fades into the background.
     commands.spawn((
         Camera3d::default(),
@@ -559,10 +601,19 @@ fn setup_scene(
         .build(),
         Transform::from_xyz(-8.0, 14.0, 6.0).looking_at(Vec3::ZERO, Vec3::Y),
     ));
+}
 
+/// Spawns the checkered floor and a few obstacles with backend colliders.
+fn setup_scene(
+    mut commands: Commands<'_, '_>,
+    backend: Res<'_, ActiveBackend>,
+    mut meshes: ResMut<'_, Assets<Mesh>>,
+    mut materials: ResMut<'_, Assets<StandardMaterial>>,
+    mut images: ResMut<'_, Assets<Image>>,
+) {
     // The floor and obstacles carry the backend's static colliders.
     let floor_half = Vec3::new(ARENA_HALF_EXTENT, 0.25, ARENA_HALF_EXTENT);
-    let mut floor = commands.spawn((
+    let floor = commands.spawn((
         Mesh3d(meshes.add(Cuboid::from_size(floor_half * 2.0))),
         MeshMaterial3d(materials.add(StandardMaterial {
             base_color_texture: Some(images.add(checker_image())),
@@ -571,9 +622,19 @@ fn setup_scene(
         })),
         Transform::from_xyz(0.0, -0.25, 0.0),
     ));
-    backend.0.insert_static_box(&mut floor, floor_half);
+    backend.0.insert_static_box(floor, floor_half);
 
-    // Obstacles give thrown ragdolls something to tumble over.
+    spawn_obstacles(commands.reborrow(), backend.0, &mut meshes, &mut materials);
+}
+
+/// Spawns a few static boxes that give thrown ragdolls something to tumble over.
+fn spawn_obstacles(
+    mut commands: Commands<'_, '_>,
+    backend: Backend,
+    meshes: &mut Assets<Mesh>,
+    materials: &mut Assets<StandardMaterial>,
+) {
+    // One shared material; each box gets a mesh and a static collider of the same size.
     let obstacle = materials.add(StandardMaterial {
         base_color: Color::srgb(0.22, 0.25, 0.30),
         perceptual_roughness: 0.6,
@@ -591,12 +652,12 @@ fn setup_scene(
         ),
     ];
     for (half_extents, transform) in obstacles {
-        let mut entity = commands.spawn((
+        let entity = commands.spawn((
             Mesh3d(meshes.add(Cuboid::from_size(half_extents * 2.0))),
             MeshMaterial3d(obstacle.clone()),
             transform,
         ));
-        backend.0.insert_static_box(&mut entity, half_extents);
+        backend.insert_static_box(entity, half_extents);
     }
 }
 
@@ -690,7 +751,7 @@ fn sync_population(
             ((index % 5) as f32).mul_add(0.9, 1.0),
             angle.sin() * distance,
         );
-        spawn_character(&mut commands, &rigs, &params, index, position, angle);
+        spawn_character(commands.reborrow(), &rigs, &params, index, position, angle);
     }
 }
 
@@ -700,7 +761,7 @@ fn sync_population(
 /// `Ragdoll::default()` generates the ragdoll profile from whatever skeleton is
 /// under it.
 fn spawn_character(
-    commands: &mut Commands<'_, '_>,
+    mut commands: Commands<'_, '_>,
     rigs: &Rigs,
     params: &Params,
     index: usize,
@@ -725,13 +786,12 @@ fn spawn_character(
         character.insert(WorldAssetRoot(scene.clone()));
     } else {
         let character = character.id();
-        rigs.humanoid.spawn(commands, character);
+        rigs.humanoid.spawn(&mut commands, character);
     }
 }
 
-/// Filter for named child entities (skeleton bones) whose rest rotation is not yet
-/// recorded.
-type NewBone = (With<Name>, With<ChildOf>, Without<RestRotation>);
+/// Filter for skeleton bones: named entities with a parent.
+type Bone = (With<Name>, With<ChildOf>);
 
 /// Puts each bone back at its rest rotation so the muscles pull toward the rest
 /// pose.
@@ -740,18 +800,18 @@ type NewBone = (With<Name>, With<ChildOf>, Without<RestRotation>);
 /// the captured target would equal the current pose and the muscles would idle.
 fn restore_rest_pose(
     mut commands: Commands<'_, '_>,
-    new_bones: Query<'_, '_, (Entity, &Transform), NewBone>,
-    mut bones: Query<'_, '_, (&RestRotation, &mut Transform)>,
+    mut bones: Query<'_, '_, (Entity, &mut Transform, Option<&RestRotation>), Bone>,
 ) {
-    // Named children are skeleton bones, from code or from a glTF scene; remember their spawn pose.
-    for (entity, transform) in &new_bones {
-        commands
-            .entity(entity)
-            .insert(RestRotation(transform.rotation));
-    }
-    // Restore the rest rotation before the runtime captures drive targets.
-    for (rest, mut transform) in &mut bones {
-        transform.rotation = rest.0;
+    for (entity, mut transform, rest) in &mut bones {
+        // Restore a known bone's rest rotation before the runtime captures drive targets.
+        if let Some(rest) = rest {
+            transform.rotation = rest.0;
+        } else {
+            // A new bone, from code or a glTF scene: remember its spawn pose as the rest pose.
+            commands
+                .entity(entity)
+                .insert(RestRotation(transform.rotation));
+        }
     }
 }
 
@@ -766,6 +826,7 @@ fn add_body_meshes(
 ) {
     // Share one mesh per collider shape so a large crowd costs few assets.
     for (entity, shape, owner) in &bodies {
+        // Color by spawn order so neighbours are easy to tell apart.
         let (mesh, transform) = assets
             .meshes
             .entry(format!("{:?}", shape.0))
@@ -800,22 +861,7 @@ fn spawn_panel(
     params: Res<'_, Params>,
 ) {
     // A translucent panel in the top-left corner.
-    let panel = commands
-        .spawn((
-            Node {
-                position_type: PositionType::Absolute,
-                top: px(14),
-                left: px(14),
-                width: px(310),
-                flex_direction: FlexDirection::Column,
-                row_gap: px(6),
-                padding: UiRect::all(px(14)),
-                border_radius: BorderRadius::all(px(8)),
-                ..default()
-            },
-            BackgroundColor(Color::srgba(0.04, 0.05, 0.07, 0.86)),
-        ))
-        .id();
+    let panel = commands.spawn(panel_node()).id();
     // Title and live metrics come first.
     commands.spawn((text("bevy_ragdoll", 18.0, ACCENT), ChildOf(panel)));
     commands.spawn((
@@ -823,32 +869,67 @@ fn spawn_panel(
         MetricsText,
         ChildOf(panel),
     ));
-    // One stepper row per tunable parameter.
+    // One stepper row per tunable parameter, then backends, then actions.
     for param in Param::ALL {
-        let row = commands.spawn((row_node(), ChildOf(panel))).id();
-        commands.spawn((
-            text(param.label(), 14.0, Color::WHITE),
-            Node {
-                flex_grow: 1.0,
-                ..default()
-            },
-            ChildOf(row),
-        ));
-        button(&mut commands, row, "-", Action::Step(param, -1), false);
-        commands.spawn((
-            text(&param.value(&params), 14.0, Color::WHITE),
-            Node {
-                width: px(100),
-                justify_content: JustifyContent::Center,
-                ..default()
-            },
-            TextLayout::justify(Justify::Center),
-            ParamValue(param),
-            ChildOf(row),
-        ));
-        button(&mut commands, row, "+", Action::Step(param, 1), false);
+        spawn_param_row(commands.reborrow(), panel, param, &params);
     }
-    // Backend buttons; choosing another one restarts the app.
+    spawn_backend_row(commands.reborrow(), panel, backend.0);
+    let row = commands.spawn((row_node(), ChildOf(panel))).id();
+    button(commands.reborrow(), row, "Explode", Action::Explode, false);
+    button(commands.reborrow(), row, "Reset", Action::Reset, false);
+}
+
+/// Returns the translucent top-left panel that holds the controls.
+fn panel_node() -> impl Bundle {
+    let node = Node {
+        position_type: PositionType::Absolute,
+        top: px(14),
+        left: px(14),
+        width: px(310),
+        flex_direction: FlexDirection::Column,
+        row_gap: px(6),
+        padding: UiRect::all(px(14)),
+        border_radius: BorderRadius::all(px(8)),
+        ..default()
+    };
+    (node, BackgroundColor(Color::srgba(0.04, 0.05, 0.07, 0.86)))
+}
+
+/// Spawns one `label  -  value  +` stepper row for `param` in `panel`.
+fn spawn_param_row(mut commands: Commands<'_, '_>, panel: Entity, param: Param, params: &Params) {
+    let row = commands.spawn((row_node(), ChildOf(panel))).id();
+    commands.spawn((
+        text(param.label(), 14.0, Color::WHITE),
+        Node {
+            flex_grow: 1.0,
+            ..default()
+        },
+        ChildOf(row),
+    ));
+    // The value sits between its buttons in a fixed-width, centered column.
+    button(
+        commands.reborrow(),
+        row,
+        "-",
+        Action::Step(param, -1),
+        false,
+    );
+    commands.spawn((
+        text(&param.value(params), 14.0, Color::WHITE),
+        Node {
+            width: px(100),
+            justify_content: JustifyContent::Center,
+            ..default()
+        },
+        TextLayout::justify(Justify::Center),
+        ParamValue(param),
+        ChildOf(row),
+    ));
+    button(commands.reborrow(), row, "+", Action::Step(param, 1), false);
+}
+
+/// Spawns the backend row; choosing a backend other than `active` restarts the app.
+fn spawn_backend_row(mut commands: Commands<'_, '_>, panel: Entity, active: Backend) {
     let row = commands.spawn((row_node(), ChildOf(panel))).id();
     commands.spawn((
         text("Backend", 14.0, Color::WHITE),
@@ -858,21 +939,21 @@ fn spawn_panel(
         },
         ChildOf(row),
     ));
+    // The running backend is highlighted.
     for option in Backend::ALL {
-        let is_selected = option == backend.0;
+        let is_selected = option == active;
         button(
-            &mut commands,
+            commands.reborrow(),
             row,
             option.name(),
             Action::UseBackend(option),
             is_selected,
         );
     }
-    let row = commands.spawn((row_node(), ChildOf(panel))).id();
-    button(&mut commands, row, "Explode", Action::Explode, false);
-    button(&mut commands, row, "Reset", Action::Reset, false);
+}
 
-    // Control hints stay at the bottom-left, outside the panel.
+/// Spawns the control hints at the bottom-left, outside the panel.
+fn spawn_hints(mut commands: Commands<'_, '_>) {
     commands.spawn((
         text(
             "Drag: throw   Click: hit   Right-drag: orbit   Wheel: zoom",
@@ -911,7 +992,7 @@ fn text(value: &str, size: f32, color: Color) -> impl Bundle {
 
 /// Spawns a labelled button in `row` that performs `action` when pressed.
 fn button(
-    commands: &mut Commands<'_, '_>,
+    mut commands: Commands<'_, '_>,
     row: Entity,
     label: &str,
     action: Action,
@@ -1090,10 +1171,12 @@ fn read_pick(
             continue;
         }
         pointer.pending = None;
+        // A miss, or a hit on static geometry, leaves nothing to grab.
         let Some(hit) = response.hit else { continue };
         let (Some(body), Ok(camera)) = (hit.body, cameras.single()) else {
             continue;
         };
+        // Store the point in the body's frame so the grab follows the body as it moves.
         let Ok(body_transform) = bodies.get(body) else {
             continue;
         };
