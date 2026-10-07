@@ -370,9 +370,9 @@ mod tests {
         });
         app.add_plugins(RapierRagdollPlugin);
         app.update();
-        app.world_mut()
-            .resource_mut::<RagdollPhysicsSettings>()
-            .gravity = bevy::math::Vec3::splat(f32::NAN);
+        if let Some(mut settings) = app.world_mut().get_resource_mut::<RagdollPhysicsSettings>() {
+            settings.gravity = bevy::math::Vec3::splat(f32::NAN);
+        }
         let mut schedule = Schedule::default();
         schedule.add_systems(apply_rapier_settings);
         schedule.run(app.world_mut());
@@ -396,10 +396,11 @@ mod tests {
         let mut fixed_time = Time::<Fixed>::from_hz(60.0);
         fixed_time.advance_by(Duration::from_millis(17));
         world.insert_resource(fixed_time);
+        let base = RagdollPhysicsSettings::default();
         world.insert_resource(RagdollPhysicsSettings {
             settle_speed: 0.1,
             force_sleep_after: 0.01,
-            ..Default::default()
+            ..base
         });
         world.insert_resource(RapierSleepTimers::default());
 
