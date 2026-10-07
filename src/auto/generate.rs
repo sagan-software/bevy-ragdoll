@@ -369,12 +369,14 @@ impl<'a> Rig<'a> {
         let mut head_choice: Option<(f32, usize)> = None;
         let mut kinds = Vec::with_capacity(chains.len());
         for (index, (base, start)) in chains.iter().enumerate() {
+            // Merged bones count too, so a foot merged into a shin still touches ground.
             let members = tree.subtree(*start);
             let lowest = members
                 .iter()
                 .flat_map(|(body, _)| tree.owned_bones(*body))
                 .map(|bone| self.heads[bone].y)
                 .fold(f32::MAX, f32::min);
+            // The deepest body is the chain tip that sets its direction.
             let tip = members
                 .iter()
                 .max_by_key(|(_, depth)| *depth)
@@ -949,6 +951,7 @@ impl BodyTree {
         let mut current = 0;
         loop {
             let children = &self.children[current];
+            // At the core, a tie between equal subtrees means no spine at all.
             let next = if current == 0 {
                 let largest = children.iter().map(|child| sizes[*child]).max();
                 let mut best = children
@@ -959,10 +962,12 @@ impl BodyTree {
                     _ => None,
                 }
             } else if children.len() == 1 {
+                // Past the core the spine continues only while it does not branch.
                 children.first().copied()
             } else {
                 None
             };
+            // Stop at the branch point; that body is the chest candidate.
             let Some(next) = next else { break };
             spine.push(next);
             current = next;
