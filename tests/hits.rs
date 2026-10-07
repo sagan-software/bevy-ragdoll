@@ -76,16 +76,24 @@ fn body_roles_follow_profile_bone_name_hints() {
         .filter(|(bone_name, expected)| BodyRole::from(*bone_name) != *expected)
         .collect::<Vec<_>>();
     assert_eq!(mismatches, []);
+}
 
-    // Roles also carry the muscle floor and recovery delays the hit system uses.
-    assert_eq!(BodyRole::Calf.muscle_floor(), 0.08);
-    assert_eq!(
+#[test]
+/// Keeps the muscle floor and recovery delays the hit system uses per role.
+fn body_roles_carry_the_muscle_floor_and_recovery_delays() {
+    let role_values = (
+        BodyRole::Calf.muscle_floor(),
         BodyRole::Thigh.recovery_order_delay(),
-        std::time::Duration::from_millis(100)
-    );
-    assert_eq!(
         BodyRole::Calf.recovery_order_delay(),
-        std::time::Duration::from_millis(150)
+    );
+
+    assert_eq!(
+        role_values,
+        (
+            0.08,
+            std::time::Duration::from_millis(100),
+            std::time::Duration::from_millis(150)
+        )
     );
 }
 
@@ -174,32 +182,49 @@ fn body_at_index(world: &mut World, character: Entity, index: usize) -> Entity {
         .expect("the bound character owns a body at this profile index")
 }
 
-/// Binds the shared two-body profile and returns its character entity.
-fn spawn_two_body_character(app: &mut App) -> Entity {
-    // Register the profile so the character can reference it by handle.
-    let profile = app
+/// Registers `profile` and spawns a Dynamic character that references it.
+fn spawn_character_with_profile(app: &mut App, profile: RagdollProfile) -> Entity {
+    let handle = app
         .world_mut()
         .get_resource_mut::<Assets<RagdollProfile>>()
         .unwrap()
-        .add(two_body_profile());
-    let character = app
-        .world_mut()
+        .add(profile);
+    app.world_mut()
         .spawn((
-            Ragdoll::new(profile),
+            Ragdoll::new(handle),
             RagdollMode::Dynamic,
             Transform::IDENTITY,
         ))
-        .id();
+        .id()
+}
+
+/// Spawns a bone named `name` at `translation` under `parent`.
+fn spawn_bone(app: &mut App, name: &str, translation: Vec3, parent: Entity) -> Entity {
+    app.world_mut()
+        .spawn((
+            Name::new(name.to_owned()),
+            Transform::from_translation(translation),
+            ChildOf(parent),
+        ))
+        .id()
+}
+
+/// Writes an impact hit on `body` at `point` with `impulse`.
+fn hit_impact(app: &mut App, body: Entity, point: Vec3, impulse: Vec3) {
+    app.world_mut().write_message(RagdollHit {
+        body,
+        point,
+        impulse,
+        kind: HitKind::Impact,
+    });
+}
+
+/// Binds the shared two-body profile and returns its character entity.
+fn spawn_two_body_character(app: &mut App) -> Entity {
+    let character = spawn_character_with_profile(app, two_body_profile());
     // Bone names must match the profile so binding finds both bodies.
-    let pelvis = app
-        .world_mut()
-        .spawn((Name::new("pelvis"), Transform::IDENTITY, ChildOf(character)))
-        .id();
-    app.world_mut().spawn((
-        Name::new("spine"),
-        Transform::from_translation(Vec3::Y),
-        ChildOf(pelvis),
-    ));
+    let pelvis = spawn_bone(app, "pelvis", Vec3::ZERO, character);
+    spawn_bone(app, "spine", Vec3::Y, pelvis);
     // One update binds the character and creates its bodies.
     app.update();
     character
@@ -211,14 +236,16 @@ fn spawn_chain(app: &mut App, names: &[&str]) -> Entity {
     spawn_chain_with_masses(app, names, &masses)
 }
 
-/// Builds a named parent-first chain with test-selected body masses.
-fn spawn_chain_with_masses(app: &mut App, names: &[&str], masses: &[f32]) -> Entity {
+/// Builds a named parent-first chain profile with test-selected body masses.
+fn chain_profile(names: &[&str], masses: &[f32]) -> RagdollProfile {
+    // Each bone name needs exactly one mass.
     assert_eq!(names.len(), masses.len());
     // Every body is a small sphere; the chain tests only care about the tree.
     let shape = ShapeSpec::Sphere {
         center: Vec3::ZERO,
         radius: 0.1,
     };
+    // Every joint shares one symmetric bend range.
     let bend = AngleRange {
         min: -0.5,
         max: 0.5,
@@ -245,31 +272,17 @@ fn spawn_chain_with_masses(app: &mut App, names: &[&str], masses: &[f32]) -> Ent
         }
         parent = Some(child);
     }
-    // Register the profile so the character can reference it by handle.
-    let profile = app
-        .world_mut()
-        .get_resource_mut::<Assets<RagdollProfile>>()
-        .unwrap()
-        .add(builder.build().expect("the named chain is a valid profile"));
-    let character = app
-        .world_mut()
-        .spawn((
-            Ragdoll::new(profile),
-            RagdollMode::Dynamic,
-            Transform::IDENTITY,
-        ))
-        .id();
+    // Builder errors would mean the fixture itself is wrong.
+    builder.build().expect("the named chain is a valid profile")
+}
+
+/// Builds and binds a named parent-first chain with test-selected body masses.
+fn spawn_chain_with_masses(app: &mut App, names: &[&str], masses: &[f32]) -> Entity {
+    let character = spawn_character_with_profile(app, chain_profile(names, masses));
     // Nest the bones in chain order so binding mirrors the profile tree.
     let mut parent = character;
     for name in names {
-        parent = app
-            .world_mut()
-            .spawn((
-                Name::new((*name).to_owned()),
-                Transform::IDENTITY,
-                ChildOf(parent),
-            ))
-            .id();
+        parent = spawn_bone(app, name, Vec3::ZERO, parent);
     }
     // One update binds the character and creates its bodies.
     app.update();
@@ -498,6 +511,17 @@ fn do_not_stack_after_it() {
     assert_eq!(last_hit.streak(), 0);
 }
 
+/// Returns the muscle weight of every body of `character` in profile order.
+fn muscles(app: &App, character: Entity) -> Vec<f32> {
+    app.world()
+        .get::<RagdollBodyWeights>(character)
+        .expect("binding inserts per-body weights")
+        .as_ref()
+        .iter()
+        .map(|weight| weight.muscle())
+        .collect()
+}
+
 #[test]
 /// Starts recovery at the core before delaying hand recovery by its role order.
 fn recovery_starts_after_the_delay_and_core_first() {
@@ -506,19 +530,9 @@ fn recovery_starts_after_the_delay_and_core_first() {
     app.insert_resource(Time::<Fixed>::from_hz(100.0));
     let character = spawn_chain(&mut app, &["pelvis", "spine", "hand_l"]);
     let hand_body = body_at_index(app.world_mut(), character, 2);
-    app.world_mut().write_message(RagdollHit {
-        body: hand_body,
-        point: Vec3::ZERO,
-        impulse: Vec3::X * 40.0,
-        kind: HitKind::Impact,
-    });
+    hit_impact(&mut app, hand_body, Vec3::ZERO, Vec3::X * 40.0);
     app.update();
-    let weights_before = app
-        .world()
-        .get::<RagdollBodyWeights>(character)
-        .expect("binding inserts per-body weights")
-        .as_ref()
-        .to_vec();
+    let before = muscles(&app, character);
 
     // Step through part of the recovery delay.
     for _ in 0..19 {
@@ -526,22 +540,15 @@ fn recovery_starts_after_the_delay_and_core_first() {
     }
 
     // The pelvis recovers first while the hand is still waiting.
-    let weights_after = app
-        .world()
-        .get::<RagdollBodyWeights>(character)
-        .expect("binding inserts per-body weights");
-    assert!(
-        weights_after.get(0).expect("pelvis has a weight").muscle() > weights_before[0].muscle()
-    );
-    assert_eq!(
-        weights_after.get(2).expect("hand has a weight").muscle(),
-        weights_before[2].muscle()
-    );
+    let after = muscles(&app, character);
+    assert!(after[0] > before[0]);
+    assert_eq!(after[2], before[2]);
 }
 
-#[test]
-/// Limits a light hand to 3 m/s of impulse and sends the excess toward the root.
-fn impulse_clamp_passes_the_excess_to_the_parent() {
+/// Hits a light hand under a heavier forearm with 12 N s along X at
+/// (1, 2, 3), then returns the published impulses and the pelvis, forearm,
+/// and hand bodies.
+fn clamped_hand_hit() -> (Vec<RagdollImpulse>, [Entity; 3]) {
     let mut app = app();
     // A light hand under a heavier forearm limits how much impulse the hand may take.
     let character = spawn_chain_with_masses(
@@ -549,64 +556,57 @@ fn impulse_clamp_passes_the_excess_to_the_parent() {
         &["pelvis", "forearm_l", "hand_l"],
         &[2.0, 2.0, 0.5],
     );
-    let pelvis = body_at_index(app.world_mut(), character, 0);
-    let forearm = body_at_index(app.world_mut(), character, 1);
-    let hand = body_at_index(app.world_mut(), character, 2);
-    app.world_mut().write_message(RagdollHit {
-        body: hand,
-        point: Vec3::new(1.0, 2.0, 3.0),
-        impulse: Vec3::X * 12.0,
-        kind: HitKind::Impact,
-    });
+    // Hit the hand at (1, 2, 3) so the clamp must split the impulse.
+    let bodies = [0, 1, 2].map(|index| body_at_index(app.world_mut(), character, index));
+    hit_impact(
+        &mut app,
+        bodies[2],
+        Vec3::new(1.0, 2.0, 3.0),
+        Vec3::X * 12.0,
+    );
     app.update();
+    (published_impulses(app.world()), bodies)
+}
+
+/// Returns the impulse published for `body`.
+fn impulse_on(delivered: &[RagdollImpulse], body: Entity) -> RagdollImpulse {
+    delivered
+        .iter()
+        .find(|impulse| impulse.body == body)
+        .copied()
+        .expect("the body receives a bounded portion")
+}
+
+#[test]
+/// Limits a light hand to 3 m/s of impulse at the original hit point.
+fn impulse_clamp_bounds_the_hand_portion_at_the_hit_point() {
+    let (delivered, [_, _, hand]) = clamped_hand_hit();
 
     // The impulse is split three ways, keeping the hit point on the hand.
-    let delivered = published_impulses(app.world());
     assert_eq!(delivered.len(), 3);
-    let hand_impulse = delivered
-        .iter()
-        .find(|impulse| impulse.body == hand)
-        .expect("the hand receives its bounded portion");
+    let hand_impulse = impulse_on(&delivered, hand);
     assert!((hand_impulse.impulse.length() - 1.5).abs() < 1.0e-5);
     assert!(
         hand_impulse
             .point
             .abs_diff_eq(Vec3::new(1.0, 2.0, 3.0), 1.0e-6)
     );
+}
+
+#[test]
+/// Sends the excess of a clamped hand hit toward the root.
+fn impulse_clamp_passes_the_excess_to_the_parent() {
+    let (delivered, [pelvis, forearm, _]) = clamped_hand_hit();
+
     // Each ancestor takes its bounded share and the root takes the rest.
-    assert!(
-        (delivered
-            .iter()
-            .find(|impulse| impulse.body == forearm)
-            .expect("the forearm receives the second bounded portion")
-            .impulse
-            .x
-            - 6.0)
-            .abs()
-            < 1.0e-5
-    );
-    assert!(
-        (delivered
-            .iter()
-            .find(|impulse| impulse.body == pelvis)
-            .expect("the root receives the remainder")
-            .impulse
-            .x
-            - 4.5)
-            .abs()
-            < 1.0e-5
-    );
+    assert!((impulse_on(&delivered, forearm).impulse.x - 6.0).abs() < 1.0e-5);
+    assert!((impulse_on(&delivered, pelvis).impulse.x - 4.5).abs() < 1.0e-5);
     // Splitting must conserve the total 12 N s impulse.
-    assert!(
-        (delivered
-            .iter()
-            .map(|impulse| impulse.impulse)
-            .sum::<Vec3>()
-            .length()
-            - 12.0)
-            .abs()
-            < 1.0e-5
-    );
+    let total = delivered
+        .iter()
+        .map(|impulse| impulse.impulse)
+        .sum::<Vec3>();
+    assert!((total.length() - 12.0).abs() < 1.0e-5);
 }
 
 #[test]
@@ -685,88 +685,87 @@ fn full_limp_disables_velocity_limits() {
 /// Applies an incoming hit before the core drive stage updates the body.
 fn a_hit_reduces_the_hit_body_muscle_weight() {
     let mut app = app();
-    // Spawn the character by hand to show the full binding path in one test.
-    let profile = app
-        .world_mut()
-        .get_resource_mut::<Assets<RagdollProfile>>()
-        .unwrap()
-        .add(two_body_profile());
-    let character = app
-        .world_mut()
-        .spawn((
-            Ragdoll::new(profile),
-            RagdollMode::Dynamic,
-            Transform::IDENTITY,
-        ))
-        .id();
-    let pelvis = app
-        .world_mut()
-        .spawn((Name::new("pelvis"), Transform::IDENTITY, ChildOf(character)))
-        .id();
-    app.world_mut().spawn((
-        Name::new("spine"),
-        Transform::from_translation(Vec3::Y),
-        ChildOf(pelvis),
-    ));
-    // One update binds the character before the hit arrives.
-    app.update();
+    // Binding creates the spine body before the hit arrives.
+    let character = spawn_two_body_character(&mut app);
     let spine_body = body_at_index(app.world_mut(), character, 1);
 
     // Hit the spine after binding has created its body.
-    app.world_mut().write_message(RagdollHit {
-        body: spine_body,
-        point: Vec3::Y,
-        impulse: Vec3::X * 12.0,
-        kind: HitKind::Impact,
-    });
+    hit_impact(&mut app, spine_body, Vec3::Y, Vec3::X * 12.0);
     app.update();
 
     // The hit body loses muscle strength.
-    let weights = app
-        .world()
-        .get::<RagdollBodyWeights>(character)
-        .expect("binding inserts per-body weights");
-    assert!(weights.get(1).is_some_and(|weight| weight.muscle() < 1.0));
+    assert!(muscles(&app, character)[1] < 1.0);
 }
 
-#[test]
-/// Ignores non-finite points, non-finite magnitudes, and zero impulses.
-fn malformed_hit_vectors_do_not_change_strength_or_publish_impulses() {
+/// The character state a malformed hit could change.
+type HitEffects = (
+    Vec<BodyWeights>,
+    Option<std::time::Duration>,
+    Vec<RagdollImpulse>,
+);
+
+/// Sends one malformed hit at the spine and returns the body weights, last-hit
+/// time, and published impulses after the hit system runs.
+fn malformed_hit_effects(point: Vec3, impulse: Vec3) -> HitEffects {
     let mut app = app();
+    // Send the malformed hit at the spine of a bound character.
     let character = spawn_two_body_character(&mut app);
     let body = body_at_index(app.world_mut(), character, 1);
-    // NaN points, NaN or overflowing impulses, and a zero impulse are all malformed.
-    for (point, impulse) in [
-        (Vec3::splat(f32::NAN), Vec3::X),
-        (Vec3::ZERO, Vec3::splat(f32::NAN)),
-        (Vec3::ZERO, Vec3::splat(f32::MAX)),
-        (Vec3::ZERO, Vec3::ZERO),
-    ] {
-        app.world_mut().write_message(RagdollHit {
-            body,
-            point,
-            impulse,
-            kind: HitKind::Impact,
-        });
-    }
+    hit_impact(&mut app, body, point, impulse);
 
     // One frame runs the hit through the fixed-step hit system.
     app.update();
 
-    // None of them may weaken a body, start a streak, or publish an impulse.
+    // Read back every piece of state a hit could change.
     let weights = app
         .world()
         .get::<RagdollBodyWeights>(character)
-        .expect("binding inserts per-body weights");
-    assert_eq!(weights.as_ref(), &[BodyWeights::default(); 2]);
-    assert_eq!(
-        app.world()
-            .get::<LastHit>(character)
-            .expect("binding inserts hit history")
-            .last_at(),
-        None
-    );
-    assert_eq!(published_impulses(app.world()), []);
+        .expect("binding inserts per-body weights")
+        .as_ref()
+        .to_vec();
+    let last_at = app
+        .world()
+        .get::<LastHit>(character)
+        .expect("binding inserts hit history")
+        .last_at();
+    (weights, last_at, published_impulses(app.world()))
+}
+
+/// The state after a malformed hit: full weights, no streak, and no impulse.
+fn unchanged_hit_effects() -> HitEffects {
+    (vec![BodyWeights::default(); 2], None, Vec::new())
+}
+
+#[test]
+/// Ignores a hit with a non-finite contact point.
+fn non_finite_hit_point_does_not_change_strength_or_publish_impulses() {
+    let effects = malformed_hit_effects(Vec3::splat(f32::NAN), Vec3::X);
+
+    assert_eq!(effects, unchanged_hit_effects());
+}
+
+#[test]
+/// Ignores a hit with a non-finite impulse.
+fn non_finite_hit_impulse_does_not_change_strength_or_publish_impulses() {
+    let effects = malformed_hit_effects(Vec3::ZERO, Vec3::splat(f32::NAN));
+
+    assert_eq!(effects, unchanged_hit_effects());
+}
+
+#[test]
+/// Ignores a hit whose impulse magnitude overflows.
+fn overflowing_hit_impulse_does_not_change_strength_or_publish_impulses() {
+    let effects = malformed_hit_effects(Vec3::ZERO, Vec3::splat(f32::MAX));
+
+    assert_eq!(effects, unchanged_hit_effects());
+}
+
+#[test]
+/// Ignores a hit with a zero impulse.
+fn zero_hit_impulse_does_not_change_strength_or_publish_impulses() {
+    let effects = malformed_hit_effects(Vec3::ZERO, Vec3::ZERO);
+
+    assert_eq!(effects, unchanged_hit_effects());
 }
 
 #[test]
@@ -797,11 +796,9 @@ fn stale_body_hit_does_not_change_character_state() {
     assert_eq!(published_impulses(app.world()), []);
 }
 
-#[test]
-/// Ignores hits whose body relationship points to an entity without ragdoll state.
-fn body_with_missing_character_state_does_not_publish_an_impulse() {
-    let mut app = app();
-    // An owner that still has weights and history but no RagdollMode.
+/// Spawns a body whose owner keeps weights and history but has no
+/// `RagdollMode`, then returns the owner and the body.
+fn spawn_body_with_modeless_owner(app: &mut App) -> (Entity, Entity) {
     let owner = app
         .world_mut()
         .spawn((
@@ -822,16 +819,22 @@ fn body_with_missing_character_state_does_not_publish_an_impulse() {
         .get_entity_mut(owner)
         .unwrap()
         .remove::<RagdollMode>();
+    (owner, body)
+}
+
+#[test]
+/// Ignores hits whose body relationship points to an entity without ragdoll state.
+fn body_with_missing_character_state_does_not_publish_an_impulse() {
+    let mut app = app();
+    let (owner, body) = spawn_body_with_modeless_owner(&mut app);
     // Confirm the owner is in exactly the partial state under test.
-    assert!(app.world().get::<RagdollMode>(owner).is_none());
-    assert!(app.world().get::<RagdollBodyWeights>(owner).is_some());
-    assert!(app.world().get::<LastHit>(owner).is_some());
-    app.world_mut().write_message(RagdollHit {
-        body,
-        point: Vec3::ZERO,
-        impulse: Vec3::X * 20.0,
-        kind: HitKind::Impact,
-    });
+    let owner_state = (
+        app.world().get::<RagdollMode>(owner).is_some(),
+        app.world().get::<RagdollBodyWeights>(owner).is_some(),
+        app.world().get::<LastHit>(owner).is_some(),
+    );
+    assert_eq!(owner_state, (false, true, true));
+    hit_impact(&mut app, body, Vec3::ZERO, Vec3::X * 20.0);
 
     app.update();
 
@@ -1064,24 +1067,21 @@ fn small_hit_does_not_continue_past_the_addressed_body() {
     let character = spawn_two_body_character(&mut app);
     // A small hit on the spine stays within one hop.
     let spine = body_at_index(app.world_mut(), character, 1);
-    app.world_mut().write_message(RagdollHit {
-        body: spine,
-        point: Vec3::new(1.0, 2.0, 3.0),
-        impulse: Vec3::X * 2.0,
-        kind: HitKind::Impact,
-    });
+    hit_impact(&mut app, spine, Vec3::new(1.0, 2.0, 3.0), Vec3::X * 2.0);
 
     app.update();
 
     // Exactly one impulse reaches the spine at the contact point.
-    let delivered = published_impulses(app.world());
-    assert_eq!(delivered.len(), 1);
-    assert_eq!(delivered[0].body, spine);
-    assert_eq!(delivered[0].point, Vec3::new(1.0, 2.0, 3.0));
-    assert_eq!(delivered[0].impulse, Vec3::X * 2.0);
+    assert_eq!(
+        published_impulses(app.world()),
+        [RagdollImpulse {
+            body: spine,
+            point: Vec3::new(1.0, 2.0, 3.0),
+            impulse: Vec3::X * 2.0,
+        }]
+    );
 }
 
-/// Builds one root and two sibling bodies to check branch-local hit falloff.
 /// Returns every buffered impulse through a fresh cursor, so the result does
 /// not depend on which of the two update buffers holds the messages.
 fn published_impulses(world: &World) -> Vec<RagdollImpulse> {
@@ -1091,25 +1091,19 @@ fn published_impulses(world: &World) -> Vec<RagdollImpulse> {
     messages.get_cursor().read(messages).copied().collect()
 }
 
-fn spawn_branch_character(app: &mut App) -> Entity {
+/// Builds a root and chest with two sibling arms for branch-local hit falloff.
+fn branch_profile() -> RagdollProfile {
     // A root and chest with two arms, so the arms are siblings.
     let shape = ShapeSpec::Sphere {
         center: Vec3::ZERO,
         radius: 0.1,
     };
     let mut builder = ProfileBuilder::default();
-    let root = builder
-        .add_body("pelvis", shape, 2.0, Isometry3d::IDENTITY)
-        .expect("the root index is valid");
-    let chest = builder
-        .add_body("spine", shape, 2.0, Isometry3d::IDENTITY)
-        .expect("the chest index is valid");
-    let left = builder
-        .add_body("upperarm_l", shape, 2.0, Isometry3d::IDENTITY)
-        .expect("the left arm index is valid");
-    let right = builder
-        .add_body("upperarm_r", shape, 2.0, Isometry3d::IDENTITY)
-        .expect("the right arm index is valid");
+    let [root, chest, left, right] = ["pelvis", "spine", "upperarm_l", "upperarm_r"].map(|bone| {
+        builder
+            .add_body(bone, shape, 2.0, Isometry3d::IDENTITY)
+            .expect("the branch body index is valid")
+    });
     // All three joints share one symmetric bend range.
     let bend = AngleRange {
         min: -0.5,
@@ -1123,38 +1117,17 @@ fn spawn_branch_character(app: &mut App) -> Entity {
     builder.add_joint(chest, root, Isometry3d::IDENTITY, limits, 80.0);
     builder.add_joint(left, chest, Isometry3d::IDENTITY, limits, 30.0);
     builder.add_joint(right, chest, Isometry3d::IDENTITY, limits, 30.0);
-    // Register the profile and build the matching bone hierarchy.
-    let profile = app
-        .world_mut()
-        .get_resource_mut::<Assets<RagdollProfile>>()
-        .unwrap()
-        .add(builder.build().expect("the branch profile forms a tree"));
-    let character = app
-        .world_mut()
-        .spawn((
-            Ragdoll::new(profile),
-            RagdollMode::Dynamic,
-            Transform::IDENTITY,
-        ))
-        .id();
-    let root_bone = app
-        .world_mut()
-        .spawn((Name::new("pelvis"), Transform::IDENTITY, ChildOf(character)))
-        .id();
-    let chest_bone = app
-        .world_mut()
-        .spawn((Name::new("spine"), Transform::IDENTITY, ChildOf(root_bone)))
-        .id();
-    app.world_mut().spawn((
-        Name::new("upperarm_l"),
-        Transform::IDENTITY,
-        ChildOf(chest_bone),
-    ));
-    app.world_mut().spawn((
-        Name::new("upperarm_r"),
-        Transform::IDENTITY,
-        ChildOf(chest_bone),
-    ));
+    builder.build().expect("the branch profile forms a tree")
+}
+
+/// Binds the branch profile and returns its character entity.
+fn spawn_branch_character(app: &mut App) -> Entity {
+    let character = spawn_character_with_profile(app, branch_profile());
+    // Build the matching bone hierarchy.
+    let root_bone = spawn_bone(app, "pelvis", Vec3::ZERO, character);
+    let chest_bone = spawn_bone(app, "spine", Vec3::ZERO, root_bone);
+    spawn_bone(app, "upperarm_l", Vec3::ZERO, chest_bone);
+    spawn_bone(app, "upperarm_r", Vec3::ZERO, chest_bone);
     // One update binds the character and creates its bodies.
     app.update();
     character

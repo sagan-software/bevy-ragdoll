@@ -293,6 +293,63 @@ fn animated_mode_has_no_body_entities() {
     assert_eq!(body_entities(app.world_mut(), character), []);
 }
 
+/// The backend-contract components found on one body entity.
+#[derive(Debug, PartialEq)]
+struct BodyContract {
+    /// The body's simulation kind.
+    kind: Option<BodyKind>,
+    /// The body's profile index.
+    index: Option<usize>,
+    /// The body's parent entity, if any.
+    parent: Option<Entity>,
+    /// The backend input and output components the body lacks.
+    missing_components: Vec<&'static str>,
+    /// Whether the body is marked at rest.
+    is_at_rest: bool,
+}
+
+impl BodyContract {
+    /// Reads the contract components of `body`.
+    fn read(world: &World, body: Entity) -> Self {
+        // Each body carries the shape, mass, motion, and drive data a backend reads.
+        let presence = [
+            ("BodyShape", world.get::<BodyShape>(body).is_some()),
+            ("BodyMass", world.get::<BodyMass>(body).is_some()),
+            ("BodyVelocity", world.get::<BodyVelocity>(body).is_some()),
+            (
+                "BodyPhysicsPose",
+                world.get::<BodyPhysicsPose>(body).is_some(),
+            ),
+            (
+                "BodyDriveOutput",
+                world.get::<BodyDriveOutput>(body).is_some(),
+            ),
+        ];
+        Self {
+            kind: world.get::<BodyKind>(body).copied(),
+            index: world.get::<BodyIndex>(body).map(|value| value.get()),
+            parent: world.get::<ChildOf>(body).map(ChildOf::parent),
+            missing_components: presence
+                .into_iter()
+                .filter(|(_, is_present)| !is_present)
+                .map(|(name, _)| name)
+                .collect(),
+            is_at_rest: world.get::<BodyAtRest>(body).is_some(),
+        }
+    }
+
+    /// The contract of a freshly spawned dynamic body at profile `index`.
+    const fn fresh_dynamic(index: usize) -> Self {
+        Self {
+            kind: Some(BodyKind::Dynamic),
+            index: Some(index),
+            parent: None,
+            missing_components: Vec::new(),
+            is_at_rest: false,
+        }
+    }
+}
+
 #[test]
 fn dynamic_mode_spawns_one_entity_per_body() {
     let mut app = app();
@@ -301,25 +358,16 @@ fn dynamic_mode_spawns_one_entity_per_body() {
 
     app.update();
 
-    // One top-level body per profile body, each carrying the full backend contract.
-    let bodies = body_entities(app.world_mut(), character);
-    assert_eq!(bodies.len(), profile().bodies().len());
-    for (body, index) in bodies {
-        assert_eq!(app.world().get::<BodyKind>(body), Some(&BodyKind::Dynamic));
-        assert!(app.world().get::<ChildOf>(body).is_none());
-        assert_eq!(
-            app.world().get::<BodyIndex>(body).map(|value| value.get()),
-            Some(index)
-        );
-        // Each body carries the shape, mass, motion, and drive data a backend reads.
-        assert!(app.world().get::<BodyShape>(body).is_some());
-        assert!(app.world().get::<BodyMass>(body).is_some());
-        assert!(app.world().get::<BodyVelocity>(body).is_some());
-        assert!(app.world().get::<BodyPhysicsPose>(body).is_some());
-        assert!(app.world().get::<BodyDriveOutput>(body).is_some());
-        // A freshly spawned body is not at rest yet.
-        assert!(app.world().get::<BodyAtRest>(body).is_none());
-    }
+    // One top-level body per profile body, each carrying the full backend contract
+    // and none at rest yet.
+    let contracts: Vec<_> = body_entities(app.world_mut(), character)
+        .into_iter()
+        .map(|(body, _)| BodyContract::read(app.world(), body))
+        .collect();
+    let expected: Vec<_> = (0..profile().bodies().len())
+        .map(BodyContract::fresh_dynamic)
+        .collect();
+    assert_eq!(contracts, expected);
 }
 
 #[test]
@@ -372,11 +420,28 @@ fn returning_to_animated_despawns_bodies() {
     assert_eq!(body_entities(app.world_mut(), character), []);
 }
 
-#[test]
-fn bodies_spawn_at_the_target_pose_with_its_velocity() {
-    let mut app = app();
+/// Sets the ragdoll mode of `character`.
+fn set_mode(app: &mut App, character: Entity, mode: RagdollMode) {
+    app.world_mut()
+        .get_entity_mut(character)
+        .unwrap()
+        .insert(mode);
+}
+
+/// Returns the body entity at profile `index` for `character`.
+fn body_at(app: &mut App, character: Entity, index: usize) -> Entity {
+    body_entities(app.world_mut(), character)
+        .into_iter()
+        .find(|(_, body_index)| *body_index == index)
+        .map(|(entity, _)| entity)
+        .expect("the profile body spawned")
+}
+
+/// Spawns an Animated character whose root moved at 2 m/s along X last frame
+/// and whose transform now turns that motion into world +Y.
+fn spawn_moving_rotated_character(app: &mut App) -> Entity {
     // Animate the root at 2 m/s along X for one frame.
-    let (character, root, _) = spawn_character(&mut app, RagdollMode::Animated);
+    let (character, root, _) = spawn_character(app, RagdollMode::Animated);
     app.update();
     app.world_mut()
         .get_mut::<Transform>(root)
@@ -391,20 +456,20 @@ fn bodies_spawn_at_the_target_pose_with_its_velocity() {
         .with_rotation(bevy::math::Quat::from_rotation_z(
             std::f32::consts::FRAC_PI_2,
         ));
+    character
+}
 
-    app.world_mut()
-        .get_entity_mut(character)
-        .unwrap()
-        .insert(RagdollMode::Dynamic);
+#[test]
+fn bodies_spawn_at_the_target_pose_with_its_velocity() {
+    let mut app = app();
+    let character = spawn_moving_rotated_character(&mut app);
+
     // Activate physics on the frame after the motion.
+    set_mode(&mut app, character, RagdollMode::Dynamic);
     app.update();
 
     // The new body inherits the animated velocity and pose in world space.
-    let bodies = body_entities(app.world_mut(), character);
-    let (root_body, _) = bodies
-        .first()
-        .copied()
-        .expect("the profile has a root body");
+    let root_body = body_at(&mut app, character, 0);
     let velocity = app
         .world()
         .get::<BodyVelocity>(root_body)
@@ -456,42 +521,43 @@ fn capture_reads_animated_locals_without_global_transform() {
     assert!(current.translation.x.abs() < 1.0e-4);
 }
 
-#[test]
-fn writeback_puts_each_body_bone_at_its_body_pose() {
+/// Binds a Dynamic character and returns the world translation of the bone
+/// for profile `index` together with its body's physics translation.
+fn bone_and_body_translation(index: usize) -> (Vec3, Vec3) {
+    // Bind a Dynamic character so writeback runs once.
     let mut app = app();
     let (character, root, child) = spawn_character(&mut app, RagdollMode::Dynamic);
     app.update();
+    // Profile index 0 names the root bone and index 1 names the child bone.
+    let bone = if index == 0 { root } else { child };
+    let body = body_at(&mut app, character, index);
+    // Compare the bone world pose with the body pose writeback read.
+    let body_pose = app
+        .world()
+        .get::<BodyPhysicsPose>(body)
+        .expect("the backend wrote the body pose");
+    let bone_world = app
+        .world()
+        .get::<GlobalTransform>(bone)
+        .expect("transform propagation wrote the bone world pose");
+    (
+        bone_world.translation(),
+        body_pose.current.translation.into(),
+    )
+}
 
-    // Map each profile index to the body entity that writeback reads.
-    let mut body_query = app
-        .world_mut()
-        .query::<(Entity, &RagdollBodyOf, &BodyIndex)>();
-    let body_bones: Vec<_> = body_query
-        .iter(app.world())
-        .filter(|(_, owner, _)| owner.0 == character)
-        .map(|(body, _, index)| (index.get(), body))
-        .collect();
-    // Each bone's world position must match its body's physics pose.
-    for (index, bone) in [(0, root), (1, child)] {
-        let body = body_bones
-            .iter()
-            .find(|(body_index, _)| *body_index == index)
-            .map(|(_, entity)| *entity)
-            .expect("the profile body spawned");
-        let body_pose = app
-            .world()
-            .get::<BodyPhysicsPose>(body)
-            .expect("the backend wrote the body pose");
-        let bone_world = app
-            .world()
-            .get::<GlobalTransform>(bone)
-            .expect("transform propagation wrote the bone world pose");
-        assert!(
-            bone_world
-                .translation()
-                .abs_diff_eq(body_pose.current.translation.into(), 1.0e-4)
-        );
-    }
+#[test]
+fn writeback_puts_the_root_bone_at_its_body_pose() {
+    let (bone, body) = bone_and_body_translation(0);
+
+    assert!(bone.abs_diff_eq(body, 1.0e-4));
+}
+
+#[test]
+fn writeback_puts_the_child_bone_at_its_body_pose() {
+    let (bone, body) = bone_and_body_translation(1);
+
+    assert!(bone.abs_diff_eq(body, 1.0e-4));
 }
 
 #[test]
@@ -524,49 +590,61 @@ fn bones_without_bodies_keep_their_animated_locals() {
     assert_eq!(app.world().get::<Transform>(spacer), Some(&animated_local));
 }
 
-#[test]
-fn blend_zero_shows_animation_and_one_shows_physics_with_halfway_between() {
-    // Animation puts the root at x = 2 and physics at x = 10.
-    for (blend, expected_x) in [(0.0, 2.0), (0.5, 6.0), (1.0, 10.0)] {
-        let mut app = app();
-        let (character, root, _) = spawn_character(&mut app, RagdollMode::Dynamic);
-        app.world_mut()
-            .get_entity_mut(character)
-            .unwrap()
-            .insert(RagdollBlend::new(blend));
-        app.update();
-        let root_body = body_entities(app.world_mut(), character)
-            .first()
-            .map(|(entity, _)| *entity)
-            .expect("the profile has a root body");
-        app.world_mut()
-            .get_mut::<Transform>(root)
-            .expect("the root bone has a transform")
-            .translation
-            .x = 2.0;
-        // Pin both physics poses so interpolation cannot move the result.
-        let physics_pose = bevy::math::Isometry3d::from_translation(Vec3::new(10.0, 0.0, 0.0));
-        {
-            let mut body_pose = app
-                .world_mut()
-                .get_mut::<BodyPhysicsPose>(root_body)
-                .expect("the backend created body pose history");
-            body_pose.previous = physics_pose;
-            body_pose.current = physics_pose;
-        }
-        app.world_mut()
-            .try_run_schedule(bevy::app::PostUpdate)
-            .expect("the ragdoll plugin installs PostUpdate");
+/// Pins both the previous and current physics pose of `body` to `pose`.
+fn pin_physics_pose(app: &mut App, body: Entity, pose: bevy::math::Isometry3d) {
+    let mut body_pose = app
+        .world_mut()
+        .get_mut::<BodyPhysicsPose>(body)
+        .expect("the backend created body pose history");
+    body_pose.previous = pose;
+    body_pose.current = pose;
+}
 
-        // The bone lands at the blend between the animated and physics x.
-        let actual_x = app
-            .world()
-            .get::<Transform>(root)
-            .expect("writeback updates the root bone")
-            .translation
-            .x;
-        assert!((actual_x - expected_x).abs() < 1.0e-4);
-    }
+/// Runs writeback with `blend` when animation puts the root at x = 2 and
+/// physics puts it at x = 10, then returns the root bone's x.
+fn blended_root_x(blend: f32) -> f32 {
+    let mut app = app();
+    let (character, root, _) = spawn_character(&mut app, RagdollMode::Dynamic);
+    app.world_mut()
+        .get_entity_mut(character)
+        .unwrap()
+        // Bind a Dynamic character with the blend under test.
+        .insert(RagdollBlend::new(blend));
+    app.update();
+    let root_body = body_at(&mut app, character, 0);
+    app.world_mut()
+        .get_mut::<Transform>(root)
+        .expect("the root bone has a transform")
+        // Animation puts the root at x = 2.
+        .translation
+        .x = 2.0;
+    // Pin both physics poses so interpolation cannot move the result.
+    let physics_pose = bevy::math::Isometry3d::from_translation(Vec3::new(10.0, 0.0, 0.0));
+    pin_physics_pose(&mut app, root_body, physics_pose);
+    // Writeback runs in PostUpdate and blends the two poses.
+    app.world_mut()
+        .try_run_schedule(bevy::app::PostUpdate)
+        .expect("the ragdoll plugin installs PostUpdate");
+    app.world()
+        .get::<Transform>(root)
+        .expect("writeback updates the root bone")
+        .translation
+        .x
+}
+
+#[test]
+fn blend_zero_shows_animation() {
+    assert!((blended_root_x(0.0) - 2.0).abs() < 1.0e-4);
+}
+
+#[test]
+fn blend_half_lands_halfway_between_animation_and_physics() {
+    assert!((blended_root_x(0.5) - 6.0).abs() < 1.0e-4);
+}
+
+#[test]
+fn blend_one_shows_physics() {
+    assert!((blended_root_x(1.0) - 10.0).abs() < 1.0e-4);
 }
 
 #[test]
@@ -589,6 +667,21 @@ fn interpolation_uses_overstep() {
     );
 }
 
+/// Observes `E` on `entity` and returns the shared count of triggered events.
+fn count_events<E: bevy::ecs::event::EntityEvent>(
+    app: &mut App,
+    entity: Entity,
+) -> Arc<AtomicUsize> {
+    let events = Arc::new(AtomicUsize::new(0));
+    let count = Arc::clone(&events);
+    app.world_mut().get_entity_mut(entity).unwrap().observe(
+        move |_event: bevy::ecs::observer::On<'_, '_, E>| {
+            count.fetch_add(1, Ordering::Relaxed);
+        },
+    );
+    events
+}
+
 #[test]
 fn budget_freezes_the_oldest_and_triggers_one_event() {
     let mut app = app();
@@ -599,77 +692,88 @@ fn budget_freezes_the_oldest_and_triggers_one_event() {
     let (third, _, _) = spawn_character(&mut app, RagdollMode::Animated);
     app.update();
     // Count eviction events observed on the first character.
-    let evictions = Arc::new(AtomicUsize::new(0));
-    let count = Arc::clone(&evictions);
-    app.world_mut().get_entity_mut(first).unwrap().observe(
-        move |_event: bevy::ecs::observer::On<'_, '_, RagdollBudgetEvicted>| {
-            count.fetch_add(1, Ordering::Relaxed);
-        },
-    );
+    let evictions = count_events::<RagdollBudgetEvicted>(&mut app, first);
 
     // Activate the characters one per frame, oldest first.
-    for character in [first, second, third] {
-        app.world_mut()
-            .get_entity_mut(character)
-            .unwrap()
-            .insert(RagdollMode::Dynamic);
-        app.update();
-    }
+    set_mode(&mut app, first, RagdollMode::Dynamic);
+    app.update();
+    set_mode(&mut app, second, RagdollMode::Dynamic);
+    app.update();
+    set_mode(&mut app, third, RagdollMode::Dynamic);
+    app.update();
 
     // The oldest is frozen once, with exactly one event, and the others stay dynamic.
+    let modes =
+        [first, second, third].map(|character| app.world().get::<RagdollMode>(character).copied());
     assert_eq!(
-        app.world().get::<RagdollMode>(first),
-        Some(&RagdollMode::Frozen)
-    );
-    assert_eq!(
-        app.world().get::<RagdollMode>(second),
-        Some(&RagdollMode::Dynamic)
-    );
-    assert_eq!(
-        app.world().get::<RagdollMode>(third),
-        Some(&RagdollMode::Dynamic)
+        modes,
+        [
+            Some(RagdollMode::Frozen),
+            Some(RagdollMode::Dynamic),
+            Some(RagdollMode::Dynamic)
+        ]
     );
     assert_eq!(evictions.load(Ordering::Relaxed), 1);
 }
 
+/// Sets the settle window and speed threshold, and optionally freezing.
+fn configure_settling(app: &mut App, settle_after: f32, settle_speed: f32, should_freeze: bool) {
+    let mut settings = app
+        .world_mut()
+        .get_resource_mut::<RagdollPhysicsSettings>()
+        .expect("the ragdoll plugin installs physics settings");
+    settings.settle_after = settle_after;
+    settings.settle_speed = settle_speed;
+    settings.should_freeze_when_settled = should_freeze;
+}
+
+/// Spawns a Dynamic character with zero muscle and pin, so settling is the
+/// only behavior that changes its mode.
+fn spawn_limp_character(app: &mut App) -> Entity {
+    let (character, _, _) = spawn_character(app, RagdollMode::Dynamic);
+    app.world_mut()
+        .get_entity_mut(character)
+        .unwrap()
+        .insert(RagdollDrive::new(0.0, 0.0));
+    character
+}
+
+/// Lets a limp ragdoll settle and returns its settle-event count and final mode.
+fn settle_limp_ragdoll(should_freeze_when_settled: bool) -> (usize, Option<RagdollMode>) {
+    // A short settle window and a generous speed threshold settle a limp ragdoll quickly.
+    let mut app = app();
+    configure_settling(&mut app, 2.0 / 60.0, 10.0, should_freeze_when_settled);
+    let character = spawn_limp_character(&mut app);
+    let events = count_events::<RagdollSettled>(&mut app, character);
+
+    // Eight frames are well past the two-frame settle window.
+    for _ in 0..8 {
+        app.update();
+    }
+
+    (
+        events.load(Ordering::Relaxed),
+        app.world().get::<RagdollMode>(character).copied(),
+    )
+}
+
+#[test]
+fn limp_dynamic_ragdolls_settle_once_and_stay_dynamic_by_default() {
+    assert_eq!(settle_limp_ragdoll(false), (1, Some(RagdollMode::Dynamic)));
+}
+
 #[test]
 fn limp_dynamic_ragdolls_settle_once_and_freeze_when_configured() {
-    for (should_freeze_when_settled, expected_mode) in
-        [(false, RagdollMode::Dynamic), (true, RagdollMode::Frozen)]
-    {
-        // A short settle window and a generous speed threshold settle a limp ragdoll quickly.
-        let mut app = app();
-        app.insert_resource(RagdollPhysicsSettings {
-            settle_after: 2.0 / 60.0,
-            settle_speed: 10.0,
-            should_freeze_when_settled,
-            ..Default::default()
-        });
-        let (character, _, _) = spawn_character(&mut app, RagdollMode::Dynamic);
+    assert_eq!(settle_limp_ragdoll(true), (1, Some(RagdollMode::Frozen)));
+}
+
+/// Sets the linear velocity of every body in `bodies`.
+fn set_linear_velocity(app: &mut App, bodies: &[Entity], linear: Vec3) {
+    for body in bodies {
         app.world_mut()
-            .get_entity_mut(character)
-            .unwrap()
-            .insert(RagdollDrive::new(0.0, 0.0));
-        // Count settle events on the character.
-        let events = Arc::new(AtomicUsize::new(0));
-        let event_count = Arc::clone(&events);
-        app.world_mut().get_entity_mut(character).unwrap().observe(
-            move |_event: bevy::ecs::observer::On<'_, '_, RagdollSettled>| {
-                event_count.fetch_add(1, Ordering::Relaxed);
-            },
-        );
-
-        // Eight frames are well past the two-frame settle window.
-        for _ in 0..8 {
-            app.update();
-        }
-
-        // Settling fires once, and freezing follows only when configured.
-        assert_eq!(events.load(Ordering::Relaxed), 1);
-        assert_eq!(
-            app.world().get::<RagdollMode>(character),
-            Some(&expected_mode)
-        );
+            .get_mut::<BodyVelocity>(*body)
+            .expect("dynamic bodies have velocity")
+            .linear = linear;
     }
 }
 
@@ -677,88 +781,55 @@ fn limp_dynamic_ragdolls_settle_once_and_freeze_when_configured() {
 fn settling_resets_its_timer_when_any_body_speeds_up() {
     let mut app = app();
     // A three-frame settle window with a 2 m/s threshold.
-    app.insert_resource(RagdollPhysicsSettings {
-        settle_after: 3.0 / 60.0,
-        settle_speed: 2.0,
-        ..Default::default()
-    });
-    // Zero muscle and pin leave settling as the only behavior under test.
-    let (character, _, _) = spawn_character(&mut app, RagdollMode::Dynamic);
-    app.world_mut()
-        .get_entity_mut(character)
-        .unwrap()
-        .insert(RagdollDrive::new(0.0, 0.0));
+    configure_settling(&mut app, 3.0 / 60.0, 2.0, false);
+    let character = spawn_limp_character(&mut app);
     app.update();
     let bodies = body_entities(app.world_mut(), character)
         .into_iter()
         .map(|(entity, _)| entity)
         .collect::<Vec<_>>();
-    // Count settle events on the character.
-    let events = Arc::new(AtomicUsize::new(0));
-    let event_count = Arc::clone(&events);
-    app.world_mut().get_entity_mut(character).unwrap().observe(
-        move |_event: bevy::ecs::observer::On<'_, '_, RagdollSettled>| {
-            event_count.fetch_add(1, Ordering::Relaxed);
-        },
-    );
+    let events = count_events::<RagdollSettled>(&mut app, character);
 
     // One fast frame, then two slow frames: not yet three slow frames in a row.
-    for body in &bodies {
-        app.world_mut()
-            .get_mut::<BodyVelocity>(*body)
-            .expect("dynamic bodies have velocity")
-            .linear = Vec3::X * 10.0;
-    }
+    set_linear_velocity(&mut app, &bodies, Vec3::X * 10.0);
     app.update();
-    for body in &bodies {
-        app.world_mut()
-            .get_mut::<BodyVelocity>(*body)
-            .expect("dynamic bodies have velocity")
-            .linear = Vec3::ZERO;
-    }
+    set_linear_velocity(&mut app, &bodies, Vec3::ZERO);
     app.update();
-    for body in &bodies {
-        app.world_mut()
-            .get_mut::<BodyVelocity>(*body)
-            .expect("dynamic bodies have velocity")
-            .linear = Vec3::ZERO;
-    }
+    set_linear_velocity(&mut app, &bodies, Vec3::ZERO);
     app.update();
     // The fast frame restarted the timer, so nothing has settled yet.
     assert_eq!(events.load(Ordering::Relaxed), 0);
 
     // A third slow frame completes the window.
-    for body in &bodies {
-        app.world_mut()
-            .get_mut::<BodyVelocity>(*body)
-            .expect("dynamic bodies have velocity")
-            .linear = Vec3::ZERO;
-    }
+    set_linear_velocity(&mut app, &bodies, Vec3::ZERO);
     app.update();
 
     assert_eq!(events.load(Ordering::Relaxed), 1);
 }
 
 #[test]
-fn drive_values_match_algorithms() {
-    // Full and limp muscle at the same 10 N m joint strength.
-    let settings = RagdollPhysicsSettings::default();
-    let full = joint_motor_values(1.0, 10.0, &settings);
-    let limp = joint_motor_values(0.0, 10.0, &settings);
+fn full_muscle_drive_values_match_critical_damping() {
+    // Full muscle at 10 N m joint strength.
+    let full = joint_motor_values(1.0, 10.0, &RagdollPhysicsSettings::default());
 
-    // Full muscle matches the critically damped tuning; limp keeps damping and a small torque.
     assert!((full.stiffness - 631.6547).abs() < 0.01);
     assert!((full.damping - 70.2655).abs() < 0.01);
     assert!((full.max_torque - 10.5).abs() < 1.0e-4);
-    assert_eq!(limp.stiffness, 0.0);
-    assert_eq!(limp.damping, 20.0);
-    assert!((limp.max_torque - 0.5).abs() < 1.0e-4);
 }
 
 #[test]
-fn dynamic_drive_system_writes_pin_force_and_fallback_joint_torque() {
-    let mut app = app();
-    let (character, root, child) = spawn_character(&mut app, RagdollMode::Dynamic);
+fn limp_drive_values_keep_damping_and_a_small_torque() {
+    // Limp muscle at the same 10 N m joint strength.
+    let limp = joint_motor_values(0.0, 10.0, &RagdollPhysicsSettings::default());
+
+    assert_eq!((limp.stiffness, limp.damping), (0.0, 20.0));
+    assert!((limp.max_torque - 0.5).abs() < 1.0e-4);
+}
+
+/// Drives a full-muscle, full-pin character toward a moved root target and a
+/// bent child target, then returns its root and child body entities.
+fn driven_bodies(app: &mut App) -> (Entity, Entity) {
+    let (character, root, child) = spawn_character(app, RagdollMode::Dynamic);
     // Full muscle and pin with the physics view hidden behind animation.
     app.world_mut()
         .get_entity_mut(character)
@@ -777,30 +848,35 @@ fn dynamic_drive_system_writes_pin_force_and_fallback_joint_torque() {
         .rotation = bevy::math::Quat::from_rotation_x(0.4);
     app.update();
     app.update();
+    (body_at(app, character, 0), body_at(app, character, 1))
+}
 
-    // Look up the two bodies by profile index.
-    let bodies = body_entities(app.world_mut(), character);
-    let root_body = bodies
-        .iter()
-        .find(|(_, index)| *index == 0)
-        .map(|(entity, _)| *entity)
-        .expect("the profile has a root body");
-    let child_body = bodies
-        .iter()
-        .find(|(_, index)| *index == 1)
-        .map(|(entity, _)| *entity)
-        .expect("the profile has a child body");
+#[test]
+fn dynamic_drive_system_pins_the_root_toward_its_target_within_the_force_cap() {
+    let mut app = app();
+    // Drive the root toward a target moved along +X.
+    let (root_body, _) = driven_bodies(&mut app);
+
     let root_output = app
         .world()
         .get::<BodyDriveOutput>(root_body)
         .expect("the drive system writes root forces");
-    // The root is pinned toward +X within the force cap; the child joint gets fallback torque.
+    // The pin pushes toward +X within the 340 N force cap.
     assert!(root_output.pin_force.x > 0.0);
     assert!(root_output.pin_force.length() <= 340.0 + 1.0e-4);
+}
+
+#[test]
+fn dynamic_drive_system_writes_fallback_joint_torque() {
+    let mut app = app();
+    // Drive the child toward a bent target.
+    let (_, child_body) = driven_bodies(&mut app);
+
     let child_output = app
         .world()
         .get::<BodyDriveOutput>(child_body)
         .expect("the drive system writes child torques");
+    // Without a backend motor, the joint gets fallback torque and a stiff target.
     assert!(child_output.joint_torque.length() > 0.0);
     assert!(
         app.world()
@@ -810,24 +886,33 @@ fn dynamic_drive_system_writes_pin_force_and_fallback_joint_torque() {
 }
 
 #[test]
-fn drive_clamps_inputs_to_unit_range() {
-    // Drive multipliers clamp into 0..=1, and non-finite values become 0.
+fn drive_clamps_out_of_range_inputs_to_unit_range() {
     let drive = RagdollDrive::new(-1.0, 2.0);
-    assert_eq!(drive.muscle(), 0.0);
-    assert_eq!(drive.pin(), 1.0);
-    assert_eq!(RagdollDrive::new(0.0, 1.0).muscle(), 0.0);
-    assert_eq!(RagdollDrive::new(1.0, 0.0).muscle(), 1.0);
-    assert_eq!(RagdollDrive::new(f32::NAN, f32::INFINITY).muscle(), 0.0);
-    assert_eq!(RagdollDrive::new(f32::NAN, f32::INFINITY).pin(), 0.0);
 
-    // Body weights clamp the same way.
+    assert_eq!((drive.muscle(), drive.pin()), (0.0, 1.0));
+}
+
+#[test]
+fn drive_keeps_unit_range_endpoints() {
+    let muscles = [
+        RagdollDrive::new(0.0, 1.0).muscle(),
+        RagdollDrive::new(1.0, 0.0).muscle(),
+    ];
+
+    assert_eq!(muscles, [0.0, 1.0]);
+}
+
+#[test]
+fn drive_turns_non_finite_inputs_into_zero() {
+    let drive = RagdollDrive::new(f32::NAN, f32::INFINITY);
+
+    assert_eq!((drive.muscle(), drive.pin()), (0.0, 0.0));
+}
+
+#[test]
+fn body_weights_clamp_inputs_to_unit_range() {
     let weights = RagdollBodyWeights::new(vec![BodyWeights::new(-1.0, 2.0)]);
-    assert_eq!(
-        weights.get(0).expect("the body weight is present").muscle(),
-        0.0
-    );
-    assert_eq!(
-        weights.get(0).expect("the body weight is present").pin(),
-        1.0
-    );
+    let weight = weights.get(0).expect("the body weight is present");
+
+    assert_eq!((weight.muscle(), weight.pin()), (0.0, 1.0));
 }

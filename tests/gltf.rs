@@ -5,24 +5,34 @@
 //! assets that code-built skeletons would miss. They need no window or GPU.
 
 use bevy::animation::AnimationPlugin;
-use bevy::asset::{AssetPlugin, Assets};
+use bevy::asset::{AssetId, AssetPlugin, Assets};
 use bevy::gltf::{GltfAssetLabel, GltfPlugin};
 use bevy::image::ImagePlugin;
 use bevy::mesh::MeshPlugin;
 use bevy::prelude::{App, AssetServer, Entity, MinimalPlugins, Transform, TransformPlugin};
-use bevy::world_serialization::{WorldAssetRoot, WorldSerializationPlugin};
+use bevy::world_serialization::{WorldAsset, WorldAssetRoot, WorldSerializationPlugin};
 use bevy_ragdoll::{BodyRole, Ragdoll, RagdollError, RagdollPlugin, RagdollProfile};
 
-/// Spawns `rig` with `Ragdoll::default()` and returns its generated profile.
-fn generated_profile(rig: &str) -> RagdollProfile {
+/// Builds a headless app that loads glTF through the real asset pipeline,
+/// rooted at the crate's assets directory.
+fn gltf_app() -> App {
     let mut app = App::new();
-    // Load glTF through the real asset pipeline, rooted at the crate's assets directory.
+    #[cfg_attr(
+        dylint_lib = "sagan_lints",
+        expect(
+            struct_update_default,
+            reason = "conflicts with clippy::field_reassign_with_default"
+        )
+    )]
+    // Root asset paths at the crate assets directory.
+    let asset_plugin = AssetPlugin {
+        file_path: concat!(env!("CARGO_MANIFEST_DIR"), "/assets").to_owned(),
+        ..Default::default()
+    };
+    // Install the glTF, scene, and ragdoll plugins headlessly.
     app.add_plugins((
         MinimalPlugins,
-        AssetPlugin {
-            file_path: concat!(env!("CARGO_MANIFEST_DIR"), "/assets").to_owned(),
-            ..Default::default()
-        },
+        asset_plugin,
         TransformPlugin,
         MeshPlugin,
         ImagePlugin::default(),
@@ -34,14 +44,21 @@ fn generated_profile(rig: &str) -> RagdollProfile {
     // The glTF loader registers in `Plugin::finish`.
     app.finish();
     app.cleanup();
-    // Spawn the rig's first scene under a default Ragdoll.
+    app
+}
+
+/// Spawns the first scene of `rig` under a default `Ragdoll` and returns the
+/// character and the scene asset id.
+fn spawn_rig(app: &mut App, rig: &str) -> (Entity, AssetId<WorldAsset>) {
+    // Start loading the first scene of the rig file.
     let scene = app
         .world()
         .get_resource::<AssetServer>()
         .unwrap()
         .load(GltfAssetLabel::Scene(0).from_asset(format!("rigs/{rig}.glb")));
     let scene_id = scene.id();
-    let character: Entity = app
+    // Spawn that scene under a default Ragdoll so the runtime generates its profile.
+    let character = app
         .world_mut()
         .spawn((
             WorldAssetRoot(scene),
@@ -49,25 +66,38 @@ fn generated_profile(rig: &str) -> RagdollProfile {
             Transform::IDENTITY,
         ))
         .id();
+    (character, scene_id)
+}
+
+/// Returns the profile generated for `character`, once it has loaded.
+fn generated_profile_of(app: &App, character: Entity) -> Option<RagdollProfile> {
+    let handle = app
+        .world()
+        .get::<Ragdoll>(character)
+        .and_then(|r| r.profile.clone())?;
+    app.world()
+        .get_resource::<Assets<RagdollProfile>>()
+        .unwrap()
+        .get(&handle)
+        .cloned()
+}
+
+/// Spawns `rig` with `Ragdoll::default()` and returns its generated profile.
+fn generated_profile(rig: &str) -> RagdollProfile {
+    // Load the rig in a fresh headless glTF app.
+    let mut app = gltf_app();
+    let (character, scene_id) = spawn_rig(&mut app, rig);
     // Asset loading runs on other threads, so poll against a wall-clock deadline.
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
     while std::time::Instant::now() < deadline {
         app.update();
+        // Generation must never store an error while the rig loads.
         assert!(app.world().get::<RagdollError>(character).is_none());
-        let handle = app
-            .world()
-            .get::<Ragdoll>(character)
-            .and_then(|r| r.profile.clone());
-        if let Some(profile) = handle.and_then(|handle| {
-            app.world()
-                .get_resource::<Assets<RagdollProfile>>()
-                .unwrap()
-                .get(&handle)
-                .cloned()
-        }) {
+        if let Some(profile) = generated_profile_of(&app, character) {
             return profile;
         }
     }
+    // Report the scene load state and spawned children when the deadline passes.
     let state = app
         .world()
         .get_resource::<AssetServer>()

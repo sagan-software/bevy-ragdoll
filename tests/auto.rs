@@ -76,39 +76,56 @@ fn a_character_without_bones_waits() {
     );
 }
 
-#[test]
-fn bone_components_and_override_assets_change_the_profile() {
-    let mut app = app();
-    // A file-style override that sets total mass and skips both hands.
-    let overrides = app
-        .world_mut()
+/// Adds a file-style override that sets total mass and skips both hands.
+fn add_hand_skipping_overrides(app: &mut App) -> bevy::asset::Handle<RagdollOverrides> {
+    let skip_hand = RagdollBone {
+        body: BoneBody::Skip,
+        role: None,
+        mass: None,
+        radius: None,
+        limits: None,
+        max_torque: None,
+    };
+    app.world_mut()
         .get_resource_mut::<Assets<RagdollOverrides>>()
         .unwrap()
         .add(RagdollOverrides {
             mass: Some(60.0),
-            bones: [(
-                "hand_*".to_owned(),
-                RagdollBone {
-                    body: BoneBody::Skip,
-                    ..Default::default()
-                },
-            )]
-            .into(),
-        });
-    // A bone component override that renames the head's role.
+            bones: [("hand_*".to_owned(), skip_hand)].into(),
+        })
+}
+
+/// Returns the humanoid without a skeleton mass and with a bone component
+/// override that renames the head's role.
+fn humanoid_with_other_head_role() -> Skeleton {
+    // Clear the skeleton mass so only the override asset sets the total.
     let mut skeleton = Skeleton::humanoid();
     skeleton.mass = None;
+    // Give the head bone an explicit Other role through its bone component.
     let head = skeleton.bone_index("head").unwrap();
-    skeleton.bones[head].overrides.role = Some(BodyRole::Other);
+    skeleton
+        .bones
+        .get_mut(head)
+        .expect("the bone index is in range")
+        .overrides
+        .role = Some(BodyRole::Other);
+    skeleton
+}
+
+#[test]
+fn bone_components_and_override_assets_change_the_profile() {
+    let mut app = app();
+    // Reference the hand-skipping override asset from the character.
     let ragdoll = Ragdoll {
         profile: None,
         mass: None,
-        overrides: Some(overrides),
+        overrides: Some(add_hand_skipping_overrides(&mut app)),
     };
     // Both override sources apply in one generated profile.
-    let character = spawn(&mut app, ragdoll, &skeleton);
+    let character = spawn(&mut app, ragdoll, &humanoid_with_other_head_role());
     app.update();
     let profile = profile(&app, character);
+    // Skipping both hands leaves 14 bodies, scaled to 60 kg, with the head role overridden.
     assert_eq!(profile.bodies().len(), 14);
     assert!((profile.total_mass().kilograms() - 60.0).abs() < 1.0e-3);
     let head = profile.body_index("head").unwrap();

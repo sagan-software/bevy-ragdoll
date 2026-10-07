@@ -89,148 +89,213 @@ fn human_has_sixteen_bodies_and_eighty_kilograms() {
     );
 }
 
+/// Returns the joint limits of the generated humanoid body named `bone`.
+fn humanoid_joint_limits(profile: &RagdollProfile, bone: &str) -> JointLimits {
+    let index = profile.body_index(bone).expect("the rig has the bone");
+    profile
+        .joint_of(index)
+        .expect("the bone has a joint")
+        .limits()
+}
+
+/// Turns the capsule body named `bone` about its local X axis by `angle`
+/// radians from rest and returns the tip's Z at rest and after the turn.
+fn capsule_tip_z_after_turn(profile: &RagdollProfile, bone: &str, angle: f32) -> (f32, f32) {
+    // Find the bone rest pose and its capsule tip.
+    let index = profile.body_index(bone).expect("the rig has the bone");
+    let rest_pose = profile
+        .rest_poses(Isometry3d::IDENTITY)
+        .nth(index.get())
+        .expect("the bone has a rest pose");
+    let body = profile
+        .bodies()
+        .get(index.get())
+        .expect("the bone has a body entry");
+    let ShapeSpec::Capsule { b, .. } = body.shape() else {
+        panic!("the {bone} shape is a capsule");
+    };
+    // Turn the body about its local X axis without moving its origin.
+    let turned = Isometry3d::new(
+        rest_pose.translation,
+        rest_pose.rotation * Quat::from_rotation_x(angle),
+    );
+    (
+        rest_pose.transform_point(*b).z,
+        turned.transform_point(*b).z,
+    )
+}
+
 /// Checks hinge limits and backward knee flexion from the imported rest pose.
 #[test]
-fn knees_are_hinges_that_bend_backward() {
+fn left_knee_is_a_hinge_that_bends_backward() {
     let profile = human_profile();
-    // Turn each calf backward by 60 degrees from rest.
-    let rest = profile.rest_poses(Isometry3d::IDENTITY).collect::<Vec<_>>();
-    for bone in ["calf_l", "calf_r"] {
-        let index = profile.body_index(bone).expect("the rig has each calf");
-        let joint = profile.joint_of(index).expect("each calf has a joint");
-        // A knee is a single-axis hinge whose range includes bending backward.
-        assert!(joint.limits().is_hinge());
-        assert!(joint.limits().x.is_angle_within_range(-1.0));
-        let rest_pose = *rest.get(index.get()).expect("the calf has a rest pose");
-        let body = profile
-            .bodies()
-            .get(index.get())
-            .expect("the calf has a body entry");
-        let ShapeSpec::Capsule { b, .. } = body.shape() else {
-            panic!("the calf shape is a capsule");
-        };
-        let turned = Isometry3d::new(
-            rest_pose.translation,
-            rest_pose.rotation * Quat::from_rotation_x(-PI / 3.0),
-        );
-        // A knee bends backward, so the calf tip moves toward -Z.
-        let tip_at_rest = rest_pose.transform_point(*b);
-        let tip_turned = turned.transform_point(*b);
-        assert!(tip_turned.z < tip_at_rest.z - 0.1);
-    }
+    // A knee is a single-axis hinge whose range includes bending backward.
+    let limits = humanoid_joint_limits(&profile, "calf_l");
+    assert!(limits.is_hinge());
+    assert!(limits.x.is_angle_within_range(-1.0));
+    // Turning the calf backward by 60 degrees moves its tip toward -Z.
+    let (tip_at_rest, tip_turned) = capsule_tip_z_after_turn(&profile, "calf_l", -PI / 3.0);
+    assert!(tip_turned < tip_at_rest - 0.1);
 }
 
-/// Checks that hip flexion moves both thigh tips forward.
+/// Checks hinge limits and backward knee flexion from the imported rest pose.
 #[test]
-fn hips_bend_forward() {
+fn right_knee_is_a_hinge_that_bends_backward() {
     let profile = human_profile();
-    // Turn each thigh forward by 60 degrees from rest.
-    let rest = profile.rest_poses(Isometry3d::IDENTITY).collect::<Vec<_>>();
-    for bone in ["thigh_l", "thigh_r"] {
-        let index = profile.body_index(bone).expect("the rig has each thigh");
-        let joint = profile.joint_of(index).expect("each thigh has a joint");
-        // A hip's X range includes bending forward.
-        assert!(joint.limits().x.is_angle_within_range(1.0));
-        let rest_pose = *rest.get(index.get()).expect("the thigh has a rest pose");
-        let body = profile
-            .bodies()
-            .get(index.get())
-            .expect("the thigh has a body entry");
-        let ShapeSpec::Capsule { b, .. } = body.shape() else {
-            panic!("the thigh shape is a capsule");
-        };
-        let turned = Isometry3d::new(
-            rest_pose.translation,
-            rest_pose.rotation * Quat::from_rotation_x(PI / 3.0),
-        );
-        // A hip bends forward, so the thigh tip moves toward +Z.
-        let tip_at_rest = rest_pose.transform_point(*b);
-        let tip_turned = turned.transform_point(*b);
-        assert!(tip_turned.z > tip_at_rest.z + 0.1);
-    }
+    // A knee is a single-axis hinge whose range includes bending backward.
+    let limits = humanoid_joint_limits(&profile, "calf_r");
+    assert!(limits.is_hinge());
+    assert!(limits.x.is_angle_within_range(-1.0));
+    // Turning the calf backward by 60 degrees moves its tip toward -Z.
+    let (tip_at_rest, tip_turned) = capsule_tip_z_after_turn(&profile, "calf_r", -PI / 3.0);
+    assert!(tip_turned < tip_at_rest - 0.1);
 }
 
-/// Reports each validation error and preserves the documented validation order.
+/// Checks that hip flexion moves the left thigh tip forward.
 #[test]
-fn each_error_variant_is_reported() {
-    // Each case breaks one rule of an otherwise valid spec.
-    let mut empty = valid_spec();
-    empty.bodies.clear();
-    assert!(matches!(
-        RagdollProfile::new(empty),
-        Err(ProfileError::Empty)
-    ));
+fn left_hip_bends_forward() {
+    let profile = human_profile();
+    // A hip's X range includes bending forward.
+    assert!(
+        humanoid_joint_limits(&profile, "thigh_l")
+            .x
+            .is_angle_within_range(1.0)
+    );
+    // Turning the thigh forward by 60 degrees moves its tip toward +Z.
+    let (tip_at_rest, tip_turned) = capsule_tip_z_after_turn(&profile, "thigh_l", PI / 3.0);
+    assert!(tip_turned > tip_at_rest + 0.1);
+}
 
-    // One body more than the 64-bit contact masks can hold.
-    let mut too_many = valid_spec();
-    let body = too_many.bodies[0].clone();
-    too_many.bodies.resize(65, body);
-    assert!(matches!(
-        RagdollProfile::new(too_many),
-        Err(ProfileError::TooManyBodies(65))
-    ));
+/// Checks that hip flexion moves the right thigh tip forward.
+#[test]
+fn right_hip_bends_forward() {
+    let profile = human_profile();
+    // A hip's X range includes bending forward.
+    assert!(
+        humanoid_joint_limits(&profile, "thigh_r")
+            .x
+            .is_angle_within_range(1.0)
+    );
+    // Turning the thigh forward by 60 degrees moves its tip toward +Z.
+    let (tip_at_rest, tip_turned) = capsule_tip_z_after_turn(&profile, "thigh_r", PI / 3.0);
+    assert!(tip_turned > tip_at_rest + 0.1);
+}
 
-    // A joint whose parent is its own child forms a cycle.
-    let mut not_a_tree = valid_spec();
-    not_a_tree.joints[0].parent = 1;
-    assert!(matches!(
-        RagdollProfile::new(not_a_tree),
-        Err(ProfileError::NotATree)
-    ));
+/// Validates `valid_spec` after `edit` breaks one or more of its rules.
+fn validate_edited(edit: impl FnOnce(&mut ProfileSpec)) -> Result<RagdollProfile, ProfileError> {
+    let mut spec = valid_spec();
+    edit(&mut spec);
+    RagdollProfile::new(spec)
+}
 
-    // Mass must be positive and shapes must have volume.
-    let mut bad_mass = valid_spec();
-    bad_mass.bodies[0].mass = 0.0;
+/// Rejects a profile without bodies.
+#[test]
+fn empty_profile_is_rejected() {
+    let result = validate_edited(|spec| spec.bodies.clear());
+
+    assert!(matches!(result, Err(ProfileError::Empty)));
+}
+
+/// Rejects one body more than the 64-bit contact masks can hold.
+#[test]
+fn too_many_bodies_are_rejected() {
+    let result = validate_edited(|spec| {
+        let body = spec.bodies[0].clone();
+        spec.bodies.resize(65, body);
+    });
+
+    assert!(matches!(result, Err(ProfileError::TooManyBodies(65))));
+}
+
+/// Rejects a joint whose parent is its own child, which forms a cycle.
+#[test]
+fn joint_cycle_is_rejected() {
+    let result = validate_edited(|spec| spec.joints[0].parent = 1);
+
+    assert!(matches!(result, Err(ProfileError::NotATree)));
+}
+
+/// Rejects a body mass that is not positive.
+#[test]
+fn zero_mass_is_rejected() {
+    let result = validate_edited(|spec| spec.bodies[0].mass = 0.0);
+
     assert!(matches!(
-        RagdollProfile::new(bad_mass),
+        result,
         Err(ProfileError::BadMass { body }) if body.get() == 0
     ));
+}
 
-    let mut bad_shape = valid_spec();
-    bad_shape.bodies[1].shape = capsule(Vec3::ZERO, Vec3::Y, 0.0);
+/// Rejects a shape without volume.
+#[test]
+fn zero_radius_shape_is_rejected() {
+    let result = validate_edited(|spec| spec.bodies[1].shape = capsule(Vec3::ZERO, Vec3::Y, 0.0));
+
     assert!(matches!(
-        RagdollProfile::new(bad_shape),
+        result,
         Err(ProfileError::BadShape { body }) if body.get() == 1
     ));
+}
 
-    // Limits must contain zero, and the joint frame must be finite.
-    let mut bad_limit = valid_spec();
-    bad_limit.joints[0].limits.x = AngleRange { min: 0.1, max: 0.5 };
+/// Rejects a joint limit range that does not contain zero.
+#[test]
+fn limit_without_zero_is_rejected() {
+    let result =
+        validate_edited(|spec| spec.joints[0].limits.x = AngleRange { min: 0.1, max: 0.5 });
+
     assert!(matches!(
-        RagdollProfile::new(bad_limit),
+        result,
         Err(ProfileError::BadLimit { joint, axis })
             if joint.get() == 1 && axis == bevy_ragdoll::JointAxis::X
     ));
+}
 
-    let mut bad_frame = valid_spec();
-    bad_frame.joints[0].frame.rotation = Quat::from_xyzw(f32::NAN, 0.0, 0.0, 1.0);
+/// Rejects a joint frame that is not finite.
+#[test]
+fn non_finite_joint_frame_is_rejected() {
+    let result = validate_edited(|spec| {
+        spec.joints[0].frame.rotation = Quat::from_xyzw(f32::NAN, 0.0, 0.0, 1.0);
+    });
+
     assert!(matches!(
-        RagdollProfile::new(bad_frame),
+        result,
         Err(ProfileError::BadLimit { joint, axis })
             if joint.get() == 1 && axis == bevy_ragdoll::JointAxis::Frame
     ));
+}
 
-    // Torque must be nonnegative and bone names unique.
-    let mut bad_torque = valid_spec();
-    bad_torque.joints[0].max_torque = -1.0;
+/// Rejects a negative joint torque.
+#[test]
+fn negative_torque_is_rejected() {
+    let result = validate_edited(|spec| spec.joints[0].max_torque = -1.0);
+
     assert!(matches!(
-        RagdollProfile::new(bad_torque),
+        result,
         Err(ProfileError::BadTorque { joint }) if joint.get() == 1
     ));
+}
 
-    let mut duplicate_bone = valid_spec();
-    duplicate_bone.bodies[1].bone = "root".to_owned();
+/// Rejects two bodies with the same bone name.
+#[test]
+fn duplicate_bone_is_rejected() {
+    let result = validate_edited(|spec| spec.bodies[1].bone = "root".to_owned());
+
     assert!(matches!(
-        RagdollProfile::new(duplicate_bone),
+        result,
         Err(ProfileError::DuplicateBone { bone }) if bone == "root"
     ));
+}
 
-    // With two errors, the earlier body check is reported first.
-    let mut precedence = valid_spec();
-    precedence.bodies[0].mass = -1.0;
-    precedence.bodies[1].shape = capsule(Vec3::ZERO, Vec3::Y, 0.0);
+/// Reports the earlier body check first when a spec has two errors.
+#[test]
+fn validation_reports_the_earlier_body_error_first() {
+    let result = validate_edited(|spec| {
+        spec.bodies[0].mass = -1.0;
+        spec.bodies[1].shape = capsule(Vec3::ZERO, Vec3::Y, 0.0);
+    });
+
     assert!(matches!(
-        RagdollProfile::new(precedence),
+        result,
         Err(ProfileError::BadMass { body }) if body.get() == 0
     ));
 }
@@ -294,10 +359,12 @@ fn no_contact_holds_neighbours_and_touching_capsules() {
     let profile = RagdollProfile::new(spec).expect("the four-body tree validates");
     // Jointed and touching pairs skip contact; the far body still collides.
     let masks = profile.no_contact_masks();
-    assert_ne!(masks[0] & (1 << 1), 0);
-    assert_ne!(masks[1] & (1 << 2), 0);
-    assert_eq!(masks[1] & (1 << 3), 0);
-    assert_ne!(masks[2] & (1 << 1), 0);
+    let skips_contact = [(0, 1), (1, 2), (1, 3), (2, 1)]
+        .map(|(body, other)| (body, other, masks[body] & (1 << other) != 0));
+    assert_eq!(
+        skips_contact,
+        [(0, 1, true), (1, 2, true), (1, 3, false), (2, 1, true)]
+    );
     assert_eq!(profile.children_masks()[0], (1 << 1) | (1 << 2) | (1 << 3));
 }
 
@@ -316,10 +383,21 @@ fn ron_round_trip_is_exact() {
     );
 }
 
-/// Builds a three-body chain with the same value as a hand-written profile spec.
-#[test]
-fn builder_matches_spec() {
-    // The expected value, written out by hand.
+/// The single-axis limit set shared by both joints of the three-body chain.
+const fn chain_limits() -> JointLimits {
+    JointLimits {
+        x: AngleRange {
+            min: -1.0,
+            max: 1.0,
+        },
+        twist: AngleRange { min: 0.0, max: 0.0 },
+        z: AngleRange { min: 0.0, max: 0.0 },
+    }
+}
+
+/// The three-body chain spec, written out by hand.
+fn three_body_chain_spec() -> ProfileSpec {
+    // Two capsules and an end sphere, each one metre above the previous body.
     let root = BodySpec {
         bone: "root".to_owned(),
         shape: capsule(Vec3::ZERO, Vec3::Y, 0.1),
@@ -344,16 +422,9 @@ fn builder_matches_spec() {
         rest: Isometry3d::from_xyz(0.0, 2.0, 0.0),
         role: None,
     };
-    // Both joints share one single-axis limit set.
-    let limits = JointLimits {
-        x: AngleRange {
-            min: -1.0,
-            max: 1.0,
-        },
-        twist: AngleRange { min: 0.0, max: 0.0 },
-        z: AngleRange { min: 0.0, max: 0.0 },
-    };
-    let expected = ProfileSpec {
+    // Each joint hangs a body from the previous one.
+    let limits = chain_limits();
+    ProfileSpec {
         bodies: vec![root, middle, end],
         joints: vec![
             JointSpec {
@@ -373,8 +444,14 @@ fn builder_matches_spec() {
                 basis: Quat::IDENTITY,
             },
         ],
-    };
+    }
+}
 
+/// Builds a three-body chain with the same value as a hand-written profile spec.
+#[test]
+fn builder_matches_spec() {
+    // Both joints share one single-axis limit set.
+    let limits = chain_limits();
     // The same chain through the builder must produce an identical spec.
     let mut builder = ProfileBuilder::default();
     let root = builder
@@ -404,6 +481,7 @@ fn builder_matches_spec() {
             Isometry3d::from_xyz(0.0, 2.0, 0.0),
         )
         .expect("end index fits");
+    // Join the bodies in the same parent-first order as the spec.
     builder.add_joint(
         middle,
         root,
@@ -418,7 +496,7 @@ fn builder_matches_spec() {
         limits,
         8.0,
     );
-    assert_eq!(builder.into_spec(), expected);
+    assert_eq!(builder.into_spec(), three_body_chain_spec());
 }
 
 /// Measures and reconstructs the five planned angles around each joint axis.
@@ -482,10 +560,10 @@ fn body_index_rejects_indices_outside_the_mask() {
     assert_eq!(BodyIndex::try_from(64), Err(64));
 }
 
-/// Loads a sparse `.ragdoll.ron` overrides file through Bevy's asset server.
-#[test]
-fn overrides_asset_loads_through_the_asset_server() {
-    // Write an overrides file into a private temporary asset directory.
+/// Writes `fox.ragdoll.ron` into a private temporary asset directory and
+/// returns that directory.
+fn write_overrides_asset_directory() -> std::path::PathBuf {
+    // Use a per-process directory so parallel test runs do not collide.
     let directory =
         std::env::temp_dir().join(format!("bevy_ragdoll_overrides_{}", std::process::id()));
     fs::create_dir_all(&directory).expect("the temporary asset directory is created");
@@ -494,21 +572,33 @@ fn overrides_asset_loads_through_the_asset_server() {
         r#"(mass: Some(12.0), bones: { "tail*": (body: Skip), "head": (radius: Some(0.1)) })"#,
     )
     .expect("the overrides file is written");
-    // Load it through a real AssetServer rooted at that directory.
+    directory
+}
+
+/// Loads `fox.ragdoll.ron` through a real `AssetServer` rooted at `directory`.
+fn load_overrides(directory: &std::path::Path) -> RagdollOverrides {
     let mut app = App::new();
     // The ragdoll plugin registers the `.ragdoll.ron` loader.
+    #[cfg_attr(
+        dylint_lib = "sagan_lints",
+        expect(
+            struct_update_default,
+            reason = "conflicts with clippy::field_reassign_with_default"
+        )
+    )]
+    let asset_plugin = AssetPlugin {
+        file_path: directory.to_string_lossy().into_owned(),
+        ..Default::default()
+    };
     app.add_plugins(MinimalPlugins)
-        .add_plugins(AssetPlugin {
-            file_path: directory.to_string_lossy().into_owned(),
-            ..Default::default()
-        })
+        .add_plugins(asset_plugin)
         .add_plugins(RagdollPlugin::default());
     let handle = app
         .world()
         .get_resource::<AssetServer>()
         .unwrap()
         .load::<RagdollOverrides>("fox.ragdoll.ron");
-    // Poll until the loader finishes, then check the parsed values.
+    // Poll until the loader finishes.
     for _ in 0..10_000 {
         app.update();
         if let Some(overrides) = app
@@ -517,17 +607,24 @@ fn overrides_asset_loads_through_the_asset_server() {
             .unwrap()
             .get(&handle)
         {
-            assert_eq!(overrides.mass, Some(12.0));
-            assert_eq!(
-                overrides.get("tail_3").map(|bone| bone.body),
-                Some(bevy_ragdoll::BoneBody::Skip)
-            );
-            assert_eq!(
-                overrides.get("head").and_then(|bone| bone.radius),
-                Some(0.1)
-            );
-            return;
+            return overrides.clone();
         }
     }
     panic!("the overrides asset loads within 10000 updates");
+}
+
+/// Loads a sparse `.ragdoll.ron` overrides file through Bevy's asset server.
+#[test]
+fn overrides_asset_loads_through_the_asset_server() {
+    let overrides = load_overrides(&write_overrides_asset_directory());
+
+    let parsed = (
+        overrides.mass,
+        overrides.get("tail_3").map(|bone| bone.body),
+        overrides.get("head").and_then(|bone| bone.radius),
+    );
+    assert_eq!(
+        parsed,
+        (Some(12.0), Some(bevy_ragdoll::BoneBody::Skip), Some(0.1))
+    );
 }
