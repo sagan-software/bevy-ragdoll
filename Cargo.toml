@@ -41,12 +41,30 @@ bevy_ragdoll_conformance.workspace = true
 bevy_ragdoll_rapier3d.workspace = true
 bevy_rapier3d = { workspace = true, features = ["dim3"] }
 clap.workspace = true
-criterion.workspace = true
 rand_chacha.workspace = true
 rand_core.workspace = true
 ron.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+
+# Criterion pulls Rayon, which does not build for wasm32; only `bench_main` uses it.
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
+criterion.workspace = true
+
+# The showcase reads `?backend=` from the page URL on the web.
+[target.'cfg(target_arch = "wasm32")'.dev-dependencies]
+web-sys = { workspace = true, features = ["Location", "Window"] }
+
+[[example]]
+name = "showcase"
+required-features = ["serialize"]
+doc-scrape-examples = true
+
+[package.metadata.example.showcase]
+name = "Showcase"
+description = "Throw, hit, and tune a crowd of ragdolls while watching frame and step cost."
+category = "Showcase"
+wasm = true
 
 [[example]]
 name = "minimal"
@@ -140,7 +158,7 @@ test = true
 
 [package.metadata.example.ragdoll_stress]
 name = "Ragdoll Stress"
-description = "Measure ragdoll body, joint, and fixed-step costs across stress scenarios."
+description = "Drop many ragdolls and report frame and physics-step cost."
 category = "Stress Tests"
 wasm = true
 
@@ -180,6 +198,7 @@ ron = "0.12.2"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"
 thiserror = "2.0.21"
+web-sys = "0.3.106"
 
 [workspace.lints.rust]
 missing_docs = "warn"
