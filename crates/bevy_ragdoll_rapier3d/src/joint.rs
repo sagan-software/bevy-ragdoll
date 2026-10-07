@@ -197,6 +197,7 @@ mod tests {
     /// A malformed public target leaves its previous Rapier motor state unchanged.
     #[test]
     fn apply_motor_skips_invalid_rotation() {
+        // Enable native motors so only the invalid rotation can skip the update.
         let mut world = World::new();
         let capabilities = BackendCapabilities::default();
         world.insert_resource(BackendCapabilities {
@@ -204,6 +205,7 @@ mod tests {
             ..capabilities
         });
         let target = JointDriveTarget::default();
+        // A locked joint with a NaN target rotation and no applied motor state.
         let parent = world.spawn_empty().id();
         let locked = AngleRange { min: 0.0, max: 0.0 };
         let limits = JointLimits {
@@ -232,6 +234,7 @@ mod tests {
                 RapierJointMotorState::default(),
             ))
             .id();
+        // Run the motor system once and apply its deferred commands.
         let mut system: JointMotorUpdateState = SystemState::new(&mut world);
         let (capabilities, joints) = system
             .get_mut(&mut world)
@@ -277,11 +280,26 @@ mod tests {
     /// All six Rapier axes map to the matching lock mask.
     #[test]
     fn axis_masks_cover_linear_and_angular_axes() {
-        assert_eq!(axis_mask(JointAxis::AngX), JointAxesMask::ANG_X);
-        assert_eq!(axis_mask(JointAxis::AngY), JointAxesMask::ANG_Y);
-        assert_eq!(axis_mask(JointAxis::AngZ), JointAxesMask::ANG_Z);
-        assert_eq!(axis_mask(JointAxis::LinX), JointAxesMask::LIN_X);
-        assert_eq!(axis_mask(JointAxis::LinY), JointAxesMask::LIN_Y);
-        assert_eq!(axis_mask(JointAxis::LinZ), JointAxesMask::LIN_Z);
+        // Map every axis in Rapier's declaration order.
+        let masks = [
+            JointAxis::AngX,
+            JointAxis::AngY,
+            JointAxis::AngZ,
+            JointAxis::LinX,
+            JointAxis::LinY,
+            JointAxis::LinZ,
+        ]
+        .map(axis_mask);
+        assert_eq!(
+            masks,
+            [
+                JointAxesMask::ANG_X,
+                JointAxesMask::ANG_Y,
+                JointAxesMask::ANG_Z,
+                JointAxesMask::LIN_X,
+                JointAxesMask::LIN_Y,
+                JointAxesMask::LIN_Z,
+            ]
+        );
     }
 }

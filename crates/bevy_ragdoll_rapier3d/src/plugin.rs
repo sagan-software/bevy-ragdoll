@@ -318,6 +318,7 @@ mod tests {
 
     /// Builds the headless plugin stack with one caller-selected Rapier timestep.
     fn app_with_timestep(timestep: TimestepMode) -> App {
+        // Run one 60 Hz fixed step per update with the core plugin first.
         let mut app = App::new();
         app.add_plugins((
             MinimalPlugins,
@@ -328,6 +329,7 @@ mod tests {
         app.insert_resource(Time::<Fixed>::from_hz(60.0));
         app.insert_resource(TimeUpdateStrategy::FixedTimesteps(1));
         app.add_plugins(RagdollPlugin::default());
+        // Rapier steps in the same fixed schedule with the ragdoll hooks.
         app.insert_resource(timestep);
         app.add_plugins(
             RapierPhysicsPlugin::<crate::RapierRagdollHooks<'static, 'static>>::default()
@@ -368,6 +370,7 @@ mod tests {
             dt: 1.0 / 60.0,
             substeps: 1,
         });
+        // Let startup create the context, then poison the shared gravity.
         app.add_plugins(RapierRagdollPlugin);
         app.update();
         if let Some(mut settings) = app.world_mut().get_resource_mut::<RagdollPhysicsSettings>() {
@@ -377,16 +380,16 @@ mod tests {
         schedule.add_systems(apply_rapier_settings);
         schedule.run(app.world_mut());
 
+        // Read gravity back from the default Rapier context.
         let world = app.world_mut();
         let mut configurations = world
             .query_filtered::<&RapierConfiguration, bevy::prelude::With<DefaultRapierContext>>();
         let gravity = configurations
             .iter(world)
             .next()
-            .expect("the Rapier plugin creates its default context")
-            .gravity;
+            .map(|configuration| configuration.gravity);
 
-        assert_eq!(gravity, bevy::math::Vec3::ZERO);
+        assert_eq!(gravity, Some(bevy::math::Vec3::ZERO));
     }
 
     /// Limp slow bodies sleep after the configured age without affecting another owner.
@@ -404,41 +407,42 @@ mod tests {
         });
         world.insert_resource(RapierSleepTimers::default());
 
-        let sleeping_owner = world
-            .spawn((
-                Ragdoll::new(Handle::<RagdollProfile>::default()),
-                RagdollDrive::new(0.0, 0.0),
-            ))
-            .id();
-        let moving_owner = world
-            .spawn((
-                Ragdoll::new(Handle::<RagdollProfile>::default()),
-                RagdollDrive::new(0.0, 0.0),
-            ))
-            .id();
-        let sleeping_body = world
-            .spawn((
-                RagdollBodyOf(sleeping_owner),
-                BodyVelocity::default(),
-                Sleeping::disabled(),
-            ))
-            .id();
-        let moving_body = world
-            .spawn((
-                RagdollBodyOf(moving_owner),
-                BodyVelocity {
-                    linear: bevy::math::Vec3::X,
-                    angular: bevy::math::Vec3::ZERO,
-                },
-                Sleeping::disabled(),
-            ))
-            .id();
+        // Two limp owners: one body at rest and one moving at 1 m/s.
+        let sleeping_body = spawn_limp_body(&mut world, bevy::math::Vec3::ZERO);
+        let moving_body = spawn_limp_body(&mut world, bevy::math::Vec3::X);
         let mut schedule = Schedule::default();
         schedule.add_systems(force_sleep_limp_ragdolls);
 
         schedule.run(&mut world);
 
-        assert!(world.get::<Sleeping>(sleeping_body).unwrap().sleeping);
-        assert!(!world.get::<Sleeping>(moving_body).unwrap().sleeping);
+        // Only the body at rest is put to sleep.
+        let is_asleep = |body| {
+            world
+                .get::<Sleeping>(body)
+                .is_some_and(|sleeping| sleeping.sleeping)
+        };
+        assert!(is_asleep(sleeping_body));
+        assert!(!is_asleep(moving_body));
+    }
+
+    /// Spawns a limp ragdoll owner with one awake body at `linear` velocity
+    /// and returns the body.
+    fn spawn_limp_body(world: &mut World, linear: bevy::math::Vec3) -> bevy::prelude::Entity {
+        let owner = world
+            .spawn((
+                Ragdoll::new(Handle::<RagdollProfile>::default()),
+                RagdollDrive::new(0.0, 0.0),
+            ))
+            .id();
+        world
+            .spawn((
+                RagdollBodyOf(owner),
+                BodyVelocity {
+                    linear,
+                    angular: bevy::math::Vec3::ZERO,
+                },
+                Sleeping::disabled(),
+            ))
+            .id()
     }
 }
