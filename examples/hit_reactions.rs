@@ -295,25 +295,7 @@ fn spawn_ragdoll(
     // Profiles list parents before children, so each parent bone already exists.
     let mut bones = Vec::with_capacity(bodies.len());
     for (index, body) in bodies.iter().enumerate() {
-        let rest = body.rest();
-        // The parent's bone entity and rest pose, when this body has a parent.
-        let parent = profile
-            .joint_of(body.index())
-            .map(|joint| joint.parent().get())
-            .and_then(|parent| Some((*bones.get(parent)?, bodies.get(parent)?.rest())));
-        let (parent, transform) = match parent {
-            Some((parent, parent_rest)) => {
-                let inverse = parent_rest.rotation.inverse();
-                let offset = inverse * (rest.translation - parent_rest.translation);
-                let local = Transform::from_translation(offset.into())
-                    .with_rotation(inverse * rest.rotation);
-                (parent, local)
-            }
-            None => (
-                character,
-                Transform::from_translation(rest.translation.into()).with_rotation(rest.rotation),
-            ),
-        };
+        let (parent, transform) = parent_and_local_rest(profile, &bones, body, character);
         let target = IdleTarget {
             index,
             role: body.role(),
@@ -329,6 +311,33 @@ fn spawn_ragdoll(
             .id();
         bones.push(bone);
     }
+}
+
+/// Returns the bone entity a body's bone hangs from and its rest pose relative to it.
+///
+/// Root bodies hang from the character entity and keep their character-space rest.
+fn parent_and_local_rest(
+    profile: &RagdollProfile,
+    bones: &[Entity],
+    body: &Body,
+    character: Entity,
+) -> (Entity, Transform) {
+    let rest = body.rest();
+    // The parent's bone entity and rest pose, when this body has a parent.
+    let parent = profile
+        .joint_of(body.index())
+        .map(|joint| joint.parent().get())
+        .and_then(|parent| Some((*bones.get(parent)?, profile.bodies().get(parent)?.rest())));
+    let Some((parent, parent_rest)) = parent else {
+        let local =
+            Transform::from_translation(rest.translation.into()).with_rotation(rest.rotation);
+        return (character, local);
+    };
+    // Express the rest pose in the parent's frame.
+    let inverse = parent_rest.rotation.inverse();
+    let offset = inverse * (rest.translation - parent_rest.translation);
+    let local = Transform::from_translation(offset.into()).with_rotation(inverse * rest.rotation);
+    (parent, local)
 }
 
 /// Sways each bone before the runtime captures its world pose as a drive target.
