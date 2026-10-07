@@ -6,6 +6,7 @@
 //! lands on the chest shortly after startup.
 //!
 //! Controls:
+//!
 //! - Left click: hit the body under the cursor.
 //! - `1` to `7`: select pistol, rifle, shotgun, punch, kick, heavy, or explosion.
 //! - `-` and `=`: decrease or increase the hit impulse.
@@ -202,7 +203,8 @@ fn ragdoll_controls(profile: &RagdollProfile) -> (RagdollBodyWeights, PinTargets
     (weights, pins)
 }
 
-/// Returns the next body after `current`; pin editing skips bodies without pin targets.
+/// Returns the next body after `current`; pin editing skips bodies without pin
+/// targets.
 fn next_body(current: usize, count: usize, channel: Channel, pins: PinTargets) -> usize {
     (1..=count)
         .map(|offset| (current + offset) % count)
@@ -276,22 +278,15 @@ fn spawn_ragdoll(
 
     // Each joint links a child body to its parent; bodies without a joint are roots.
     let bodies = profile.bodies();
-    let mut parents = vec![None; bodies.len()];
-    for joint in profile.joints() {
-        if let Some(slot) = parents.get_mut(joint.child().get()) {
-            *slot = Some(joint.parent().get());
-        }
-    }
 
     // Profiles list parents before children, so each parent bone already exists.
     let mut bones = Vec::with_capacity(bodies.len());
     for (index, body) in bodies.iter().enumerate() {
         let rest = body.rest();
         // The parent's bone entity and rest pose, when this body has a parent.
-        let parent = parents
-            .get(index)
-            .copied()
-            .flatten()
+        let parent = profile
+            .joint_of(body.index())
+            .map(|joint| joint.parent().get())
             .and_then(|parent| Some((*bones.get(parent)?, bodies.get(parent)?.rest())));
         let (parent, transform) = match parent {
             Some((parent, parent_rest)) => {

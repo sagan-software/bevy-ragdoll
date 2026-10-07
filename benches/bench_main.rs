@@ -2,7 +2,8 @@
 //!
 //! Each group lives in `benches/benchmarks/` and measures one runtime stage:
 //! profile validation, drive math, target capture, writeback, plugin setup, or
-//! a Rapier physics step. Run them with `cargo bench --bench bench_main`.
+//! a Rapier physics step. Run them with `cargo bench --bench bench_main`, and
+//! compare saved baselines with Criterion's `--baseline` option.
 
 use criterion::criterion_main;
 

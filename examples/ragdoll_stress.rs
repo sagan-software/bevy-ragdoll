@@ -271,7 +271,8 @@ fn finish_step(time: Res<'_, Time>, mut run: ResMut<'_, Run>) {
     }
 }
 
-/// Ends the run after warmup plus duration, prints a summary, and writes the report.
+/// Ends the run after warmup plus duration, prints a summary, and writes the
+/// report.
 fn finish_run(
     time: Res<'_, Time>,
     mut run: ResMut<'_, Run>,

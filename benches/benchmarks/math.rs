@@ -128,7 +128,9 @@ fn math_benchmarks(criterion: &mut Criterion) {
                         kind: HitKind::Impact,
                     });
                 }
-                app.world_mut().run_schedule(FixedUpdate);
+                app.world_mut()
+                    .try_run_schedule(FixedUpdate)
+                    .expect("the ragdoll plugin installs FixedUpdate");
                 black_box(targets.len());
             });
         });

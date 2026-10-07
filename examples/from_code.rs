@@ -161,21 +161,14 @@ fn setup_scene(
 /// The ragdoll runtime binds each body to the bone with the same `Name`.
 fn spawn_skeleton(commands: &mut Commands<'_, '_>, character: Entity, profile: &RagdollProfile) {
     let bodies = profile.bodies();
-    let mut parents = vec![None; bodies.len()];
-    for joint in profile.joints() {
-        if let Some(slot) = parents.get_mut(joint.child().get()) {
-            *slot = Some(joint.parent().get());
-        }
-    }
     // Profiles list parents before children, so each parent bone already exists.
     let mut bones = Vec::<Entity>::with_capacity(bodies.len());
-    for (index, body) in bodies.iter().enumerate() {
+    for body in bodies {
         let rest = body.rest();
         // The parent's bone entity and rest pose, when this body has a parent.
-        let parent = parents
-            .get(index)
-            .copied()
-            .flatten()
+        let parent = profile
+            .joint_of(body.index())
+            .map(|joint| joint.parent().get())
             .and_then(|parent| Some((*bones.get(parent)?, bodies.get(parent)?.rest())));
         let (parent, transform) = match parent {
             None => (

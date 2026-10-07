@@ -6,6 +6,7 @@
 //! step cost, and body count.
 //!
 //! Controls:
+//!
 //! - Left drag on a ragdoll: grab and throw it.
 //! - Left click on a ragdoll: hit it.
 //! - Right drag: orbit the camera. Mouse wheel: zoom.
@@ -86,7 +87,8 @@ impl Backend {
         }
     }
 
-    /// Reads `--backend NAME` on native or `?backend=NAME` on the web, defaulting to Rapier.
+    /// Reads `--backend NAME` on native or `?backend=NAME` on the web, defaulting to
+    /// Rapier.
     fn from_environment() -> Self {
         #[cfg(not(target_arch = "wasm32"))]
         {
@@ -111,7 +113,8 @@ impl Backend {
         }
     }
 
-    /// Restarts the showcase on `self`: reloads the page on the web, re-executes on native.
+    /// Restarts the showcase on `self`: reloads the page on the web, re-executes on
+    /// native.
     fn restart_into(self) {
         let name = self.name();
         #[cfg(target_arch = "wasm32")]
@@ -187,13 +190,15 @@ impl Backend {
 #[derive(Resource, Clone, Copy, Reflect)]
 struct ActiveBackend(Backend);
 
-/// Skeletons the crowd is built from. Each `Ragdoll` generates its profile from its skeleton.
+/// Skeletons the crowd is built from. Each `Ragdoll` generates its profile from its
+/// skeleton.
 #[derive(Resource, Reflect)]
 struct Rigs {
     /// The reference humanoid, spawned from code.
     #[reflect(ignore)]
     humanoid: Skeleton,
-    /// Skinned glTF creatures with no authored ragdoll data: a quadruped and a seven-legged alien.
+    /// Skinned glTF creatures with no authored ragdoll data: a quadruped and a
+    /// seven-legged alien.
     creatures: [Handle<WorldAsset>; 2],
 }
 
@@ -339,7 +344,8 @@ struct MetricsText;
 #[derive(Component, Reflect)]
 struct Character(usize);
 
-/// A skeleton bone and its local rest rotation, restored each frame as the drive target.
+/// A skeleton bone and its local rest rotation, restored each frame as the drive
+/// target.
 #[derive(Component, Reflect)]
 struct RestRotation(Quat);
 
@@ -355,7 +361,8 @@ struct HitFlash {
 /// Meshes and materials shared by every ragdoll.
 #[derive(Resource, Default, Reflect)]
 struct BodyAssets {
-    /// One mesh per distinct collider shape, keyed by its debug text, built on first use.
+    /// One mesh per distinct collider shape, keyed by its debug text, built on first
+    /// use.
     meshes: HashMap<String, (Handle<Mesh>, Transform)>,
     /// One material per palette color.
     materials: Vec<Handle<StandardMaterial>>,
@@ -678,9 +685,11 @@ fn sync_population(
     }
 }
 
-/// Spawns one dynamic character: a humanoid from code or, when enabled, a glTF creature.
+/// Spawns one dynamic character: a humanoid from code or, when enabled, a glTF
+/// creature.
 ///
-/// `Ragdoll::default()` generates the ragdoll profile from whatever skeleton is under it.
+/// `Ragdoll::default()` generates the ragdoll profile from whatever skeleton is
+/// under it.
 fn spawn_character(
     commands: &mut Commands<'_, '_>,
     rigs: &Rigs,
@@ -709,10 +718,12 @@ fn spawn_character(
     }
 }
 
-/// Filter for named child entities (skeleton bones) whose rest rotation is not yet recorded.
+/// Filter for named child entities (skeleton bones) whose rest rotation is not yet
+/// recorded.
 type NewBone = (With<Name>, With<ChildOf>, Without<RestRotation>);
 
-/// Puts each bone back at its rest rotation so the muscles pull toward the rest pose.
+/// Puts each bone back at its rest rotation so the muscles pull toward the rest
+/// pose.
 ///
 /// Writeback copies physics poses into the bones after capture, so without this
 /// the captured target would equal the current pose and the muscles would idle.
@@ -732,7 +743,8 @@ fn restore_rest_pose(
     }
 }
 
-/// Gives each new physics body a shared mesh matching its collider, in its character's color.
+/// Gives each new physics body a shared mesh matching its collider, in its
+/// character's color.
 fn add_body_meshes(
     mut commands: Commands<'_, '_>,
     mut assets: ResMut<'_, BodyAssets>,
@@ -767,7 +779,8 @@ fn add_body_meshes(
     }
 }
 
-/// Spawns the control panel: metrics, parameter steppers, backend choice, and actions.
+/// Spawns the control panel: metrics, parameter steppers, backend choice, and
+/// actions.
 fn spawn_panel(
     mut commands: Commands<'_, '_>,
     backend: Res<'_, ActiveBackend>,
@@ -1071,7 +1084,8 @@ fn read_pick(
     }
 }
 
-/// On left release, hits the picked body if the cursor did not drag; a drag just lets go.
+/// On left release, hits the picked body if the cursor did not drag; a drag just
+/// lets go.
 fn release_pointer(
     mut commands: Commands<'_, '_>,
     buttons: Res<'_, ButtonInput<MouseButton>>,
@@ -1136,7 +1150,8 @@ fn fade_flashes(
     }
 }
 
-/// Pulls the dragged body toward the cursor with a velocity-matching impulse each step.
+/// Pulls the dragged body toward the cursor with a velocity-matching impulse each
+/// step.
 ///
 /// The impulse also carries most of the character's weight, so the grabbed
 /// ragdoll dangles instead of stretching one limb. Releasing keeps its velocity,

@@ -2,7 +2,7 @@
 //!
 //! Profiles are plain data, so they can be built and checked without a Bevy
 //! app. Validation rejects bad shapes, masses, and joint limits before any
-//! physics body exists.
+//! physics body exists. The example prints the validated total mass.
 
 use bevy::math::{Isometry3d, Vec3};
 use bevy_ragdoll::{ProfileBuilder, RagdollProfile, ShapeSpec};
