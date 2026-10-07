@@ -110,7 +110,8 @@ fn add_example_systems(app: &mut App) {
         .add_systems(
             Update,
             (
-                adjust_controls,
+                select_hit,
+                adjust_strength,
                 request_mouse_hit,
                 apply_ray_hits,
                 rifle_demo,
@@ -455,13 +456,11 @@ fn spawn_muscle_bar(mut commands: Commands<'_, '_>, panel: Entity, index: usize,
     ));
 }
 
-/// Applies key presses to the hit selection and the selected body's strengths.
-fn adjust_controls(
+/// Applies the preset and impulse keys to the selected hit.
+fn select_hit(
     keys: Res<'_, ButtonInput<KeyCode>>,
     settings: Res<'_, HitSettings>,
-    rig: Res<'_, Rig>,
     mut controls: ResMut<'_, Controls>,
-    mut ragdolls: Query<'_, '_, (&mut RagdollBodyWeights, &PinTargets)>,
 ) {
     // Number keys pick a preset and clear any custom impulse.
     for (key, profile) in PRESETS {
@@ -477,6 +476,15 @@ fn adjust_controls(
             controls.magnitude_override = Some(magnitude.clamp(0.0, 300.0));
         }
     }
+}
+
+/// Applies the channel, body selection, and arrow keys to the ragdoll's strengths.
+fn adjust_strength(
+    keys: Res<'_, ButtonInput<KeyCode>>,
+    rig: Res<'_, Rig>,
+    mut controls: ResMut<'_, Controls>,
+    mut ragdolls: Query<'_, '_, (&mut RagdollBodyWeights, &PinTargets)>,
+) {
     // M and P choose which strength the arrow keys edit.
     if keys.just_pressed(KeyCode::KeyM) {
         controls.channel = Channel::Muscle;
