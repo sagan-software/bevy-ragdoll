@@ -1,0 +1,8 @@
+# rustfmt configuration
+# https://rust-lang.github.io/rustfmt/
+#
+# Note: imports_granularity and group_imports are still unstable (tracked in
+# https://github.com/rust-lang/rustfmt/issues/5083). We use stable defaults
+# to avoid requiring nightly toolchain.
+
+edition = "2024"

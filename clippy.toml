@@ -1,0 +1,88 @@
+# Clippy configuration for bevy-ragdoll
+# See: https://doc.rust-lang.org/clippy/lint_configuration.html
+
+# Minimum Supported Rust Version - matches rust-version in Cargo.toml
+msrv = "1.95.0"
+
+# Allow dbg! macros in test code for debugging
+allow-dbg-in-tests = true
+
+# Allow expect/unwrap in tests for simpler test code
+allow-expect-in-tests = true
+allow-unwrap-in-tests = true
+
+# Allow panic! in tests
+allow-panic-in-tests = true
+
+# Allow print macros in tests for debugging
+allow-print-in-tests = true
+
+# Allow indexing/slicing in tests where bounds are known
+allow-indexing-slicing-in-tests = true
+
+# Cognitive complexity threshold - slightly higher for gameplay and ECS setup.
+cognitive-complexity-threshold = 30
+
+# Too many lines threshold - allow longer systems during early prototyping.
+too-many-lines-threshold = 150
+
+# Too many arguments threshold - Bevy systems often compose several ECS params.
+too-many-arguments-threshold = 12
+
+# Large error threshold - allow larger error types for comprehensive error info
+large-error-threshold = 256
+
+# Future size threshold - allow larger futures for async operations
+future-size-threshold = 32768
+
+# Stack size threshold
+stack-size-threshold = 1048576
+
+# Array size threshold for stack arrays
+array-size-threshold = 32768
+
+# Doc valid identifiers - technical terms that don't need backticks
+# Using ".." extends the default list rather than replacing it
+doc-valid-idents = [
+  "Bevy",
+  "ECS",
+  "Egui",
+  "glTF",
+  "GPU",
+  "LLD",
+  "MSRV",
+  "PBR",
+  "Tracy",
+  "WebGL",
+  "WebGPU",
+  "WGPU",
+  "WGSL",
+  "Winit",
+  "..",
+]
+
+# Published library: keep exported API stable.
+avoid-breaking-exported-api = true
+
+# Enum variant size threshold before suggesting Box
+enum-variant-size-threshold = 256
+
+# Type complexity threshold
+type-complexity-threshold = 300
+
+# Pass by value size limit
+pass-by-value-size-limit = 512
+
+# Single char binding names threshold
+single-char-binding-names-threshold = 5
+
+# Disallowed methods - common mistakes to avoid
+# Note: unwrap/expect are handled via clippy::unwrap_used/expect_used lints in Cargo.toml
+# Here we can add specific API-level restrictions
+disallowed-methods = [
+  { path = "std::thread::sleep", reason = "Use Bevy Time, Timer, or state-driven systems instead of blocking the app thread" },
+]
+
+# Disallowed types - add project-specific restrictions here once gameplay code
+# establishes conventions.
+disallowed-types = []

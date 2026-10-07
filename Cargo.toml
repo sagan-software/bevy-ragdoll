@@ -188,14 +188,27 @@ unsafe_code = "forbid"
 [workspace.lints.clippy]
 missing_docs_in_private_items = "warn"
 
+# Bevy optimization profiles: https://bevy.org/learn/quick-start/getting-started/setup/
 [profile.dev]
 opt-level = 1
+debug = 1
 
 [profile.dev.package."*"]
 opt-level = 3
+
+[profile.release]
+codegen-units = 1
+lto = "thin"
+strip = "debuginfo"
+
+[profile.wasm-release]
+inherits = "release"
+opt-level = "s"
+strip = "debuginfo"
 
 [profile.stress-test]
 inherits = "release"
 lto = "fat"
 codegen-units = 1
 debug = "line-tables-only"
+strip = "none"
