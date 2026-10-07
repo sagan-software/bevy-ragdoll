@@ -291,10 +291,14 @@ fn setting_a_body_weight_preserves_later_entries() {
     weights.set(index, BodyWeights::new(0.25, 0.75));
 
     // The edit replaces only entry 0 and keeps the length.
-    assert_eq!(weights.as_ref().len(), 3);
-    assert_eq!(weights.get(0), Some(BodyWeights::new(0.25, 0.75)));
-    assert_eq!(weights.get(1), Some(BodyWeights::default()));
-    assert_eq!(weights.get(2), Some(BodyWeights::default()));
+    assert_eq!(
+        weights.as_ref(),
+        &[
+            BodyWeights::new(0.25, 0.75),
+            BodyWeights::default(),
+            BodyWeights::default()
+        ]
+    );
 }
 
 #[test]
@@ -306,14 +310,17 @@ fn pin_targets_default_to_all_and_accept_a_subset() {
     let hand = BodyIndex::try_from(12).expect("twelve is a valid body index");
 
     // The default targets every body.
-    assert!(PinTargets::default().is_targeted(pelvis));
-    assert!(PinTargets::default().is_targeted(hand));
+    assert_eq!(
+        [pelvis, hand].map(|body| PinTargets::default().is_targeted(body)),
+        [true, true]
+    );
 
     // A subset targets only its members and can drop one later.
     let mut targets = PinTargets::only([pelvis, chest]);
-    assert!(targets.is_targeted(pelvis));
-    assert!(targets.is_targeted(chest));
-    assert!(!targets.is_targeted(hand));
+    assert_eq!(
+        [pelvis, chest, hand].map(|body| targets.is_targeted(body)),
+        [true, true, false]
+    );
     targets.set(chest, false);
     assert!(!targets.is_targeted(chest));
 }
@@ -323,19 +330,22 @@ fn pin_targets_default_to_all_and_accept_a_subset() {
 fn pin_settings_match_the_idle_defaults() {
     // Defaults match the idle pin tuning.
     let defaults = PinSettings::default();
-    assert_eq!(defaults.frequency_hz(), 1.5);
-    assert_eq!(defaults.damping_ratio(), 1.0);
-    assert_eq!(defaults.max_force(), 340.0);
-    assert_eq!(defaults.max_torque(), 400.0);
-    assert_eq!(defaults.distance_falloff(), 2.0);
+    assert_eq!(pin_values(defaults), [1.5, 1.0, 340.0, 400.0, 2.0]);
 
     // Invalid inputs are sanitized to zero instead of producing NaN forces.
     let invalid = PinSettings::new(f32::NAN, -1.0, f32::INFINITY, -3.0, f32::NAN);
-    assert_eq!(invalid.frequency_hz(), 0.0);
-    assert_eq!(invalid.damping_ratio(), 0.0);
-    assert_eq!(invalid.max_force(), 0.0);
-    assert_eq!(invalid.max_torque(), 0.0);
-    assert_eq!(invalid.distance_falloff(), 0.0);
+    assert_eq!(pin_values(invalid), [0.0; 5]);
+}
+
+/// Returns frequency, damping ratio, force cap, torque cap, and distance falloff in order.
+const fn pin_values(settings: PinSettings) -> [f32; 5] {
+    [
+        settings.frequency_hz(),
+        settings.damping_ratio(),
+        settings.max_force(),
+        settings.max_torque(),
+        settings.distance_falloff(),
+    ]
 }
 
 #[test]
