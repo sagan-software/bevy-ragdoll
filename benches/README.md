@@ -32,6 +32,7 @@ scenario, grid, seed, and runtime options used by that report:
 
 ```sh
 cargo run -p bevy_ragdoll_examples --example ragdoll_stress \
+  --profile stress-test \
   --features rapier3d -- --headless --scenario grid --grid 16x16 \
   --compare benches/baselines/HOSTNAME.json
 ```
@@ -48,8 +49,18 @@ with distinct seeded previous and current physics poses. Rapier cases time 60
 fixed steps for limp, powered, and asleep populations.
 
 ```sh
-cargo bench -p bevy_ragdoll_benches -- --save-baseline phase6
+RUSTFLAGS="-C link-arg=-fuse-ld=lld" \
+  cargo bench -p bevy_ragdoll_benches -- --save-baseline phase6
 ```
+
+The Nix shell selects `mold` by default. It cannot link Criterion's `alloca`
+dependency because that object is LLVM bitcode and mold's GCC plugin does not
+claim it. The LLD override in the command selects the compatible linker.
+
+The 60-step Rapier cases use 100 samples for one character and 10 samples for
+32, 128, and 512 characters. The larger cases set measurement windows for
+their longer physics batches. See [RESULTS.md](RESULTS.md) for the first
+machine baseline and recorded Criterion output.
 
 Criterion output and intermediate baselines stay under
 `$CARGO_TARGET_DIR/criterion`; do not commit those generated files. Record host

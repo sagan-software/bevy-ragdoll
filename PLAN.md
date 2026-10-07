@@ -7,7 +7,7 @@
 | [x] | 3. Rapier powered-ragdoll spike | [Report](docs/spikes/rapier-powered.md); checks and coverage gap recorded below. |
 | [x] | 4. Core runtime | Runtime, mock backend, conformance tests and screenshots complete. Coverage gaps and reasons are recorded below. |
 | [x] | 5. Rapier 3D backend | Workspace gates, backend coverage, headless smoke run, and reviewed screenshots pass. Coverage gaps are recorded below. |
-| [ ] | 6. Performance | |
+| [x] | 6. Performance | The [stress baseline and Criterion results](benches/RESULTS.md) are committed; the default sweep, comparison boundaries, and benchmark gates pass. The all-features Clippy dependency error is recorded below. |
 | [ ] | 7. Active control | |
 | [ ] | 8. Human assets | |
 | [ ] | 9. Balance | |
@@ -46,21 +46,21 @@
   eight duplicate package versions in Bevy 0.19.1 and Criterion 0.8's
   dependency graph. The final Cargo Deny check passed without warnings.
 - The Dylints checkout is
-  `/home/deck/Code/github.com/sagan-software/dylints`, remote
+  `/var/mnt/nixsd/Code/github.com/sagan-software/dylints`, remote
   `https://github.com/sagan-software/dylints`, commit
-  `2b4f80e272c413eda75de2cd0ce4fa9c7e713677`. Run the Rust linter from that
-  checkout with:
+  `2b4f80e272c413eda75de2cd0ce4fa9c7e713677`. Run its bundled Rust linter
+  from that checkout with:
 
   ```sh
+  PRIVATE_LINTS_ROOT=/var/mnt/nixsd/Code/github.com/sagan-software/dylints \
+  SAGAN_LINTS_CACHE_DIR=/var/mnt/nixsd/Caches/dylints \
   CARGO_HOME=/var/mnt/nixsd/Caches/cargo \
   CARGO_TARGET_DIR=/var/mnt/nixsd/Build/bevy-ragdoll \
   CARGO_BUILD_JOBS=4 \
-  SAGAN_LINTS_CACHE_DIR=/var/mnt/nixsd/Caches/dylints \
-  nix develop -c cargo run --bin sagan-lints -- \
-    --repo /var/mnt/nixsd/Code/github.com/sagan-software/bevy-ragdoll \
-    --fast \
-    --target-dir /var/mnt/nixsd/Build/bevy-ragdoll/dylints-target \
-    --log-dir /var/mnt/nixsd/Caches/dylints/bevy-ragdoll
+  nix develop /var/mnt/nixsd/Code/github.com/sagan-software/dylints -c \
+    nix run /var/mnt/nixsd/Code/github.com/sagan-software/dylints -- \
+      --repo /var/mnt/nixsd/Code/github.com/sagan-software/bevy-ragdoll \
+      --fast
   ```
 
 - The Dylints `sagan-lints` command passed after documenting the API and
@@ -209,7 +209,7 @@
 - `cargo deny check` passed advisories, bans, licenses, and sources.
   `cargo doc -p bevy_ragdoll --no-deps` passed.
 - Dylints from
-  `/home/deck/Code/github.com/sagan-software/dylints` passed `--fast` in
+  `/var/mnt/nixsd/Code/github.com/sagan-software/dylints` passed `--fast` in
   132.73 seconds. The full logs are in
   `/var/mnt/nixsd/Caches/dylints/bevy-ragdoll-current`.
 - The coverage gate passed:
@@ -337,3 +337,94 @@
   source edit. Its logs are in
   `/var/mnt/nixsd/Caches/dylints/bevy-ragdoll`. GitHub creation,
   authentication, and push remain deferred.
+
+## Phase 6 evidence
+
+- The default stress sweep passed with the planned Rapier grid, pile, and
+  powered configurations:
+
+  ```sh
+  nix develop -c cargo run -p bevy_ragdoll_examples \
+    --example ragdoll_stress --profile stress-test --features rapier3d -- \
+    --headless --sweep default
+  ```
+
+  It wrote eight schema-one reports to
+  `/var/mnt/nixsd/Build/bevy-ragdoll/stress/2026-10-06-0a2a3d4.json`.
+  Every row reported zero unstable bodies. The committed host baseline is
+  `benches/baselines/steamdeck-6dffb94acbac45d38b162ddde8b7d645.json`.
+  `benches/RESULTS.md` records the report table, host details, and Criterion
+  measurements.
+- The matched 16×16 comparison passed with `--profile stress-test`. Candidate
+  frame and step p95 were 97.552 ms and 90.525 ms, below the baseline values
+  97.730 ms and 90.713 ms. The first dev-profile comparison exited 1 because
+  that profile exceeded the stress-test baseline by more than 10 percent.
+  The README now uses the baseline's profile.
+- The comparison against a temporary baseline with 20 percent lower 16×16
+  timings exited 1 as expected. It reported frame p95 97.535 ms over the
+  78.184 ms limit and step p95 90.491 ms over the 72.570 ms limit.
+- The CI stress-smoke command and its JSON assertion passed. Four characters
+  spawned 64 bodies and reported zero unstable bodies.
+- The exact Criterion command passed with LLD selected for linking:
+
+  ```sh
+  CARGO_HOME=/var/mnt/nixsd/Caches/cargo \
+  CARGO_TARGET_DIR=/var/mnt/nixsd/Build/bevy-ragdoll \
+  CARGO_BUILD_JOBS=4 \
+  nix develop -c env 'RUSTFLAGS=-C link-arg=-fuse-ld=lld' \
+    cargo bench -p bevy_ragdoll_benches -- --save-baseline phase6
+  ```
+
+  The unmodified Nix `mold` selection failed to link `alloca.o`, which is LLVM
+  bitcode. The LLD run exited 0 and saved the Criterion baseline under the
+  SD-card target directory. Criterion printed four sample-window warnings
+  for writeback of one character and asleep Rapier cases of 32, 128, and 512
+  characters. Each target completed its requested samples; the full command
+  exited 0. The sample windows and mean estimates are recorded in
+  `benches/RESULTS.md`.
+- These gates passed after the final source and documentation edits:
+
+  ```sh
+  nix develop -c cargo fmt --all -- --check
+  nix develop -c cargo test --workspace
+  nix develop -c cargo clippy --workspace --all-targets --locked -- \
+    -D warnings
+  nix develop -c cargo deny check
+  nix develop -c cargo doc --workspace --no-deps
+  ```
+
+- Dylints at commit `2b4f80e272c413eda75de2cd0ce4fa9c7e713677` passed its
+  bundled runner. Its first direct invocation lacked `cc`; the Nix shell
+  supplied the linker. Its next invocation required `PRIVATE_LINTS_ROOT`.
+  Setting that variable to the local Dylints checkout produced this passing
+  command:
+
+  ```sh
+  PRIVATE_LINTS_ROOT=/var/mnt/nixsd/Code/github.com/sagan-software/dylints \
+  SAGAN_LINTS_CACHE_DIR=/var/mnt/nixsd/Caches/dylints/phase6 \
+  CARGO_HOME=/var/mnt/nixsd/Caches/cargo \
+  CARGO_TARGET_DIR=/var/mnt/nixsd/Build/bevy-ragdoll \
+  CARGO_BUILD_JOBS=4 \
+  nix develop /var/mnt/nixsd/Code/github.com/sagan-software/dylints -c \
+    nix run /var/mnt/nixsd/Code/github.com/sagan-software/dylints -- \
+      --repo /var/mnt/nixsd/Code/github.com/sagan-software/bevy-ragdoll \
+      --fast
+  ```
+
+  Dylints strict Clippy and `cargo check` both exited 0.
+- The fallback command
+  `nix develop -c cargo clippy --all-targets --all-features -- -D warnings`
+  remains blocked in Bevy 0.19.1 `bevy_reflect`. Rapier enhanced determinism
+  selects scalar math, and Bevy's `BVec3A` and `BVec4A` Serde registrations
+  fail because those implementations are unavailable in that feature graph.
+  The errors originate in the dependency before workspace crates are linted.
+- No LLVM coverage report was collected for the new Criterion targets or the
+  stress runner. Criterion and the exact stress sweep exercised those paths,
+  but those runs are not line-coverage evidence. An instrumented workspace
+  build was not attempted because its additional size was not bounded below
+  the remaining SD-card space above the 40 GiB reserve.
+- I reviewed
+  [the windowed 16×16 grid screenshot](docs/screenshots/phase-06-grid-16.png).
+  The ragdolls stand above the ground plane, with no body below the floor.
+  At least 72 GiB remained free on the SD card during the sweep and benchmark
+  runs.

@@ -1,0 +1,442 @@
+[
+  {
+    "schema": 1,
+    "git": "0a2a3d4",
+    "machine": {
+      "cpu": "AMD Custom APU 0405",
+      "cores": 8,
+      "os": "linux"
+    },
+    "config": {
+      "backend": "rapier3d",
+      "scenario": "grid",
+      "grid": [
+        8,
+        8
+      ],
+      "count": 64,
+      "spacing_m": 1.5,
+      "creature": "human",
+      "mode": "limp",
+      "trigger_at_s": 2.0,
+      "duration_s": 10.0,
+      "warmup_s": 1.0,
+      "fixed_hz": 60,
+      "substeps": 1,
+      "seed": 42,
+      "headless": true,
+      "deterministic": false
+    },
+    "metrics": {
+      "frame_ms": {
+        "p50": 10.042303,
+        "p95": 18.401806,
+        "p99": 18.68725,
+        "max": 18.938786
+      },
+      "step_ms": {
+        "p50": 8.657587,
+        "p95": 16.925409,
+        "max": 17.467459
+      },
+      "core_ms": {
+        "p50": 9.993382,
+        "p95": 18.344575
+      },
+      "trigger_spike_ms": 17.186375,
+      "characters": 64,
+      "bodies": 1024,
+      "joints": 960,
+      "dynamic": 1024,
+      "sleeping_end": 544,
+      "frozen_end": 0,
+      "peak_rss_mb": 36.68359375,
+      "unstable_bodies": 0
+    }
+  },
+  {
+    "schema": 1,
+    "git": "0a2a3d4",
+    "machine": {
+      "cpu": "AMD Custom APU 0405",
+      "cores": 8,
+      "os": "linux"
+    },
+    "config": {
+      "backend": "rapier3d",
+      "scenario": "grid",
+      "grid": [
+        16,
+        16
+      ],
+      "count": 256,
+      "spacing_m": 1.5,
+      "creature": "human",
+      "mode": "limp",
+      "trigger_at_s": 2.0,
+      "duration_s": 10.0,
+      "warmup_s": 1.0,
+      "fixed_hz": 60,
+      "substeps": 1,
+      "seed": 42,
+      "headless": true,
+      "deterministic": false
+    },
+    "metrics": {
+      "frame_ms": {
+        "p50": 40.91077,
+        "p95": 97.729585,
+        "p99": 98.317455,
+        "max": 98.946663
+      },
+      "step_ms": {
+        "p50": 33.925853,
+        "p95": 90.713086,
+        "max": 91.88634
+      },
+      "core_ms": {
+        "p50": 40.837869999999995,
+        "p95": 97.646442
+      },
+      "trigger_spike_ms": 86.474857,
+      "characters": 256,
+      "bodies": 4096,
+      "joints": 3840,
+      "dynamic": 4096,
+      "sleeping_end": 2464,
+      "frozen_end": 0,
+      "peak_rss_mb": 98.18359375,
+      "unstable_bodies": 0
+    }
+  },
+  {
+    "schema": 1,
+    "git": "0a2a3d4",
+    "machine": {
+      "cpu": "AMD Custom APU 0405",
+      "cores": 8,
+      "os": "linux"
+    },
+    "config": {
+      "backend": "rapier3d",
+      "scenario": "grid",
+      "grid": [
+        24,
+        24
+      ],
+      "count": 576,
+      "spacing_m": 1.5,
+      "creature": "human",
+      "mode": "limp",
+      "trigger_at_s": 2.0,
+      "duration_s": 10.0,
+      "warmup_s": 1.0,
+      "fixed_hz": 60,
+      "substeps": 1,
+      "seed": 42,
+      "headless": true,
+      "deterministic": false
+    },
+    "metrics": {
+      "frame_ms": {
+        "p50": 126.637009,
+        "p95": 234.14527,
+        "p99": 235.732387,
+        "max": 236.125074
+      },
+      "step_ms": {
+        "p50": 105.889542,
+        "p95": 215.016013,
+        "max": 216.840847
+      },
+      "core_ms": {
+        "p50": 126.528177,
+        "p95": 234.00031600000003
+      },
+      "trigger_spike_ms": 206.568448,
+      "characters": 576,
+      "bodies": 9216,
+      "joints": 8640,
+      "dynamic": 9216,
+      "sleeping_end": 4944,
+      "frozen_end": 0,
+      "peak_rss_mb": 211.8046875,
+      "unstable_bodies": 0
+    }
+  },
+  {
+    "schema": 1,
+    "git": "0a2a3d4",
+    "machine": {
+      "cpu": "AMD Custom APU 0405",
+      "cores": 8,
+      "os": "linux"
+    },
+    "config": {
+      "backend": "rapier3d",
+      "scenario": "grid",
+      "grid": [
+        32,
+        32
+      ],
+      "count": 1024,
+      "spacing_m": 1.5,
+      "creature": "human",
+      "mode": "limp",
+      "trigger_at_s": 2.0,
+      "duration_s": 10.0,
+      "warmup_s": 1.0,
+      "fixed_hz": 60,
+      "substeps": 1,
+      "seed": 42,
+      "headless": true,
+      "deterministic": false
+    },
+    "metrics": {
+      "frame_ms": {
+        "p50": 225.124212,
+        "p95": 431.4559579999999,
+        "p99": 435.422268,
+        "max": 443.454762
+      },
+      "step_ms": {
+        "p50": 178.593626,
+        "p95": 390.069053,
+        "max": 401.088844
+      },
+      "core_ms": {
+        "p50": 224.982632,
+        "p95": 431.251075
+      },
+      "trigger_spike_ms": 383.061093,
+      "characters": 1024,
+      "bodies": 16384,
+      "joints": 15360,
+      "dynamic": 16384,
+      "sleeping_end": 9520,
+      "frozen_end": 0,
+      "peak_rss_mb": 340.34375,
+      "unstable_bodies": 0
+    }
+  },
+  {
+    "schema": 1,
+    "git": "0a2a3d4",
+    "machine": {
+      "cpu": "AMD Custom APU 0405",
+      "cores": 8,
+      "os": "linux"
+    },
+    "config": {
+      "backend": "rapier3d",
+      "scenario": "pile",
+      "grid": [
+        16,
+        16
+      ],
+      "count": 32,
+      "spacing_m": 1.5,
+      "creature": "human",
+      "mode": "limp",
+      "trigger_at_s": 2.0,
+      "duration_s": 10.0,
+      "warmup_s": 1.0,
+      "fixed_hz": 60,
+      "substeps": 1,
+      "seed": 42,
+      "headless": true,
+      "deterministic": false
+    },
+    "metrics": {
+      "frame_ms": {
+        "p50": 10.427561,
+        "p95": 12.510713999999998,
+        "p99": 14.489185,
+        "max": 15.167703
+      },
+      "step_ms": {
+        "p50": 9.212689,
+        "p95": 11.22184,
+        "max": 13.470374
+      },
+      "core_ms": {
+        "p50": 10.378411,
+        "p95": 12.460903
+      },
+      "trigger_spike_ms": 0.0,
+      "characters": 32,
+      "bodies": 512,
+      "joints": 480,
+      "dynamic": 512,
+      "sleeping_end": 16,
+      "frozen_end": 0,
+      "peak_rss_mb": 33.18359375,
+      "unstable_bodies": 0
+    }
+  },
+  {
+    "schema": 1,
+    "git": "0a2a3d4",
+    "machine": {
+      "cpu": "AMD Custom APU 0405",
+      "cores": 8,
+      "os": "linux"
+    },
+    "config": {
+      "backend": "rapier3d",
+      "scenario": "pile",
+      "grid": [
+        16,
+        16
+      ],
+      "count": 64,
+      "spacing_m": 1.5,
+      "creature": "human",
+      "mode": "limp",
+      "trigger_at_s": 2.0,
+      "duration_s": 10.0,
+      "warmup_s": 1.0,
+      "fixed_hz": 60,
+      "substeps": 1,
+      "seed": 42,
+      "headless": true,
+      "deterministic": false
+    },
+    "metrics": {
+      "frame_ms": {
+        "p50": 24.075853,
+        "p95": 28.619453,
+        "p99": 31.571869000000003,
+        "max": 34.638616999999996
+      },
+      "step_ms": {
+        "p50": 20.976909,
+        "p95": 25.129647,
+        "max": 30.569674000000003
+      },
+      "core_ms": {
+        "p50": 24.02307,
+        "p95": 28.565742
+      },
+      "trigger_spike_ms": 0.0,
+      "characters": 64,
+      "bodies": 1024,
+      "joints": 960,
+      "dynamic": 1024,
+      "sleeping_end": 0,
+      "frozen_end": 0,
+      "peak_rss_mb": 51.6171875,
+      "unstable_bodies": 0
+    }
+  },
+  {
+    "schema": 1,
+    "git": "0a2a3d4",
+    "machine": {
+      "cpu": "AMD Custom APU 0405",
+      "cores": 8,
+      "os": "linux"
+    },
+    "config": {
+      "backend": "rapier3d",
+      "scenario": "pile",
+      "grid": [
+        16,
+        16
+      ],
+      "count": 128,
+      "spacing_m": 1.5,
+      "creature": "human",
+      "mode": "limp",
+      "trigger_at_s": 2.0,
+      "duration_s": 10.0,
+      "warmup_s": 1.0,
+      "fixed_hz": 60,
+      "substeps": 1,
+      "seed": 42,
+      "headless": true,
+      "deterministic": false
+    },
+    "metrics": {
+      "frame_ms": {
+        "p50": 60.634941,
+        "p95": 75.36317,
+        "p99": 86.47467400000001,
+        "max": 95.8071
+      },
+      "step_ms": {
+        "p50": 52.593557,
+        "p95": 66.41857,
+        "max": 84.695646
+      },
+      "core_ms": {
+        "p50": 60.572143,
+        "p95": 75.298149
+      },
+      "trigger_spike_ms": 0.0,
+      "characters": 128,
+      "bodies": 2048,
+      "joints": 1920,
+      "dynamic": 2048,
+      "sleeping_end": 0,
+      "frozen_end": 0,
+      "peak_rss_mb": 90.2578125,
+      "unstable_bodies": 0
+    }
+  },
+  {
+    "schema": 1,
+    "git": "0a2a3d4",
+    "machine": {
+      "cpu": "AMD Custom APU 0405",
+      "cores": 8,
+      "os": "linux"
+    },
+    "config": {
+      "backend": "rapier3d",
+      "scenario": "powered",
+      "grid": [
+        16,
+        16
+      ],
+      "count": 256,
+      "spacing_m": 1.5,
+      "creature": "human",
+      "mode": "limp",
+      "trigger_at_s": 2.0,
+      "duration_s": 10.0,
+      "warmup_s": 1.0,
+      "fixed_hz": 60,
+      "substeps": 1,
+      "seed": 42,
+      "headless": true,
+      "deterministic": false
+    },
+    "metrics": {
+      "frame_ms": {
+        "p50": 95.841284,
+        "p95": 97.361553,
+        "p99": 99.925547,
+        "max": 107.345756
+      },
+      "step_ms": {
+        "p50": 88.721644,
+        "p95": 90.04521,
+        "max": 99.514672
+      },
+      "core_ms": {
+        "p50": 95.75662,
+        "p95": 97.265652
+      },
+      "trigger_spike_ms": 0.0,
+      "characters": 256,
+      "bodies": 4096,
+      "joints": 3840,
+      "dynamic": 4096,
+      "sleeping_end": 0,
+      "frozen_end": 0,
+      "peak_rss_mb": 94.49609375,
+      "unstable_bodies": 0
+    }
+  }
+]
