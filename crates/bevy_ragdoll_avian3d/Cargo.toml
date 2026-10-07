@@ -1,0 +1,31 @@
+[package]
+name = "bevy_ragdoll_avian3d"
+description = "Avian 3D physics backend for bevy-ragdoll"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = true
+
+[features]
+default = []
+parallel = ["avian3d/parallel"]
+enhanced-determinism = ["avian3d/enhanced-determinism"]
+debug-plugin = ["avian3d/debug-plugin"]
+
+[dependencies]
+avian3d = { workspace = true, features = ["3d", "f32", "parry-f32", "xpbd_joints"] }
+bevy = { workspace = true, features = ["std"] }
+bevy_ragdoll = { workspace = true, features = ["3d"] }
+num-traits.workspace = true
+
+[dev-dependencies]
+bevy_ragdoll_conformance.workspace = true
+
+[[test]]
+name = "conformance"
+path = "tests/conformance.rs"
+
+[lints]
+workspace = true
