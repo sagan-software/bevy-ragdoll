@@ -248,6 +248,7 @@ fn box_sat_checks_cross_product_axes() {
     for x_angle in angles {
         for y_angle in angles {
             for z_angle in angles {
+                // Compose the three angles so every axis pairing gets exercised.
                 let rotation = Quat::from_rotation_x(x_angle)
                     * Quat::from_rotation_y(y_angle)
                     * Quat::from_rotation_z(z_angle);

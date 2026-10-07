@@ -161,6 +161,7 @@ fn each_error_variant_is_reported() {
         Err(ProfileError::Empty)
     ));
 
+    // One body more than the 64-bit contact masks can hold.
     let mut too_many = valid_spec();
     let body = too_many.bodies[0].clone();
     too_many.bodies.resize(65, body);
@@ -487,6 +488,7 @@ fn overrides_asset_loads_through_the_asset_server() {
     .expect("the overrides file is written");
     // Load it through a real AssetServer rooted at that directory.
     let mut app = App::new();
+    // The ragdoll plugin registers the `.ragdoll.ron` loader.
     app.add_plugins(MinimalPlugins)
         .add_plugins(AssetPlugin {
             file_path: directory.to_string_lossy().into_owned(),

@@ -772,16 +772,20 @@ mod tests {
         // Drive setters replace both multipliers.
         let mut drive = RagdollDrive::new(0.25, 0.75);
         drive.set(0.5, 0.0);
-        assert_eq!(drive.muscle(), 0.5);
-        assert_eq!(drive.pin(), 0.0);
+        assert_eq!((drive.muscle(), drive.pin()), (0.5, 0.0));
 
         // Body weights default to full strength, and lookups past the end return None.
         let default_weights = BodyWeights::default();
-        assert_eq!(default_weights.muscle(), 1.0);
-        assert_eq!(default_weights.pin(), 1.0);
+        assert_eq!(
+            (default_weights.muscle(), default_weights.pin()),
+            (1.0, 1.0)
+        );
+        // A one-entry override list has no second body.
         let overrides = RagdollBodyWeights::new(vec![BodyWeights::new(0.25, 0.75)]);
-        assert_eq!(overrides.as_ref(), &[BodyWeights::new(0.25, 0.75)]);
-        assert_eq!(overrides.get(1), None);
+        assert_eq!(
+            (overrides.as_ref(), overrides.get(1)),
+            (&[BodyWeights::new(0.25, 0.75)][..], None)
+        );
 
         // Blend stores the weight it is given.
         let mut blend = RagdollBlend::default();

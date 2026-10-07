@@ -165,6 +165,7 @@ fn accessors_and_builder_paths_return_profile_data() {
 #[test]
 fn validation_checks_all_shape_range_and_transform_boundaries() {
     // Two finite masses whose sum overflows to infinity.
+    // The error names the body whose mass pushed the running sum past finite.
     let mut overflow = spec();
     overflow.bodies[0].mass = f32::MAX;
     overflow.bodies[1].mass = f32::MAX;
@@ -333,6 +334,7 @@ fn tree_validation_and_negative_quaternion_are_handled() {
     );
 
     // A negated quaternion is the same rotation and must give the same angle.
+    // The parent stays at identity so the child pose is the joint rotation.
     let profile = profile();
     let child = BodyIndex::try_from(1).unwrap();
     let angle = 0.3;

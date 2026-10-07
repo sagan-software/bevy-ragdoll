@@ -674,6 +674,7 @@ fn full_limp_disables_velocity_limits() {
         .get::<BodyVelocity>(body)
         .expect("backend body retains its integrated velocity");
     assert!(velocity.linear.length() > 10.0);
+    // `None` tells the backend to apply no speed cap at all.
     let output = app
         .world()
         .get::<BodyDriveOutput>(body)

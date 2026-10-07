@@ -682,6 +682,7 @@ fn settling_resets_its_timer_when_any_body_speeds_up() {
         settle_speed: 2.0,
         ..Default::default()
     });
+    // Zero muscle and pin leave settling as the only behavior under test.
     let (character, _, _) = spawn_character(&mut app, RagdollMode::Dynamic);
     app.world_mut()
         .get_entity_mut(character)
