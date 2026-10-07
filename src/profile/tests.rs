@@ -51,43 +51,78 @@ fn profile() -> RagdollProfile {
 
 /// Covers the body, joint, profile, builder, and checked-index accessors.
 #[test]
-fn accessors_and_builder_paths_return_profile_data() {
+fn body_accessors_return_the_validated_root() {
     // Body accessors return the validated root body unchanged.
     let profile = profile();
     let root = profile.bodies()[0].clone();
-    assert_eq!(root.index().get(), 0);
-    assert_eq!(root.bone(), "root");
-    assert_eq!(root.mass().kilograms(), 2.0);
-    assert_eq!(root.rest(), Isometry3d::IDENTITY);
+    assert_eq!(
+        (
+            root.index().get(),
+            root.bone(),
+            root.mass().kilograms(),
+            root.rest()
+        ),
+        (0, "root", 2.0, Isometry3d::IDENTITY)
+    );
     assert!(matches!(
         root.shape(),
         ShapeSpec::Sphere { radius: 0.5, .. }
     ));
+}
 
+#[test]
+fn joint_accessors_return_the_validated_joint() {
+    let profile = profile();
     let child = BodyIndex::try_from(1).expect("child index fits");
     let joint = profile.joint_of(child).expect("the child has a joint");
-    // Joint accessors and the single-axis hinge helpers.
-    assert_eq!(joint.child(), child);
-    assert_eq!(joint.parent(), BodyIndex::try_from(0).unwrap());
-    assert_eq!(joint.frame(), Isometry3d::from_xyz(0.0, 1.0, 0.0));
-    assert_eq!(joint.limits().x, AngleRange { min: -PI, max: PI });
-    assert_eq!(joint.max_torque(), 4.0);
-    assert!(joint.is_hinge());
-    assert_eq!(joint.bend_range(), AngleRange { min: -PI, max: PI });
-    // Profile-level lookups, including the root without a joint and a missing bone.
-    assert!(profile.joint_of(BodyIndex::try_from(0).unwrap()).is_none());
-    assert_eq!(profile.body_index("child"), Some(child));
-    assert_eq!(profile.body_index("missing"), None);
-    assert_eq!(profile.total_mass().kilograms(), 5.0);
-    assert_eq!(profile.joints().len(), 1);
+    // Indexes, frame and torque come back as authored.
+    assert_eq!(
+        (
+            joint.child(),
+            joint.parent(),
+            joint.frame(),
+            joint.max_torque()
+        ),
+        (
+            child,
+            BodyIndex::try_from(0).unwrap(),
+            Isometry3d::from_xyz(0.0, 1.0, 0.0),
+            4.0
+        )
+    );
+    // A single free axis makes the joint a hinge whose bend range is that axis.
+    let full = AngleRange { min: -PI, max: PI };
+    assert_eq!(
+        (joint.limits().x, joint.is_hinge(), joint.bend_range()),
+        (full, true, full)
+    );
+}
 
+#[test]
+fn profile_lookups_cover_the_root_and_missing_bones() {
+    let profile = profile();
+    let child = BodyIndex::try_from(1).expect("child index fits");
+    // The root has no joint, and an unknown bone has no index.
+    assert_eq!(
+        (
+            profile.joint_of(BodyIndex::try_from(0).unwrap()).is_none(),
+            profile.body_index("child"),
+            profile.body_index("missing"),
+        ),
+        (true, Some(child), None)
+    );
+    assert_eq!(
+        (profile.total_mass().kilograms(), profile.joints().len()),
+        (5.0, 1)
+    );
     // Rest poses compose with the supplied root pose.
     let root_pose = Isometry3d::from_xyz(4.0, 0.0, 0.0);
     let rest_pose = profile.rest_poses(root_pose).nth(1);
-    let child = profile.bodies().get(1).expect("the profile has a child");
-    assert_eq!(rest_pose, Some(root_pose * child.rest()));
+    assert_eq!(rest_pose, Some(root_pose * profile.bodies()[1].rest()));
+}
 
-    // The builder must reproduce the same profile body by body.
+/// Builds the test profile body by body through `ProfileBuilder`.
+fn built_profile() -> ProfileBuilder {
     let mut builder = ProfileBuilder::default();
     let root = builder
         .add_body(
@@ -123,35 +158,35 @@ fn accessors_and_builder_paths_return_profile_data() {
         },
         4.0,
     );
+    builder
+}
+
+#[test]
+fn the_builder_reproduces_the_profile() {
+    let builder = built_profile();
     // Spec access, conversion, and build all agree.
     assert_eq!(builder.spec().bodies.len(), 2);
     assert_eq!(builder.clone().into_spec(), builder.spec().clone());
-    assert_eq!(builder.clone().build().unwrap(), profile);
+    assert_eq!(builder.build().unwrap(), profile());
+}
+
+/// A small sphere shape for filler bodies.
+const SMALL_SPHERE: ShapeSpec = ShapeSpec::Sphere {
+    center: Vec3::ZERO,
+    radius: 0.1,
+};
+
+#[test]
+fn the_builder_rejects_overflow_and_emptiness() {
     // Fill the builder to MAX_BODIES so the next body overflows.
     let mut oversized = ProfileBuilder::default();
     for index in 0..MAX_BODIES {
         oversized
-            .add_body(
-                index.to_string(),
-                ShapeSpec::Sphere {
-                    center: Vec3::ZERO,
-                    radius: 0.1,
-                },
-                1.0,
-                Isometry3d::IDENTITY,
-            )
+            .add_body(index.to_string(), SMALL_SPHERE, 1.0, Isometry3d::IDENTITY)
             .expect("every mask index is accepted");
     }
     assert!(matches!(
-        oversized.add_body(
-            "overflow",
-            ShapeSpec::Sphere {
-                center: Vec3::ZERO,
-                radius: 0.1,
-            },
-            1.0,
-            Isometry3d::IDENTITY,
-        ),
+        oversized.add_body("overflow", SMALL_SPHERE, 1.0, Isometry3d::IDENTITY),
         Err(ProfileError::TooManyBodies(65))
     ));
     // Building with no bodies reports Empty.
@@ -161,20 +196,23 @@ fn accessors_and_builder_paths_return_profile_data() {
     ));
 }
 
-/// Covers validation failures for every numeric and geometric domain.
-#[test]
-fn validation_checks_all_shape_range_and_transform_boundaries() {
-    // Two finite masses whose sum overflows to infinity.
-    // The error names the body whose mass pushed the running sum past finite.
-    let mut overflow = spec();
-    overflow.bodies[0].mass = f32::MAX;
-    overflow.bodies[1].mass = f32::MAX;
-    assert!(
-        matches!(RagdollProfile::new(overflow), Err(ProfileError::BadMass { body }) if body.get() == 1)
-    );
+/// Returns the validation error for the test spec after `edit`, if any.
+fn error_after(edit: impl FnOnce(&mut ProfileSpec)) -> Option<ProfileError> {
+    let mut invalid = spec();
+    edit(&mut invalid);
+    RagdollProfile::new(invalid).err()
+}
 
+/// The second body, which every single-field edit below breaks.
+fn second() -> BodyIndex {
+    BodyIndex::try_from(1).expect("the second body index is valid")
+}
+
+/// Covers mass overflow and every malformed body shape or rest pose.
+#[test]
+fn validation_rejects_bad_masses_shapes_and_rest_poses() {
     // Every shape with a non-finite field, zero extent, or a non-unit rotation.
-    for shape in [
+    let shapes = [
         ShapeSpec::Capsule {
             a: Vec3::NAN,
             b: Vec3::Y,
@@ -208,22 +246,28 @@ fn validation_checks_all_shape_range_and_transform_boundaries() {
             rotation: Quat::from_xyzw(0.0, 0.0, 0.0, 2.0),
             half_extents: Vec3::ONE,
         },
-    ] {
-        let mut invalid = spec();
-        invalid.bodies[1].shape = shape;
-        assert!(
-            matches!(RagdollProfile::new(invalid), Err(ProfileError::BadShape { body }) if body.get() == 1)
-        );
-    }
+    ];
+    let shape_errors = shapes.map(|shape| error_after(|spec| spec.bodies[1].shape = shape));
+    let bad_shape = Some(ProfileError::BadShape { body: second() });
+    assert_eq!(vec![bad_shape.clone(); 7], shape_errors);
     // A non-finite rest pose is reported against its body.
-    let mut bad_rest = spec();
-    bad_rest.bodies[1].rest.translation.x = f32::NAN;
-    assert!(
-        matches!(RagdollProfile::new(bad_rest), Err(ProfileError::BadShape { body }) if body.get() == 1)
+    assert_eq!(
+        error_after(|spec| spec.bodies[1].rest.translation.x = f32::NAN),
+        bad_shape
     );
+    // Two finite masses whose sum overflows name the body that overflowed.
+    let overflow = error_after(|spec| {
+        spec.bodies[0].mass = f32::MAX;
+        spec.bodies[1].mass = f32::MAX;
+    });
+    assert_eq!(overflow, Some(ProfileError::BadMass { body: second() }));
+}
 
+/// Covers every malformed joint range, frame and torque.
+#[test]
+fn validation_rejects_bad_joint_ranges_frames_and_torques() {
     // X ranges that are non-finite, exclude zero, or exceed half a turn.
-    for range in [
+    let ranges = [
         AngleRange {
             min: f32::NAN,
             max: 0.0,
@@ -245,49 +289,33 @@ fn validation_checks_all_shape_range_and_transform_boundaries() {
             min: 0.0,
             max: PI + 0.01,
         },
-    ] {
-        let mut invalid = spec();
-        invalid.joints[0].limits.x = range;
-        assert!(matches!(
-            RagdollProfile::new(invalid),
-            Err(ProfileError::BadLimit {
-                axis: JointAxis::X,
-                ..
-            })
-        ));
-    }
-    // The twist and Z axes report their own axis.
-    for axis in [JointAxis::Twist, JointAxis::Z] {
-        let mut invalid = spec();
-        let range = AngleRange {
-            min: f32::NEG_INFINITY,
-            max: 0.0,
-        };
-        if axis == JointAxis::Twist {
-            invalid.joints[0].limits.twist = range;
-        } else {
-            invalid.joints[0].limits.z = range;
-        }
-        assert!(
-            matches!(RagdollProfile::new(invalid), Err(ProfileError::BadLimit { axis: found, .. }) if found == axis)
-        );
-    }
-    // A non-finite joint frame and torque are rejected too.
-    let mut bad_frame = spec();
-    bad_frame.joints[0].frame.translation.x = f32::INFINITY;
-    assert!(matches!(
-        RagdollProfile::new(bad_frame),
-        Err(ProfileError::BadLimit {
-            axis: JointAxis::Frame,
-            ..
+    ];
+    let bad_limit = |axis| {
+        Some(ProfileError::BadLimit {
+            joint: second(),
+            axis,
         })
-    ));
-    let mut bad_torque = spec();
-    bad_torque.joints[0].max_torque = f32::NAN;
-    assert!(matches!(
-        RagdollProfile::new(bad_torque),
-        Err(ProfileError::BadTorque { .. })
-    ));
+    };
+    let x_errors = ranges.map(|range| error_after(|spec| spec.joints[0].limits.x = range));
+    assert_eq!(vec![bad_limit(JointAxis::X); 6], x_errors);
+    // The twist and Z axes, the frame and the torque each report their own field.
+    let unbounded = AngleRange {
+        min: f32::NEG_INFINITY,
+        max: 0.0,
+    };
+    let other_errors = [
+        error_after(|spec| spec.joints[0].limits.twist = unbounded),
+        error_after(|spec| spec.joints[0].limits.z = unbounded),
+        error_after(|spec| spec.joints[0].frame.translation.x = f32::INFINITY),
+        error_after(|spec| spec.joints[0].max_torque = f32::NAN),
+    ];
+    let expected = [
+        bad_limit(JointAxis::Twist),
+        bad_limit(JointAxis::Z),
+        bad_limit(JointAxis::Frame),
+        Some(ProfileError::BadTorque { joint: second() }),
+    ];
+    assert_eq!(other_errors, expected);
 }
 
 /// Covers the private total-mass conversion error mapping independently.
@@ -300,79 +328,67 @@ fn invalid_total_mass_preserves_the_last_body_index() {
     ));
 }
 
-/// Covers invalid tree layouts, empty names, and angle quaternion sign choice.
+/// Covers invalid tree layouts and empty names.
 #[test]
-fn tree_validation_and_negative_quaternion_are_handled() {
-    // Self-parenting joints break the tree.
-    for (child, parent) in [(0, 0), (1, 1)] {
-        let mut invalid = spec();
-        invalid.joints[0].child = child;
-        invalid.joints[0].parent = parent;
-        assert!(matches!(
-            RagdollProfile::new(invalid),
-            Err(ProfileError::NotATree)
-        ));
-    }
-    // A missing or repeated joint also breaks it.
-    let mut missing_joint = spec();
-    missing_joint.joints.clear();
-    assert!(matches!(
-        RagdollProfile::new(missing_joint),
-        Err(ProfileError::NotATree)
-    ));
-    let mut repeated_joint = spec();
-    repeated_joint.joints.push(repeated_joint.joints[0]);
-    assert!(matches!(
-        RagdollProfile::new(repeated_joint),
-        Err(ProfileError::NotATree)
-    ));
+fn validation_rejects_broken_trees_and_empty_names() {
+    // Self-parenting, missing and repeated joints all break the tree.
+    let tree_errors = [
+        error_after(|spec| {
+            spec.joints[0].child = 0;
+            spec.joints[0].parent = 0;
+        }),
+        error_after(|spec| spec.joints[0].parent = 1),
+        error_after(|spec| spec.joints.clear()),
+        error_after(|spec| spec.joints.push(spec.joints[0])),
+    ];
+    assert_eq!(vec![Some(ProfileError::NotATree); 4], tree_errors);
     // An empty bone name is rejected as a bad body.
-    let mut empty_name = spec();
-    empty_name.bodies[1].bone.clear();
-    assert!(
-        matches!(RagdollProfile::new(empty_name), Err(ProfileError::BadShape { body }) if body.get() == 1)
+    assert_eq!(
+        error_after(|spec| spec.bodies[1].bone.clear()),
+        Some(ProfileError::BadShape { body: second() })
     );
+}
 
-    // A negated quaternion is the same rotation and must give the same angle.
+/// A rotation whose quaternion is not unit length.
+const NON_UNIT: Quat = Quat::from_xyzw(0.0, 0.0, 0.0, 2.0);
+
+/// Covers the quaternion sign choice in measured joint angles.
+#[test]
+fn a_negated_quaternion_measures_the_same_angle() {
     // The parent stays at identity so the child pose is the joint rotation.
     let profile = profile();
-    let child = BodyIndex::try_from(1).unwrap();
     let angle = 0.3;
     let poses = [
         Isometry3d::IDENTITY,
         Isometry3d::from_rotation(-Quat::from_rotation_x(angle)),
     ];
-    let measured = profile.joint_angles(child, &poses).unwrap();
+    let measured = profile.joint_angles(second(), &poses).unwrap();
     assert!((measured.x - angle).abs() < 1.0e-6);
-    // Too few poses give no angles.
-    assert!(
-        profile
-            .joint_angles(child, &[Isometry3d::IDENTITY])
-            .is_none()
-    );
-    let invalid_child = [
-        Isometry3d::IDENTITY,
-        Isometry3d::from_rotation(Quat::from_xyzw(0.0, 0.0, 0.0, 2.0)),
+}
+
+/// Covers every pose and frame input that leaves joint angles undefined.
+#[test]
+fn joint_angles_need_enough_valid_poses_and_a_valid_frame() {
+    let profile = profile();
+    // Too few poses, or a non-unit child or parent rotation, give no angles.
+    let pose_sets: [&[Isometry3d]; 3] = [
+        &[Isometry3d::IDENTITY],
+        &[Isometry3d::IDENTITY, Isometry3d::from_rotation(NON_UNIT)],
+        &[Isometry3d::from_rotation(NON_UNIT), Isometry3d::IDENTITY],
     ];
-    assert!(profile.joint_angles(child, &invalid_child).is_none());
-    let invalid_parent = [
-        Isometry3d::from_rotation(Quat::from_xyzw(0.0, 0.0, 0.0, 2.0)),
-        Isometry3d::IDENTITY,
-    ];
-    assert!(profile.joint_angles(child, &invalid_parent).is_none());
+    let measured = pose_sets.map(|poses| profile.joint_angles(second(), poses));
+    assert_eq!(measured, [None; 3]);
+    // A non-unit joint frame also leaves the angles undefined.
     let mut invalid_frame = profile;
     let joint = invalid_frame.joints[0];
     invalid_frame.joints[0] = Joint::new(
         joint.child(),
         joint.parent(),
-        Isometry3d::from_rotation(Quat::from_xyzw(0.0, 0.0, 0.0, 2.0)),
+        Isometry3d::from_rotation(NON_UNIT),
         joint.limits(),
         joint.max_torque(),
         joint.basis(),
     );
-    assert!(
-        invalid_frame
-            .joint_angles(child, &[Isometry3d::IDENTITY, Isometry3d::IDENTITY])
-            .is_none()
-    );
+    let identity = [Isometry3d::IDENTITY, Isometry3d::IDENTITY];
+    assert_eq!(invalid_frame.joint_angles(second(), &identity), None);
 }
