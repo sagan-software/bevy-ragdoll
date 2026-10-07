@@ -973,7 +973,8 @@ mod tests {
         );
         assert!(
             app.world()
-                .resource::<bevy::ecs::message::Messages<RagdollImpulse>>()
+                .get_resource::<bevy::ecs::message::Messages<RagdollImpulse>>()
+                .unwrap()
                 .iter_current_update_messages()
                 .next()
                 .is_none()
@@ -1039,7 +1040,8 @@ mod tests {
         );
         assert!(
             app.world()
-                .resource::<bevy::ecs::message::Messages<RagdollImpulse>>()
+                .get_resource::<bevy::ecs::message::Messages<RagdollImpulse>>()
+                .unwrap()
                 .iter_current_update_messages()
                 .next()
                 .is_none()
@@ -1101,7 +1103,8 @@ mod tests {
         );
         assert!(
             app.world()
-                .resource::<bevy::ecs::message::Messages<RagdollImpulse>>()
+                .get_resource::<bevy::ecs::message::Messages<RagdollImpulse>>()
+                .unwrap()
                 .iter_current_update_messages()
                 .next()
                 .is_none()
@@ -1188,7 +1191,8 @@ mod tests {
 
         let outputs = app
             .world()
-            .resource::<bevy::ecs::message::Messages<RagdollImpulse>>()
+            .get_resource::<bevy::ecs::message::Messages<RagdollImpulse>>()
+            .unwrap()
             .iter_current_update_messages()
             .collect::<Vec<_>>();
         assert_eq!(

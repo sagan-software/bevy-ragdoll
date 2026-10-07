@@ -109,7 +109,8 @@ fn spawn_character_with_profile(
 ) -> (Entity, Entity, Entity) {
     let handle = app
         .world_mut()
-        .resource_mut::<Assets<RagdollProfile>>()
+        .get_resource_mut::<Assets<RagdollProfile>>()
+        .unwrap()
         .add(profile);
     let character = app
         .world_mut()
@@ -212,7 +213,8 @@ fn binding_waits_for_skeleton_descendants() {
     let mut app = app();
     let handle = app
         .world_mut()
-        .resource_mut::<Assets<RagdollProfile>>()
+        .get_resource_mut::<Assets<RagdollProfile>>()
+        .unwrap()
         .add(profile());
     let character = app
         .world_mut()
@@ -237,7 +239,10 @@ fn binding_waits_for_skeleton_descendants() {
 fn binding_uses_identity_for_a_bone_without_a_transform() {
     let mut app = app();
     let (character, root, _) = spawn_character(&mut app, RagdollMode::Dynamic);
-    app.world_mut().entity_mut(root).remove::<Transform>();
+    app.world_mut()
+        .get_entity_mut(root)
+        .unwrap()
+        .remove::<Transform>();
 
     app.update();
 
@@ -329,7 +334,8 @@ fn returning_to_animated_despawns_bodies() {
     assert_eq!(body_entities(app.world_mut(), character).len(), 2);
 
     app.world_mut()
-        .entity_mut(character)
+        .get_entity_mut(character)
+        .unwrap()
         .insert(RagdollMode::Animated);
     app.update();
 
@@ -355,7 +361,8 @@ fn bodies_spawn_at_the_target_pose_with_its_velocity() {
         ));
 
     app.world_mut()
-        .entity_mut(character)
+        .get_entity_mut(character)
+        .unwrap()
         .insert(RagdollMode::Dynamic);
     app.update();
 
@@ -460,7 +467,10 @@ fn bones_without_bodies_keep_their_animated_locals() {
             ChildOf(root),
         ))
         .id();
-    app.world_mut().entity_mut(child).insert(ChildOf(spacer));
+    app.world_mut()
+        .get_entity_mut(child)
+        .unwrap()
+        .insert(ChildOf(spacer));
     app.update();
     let animated_local = *app
         .world()
@@ -478,7 +488,8 @@ fn blend_zero_shows_animation_and_one_shows_physics_with_halfway_between() {
         let mut app = app();
         let (character, root, _) = spawn_character(&mut app, RagdollMode::Dynamic);
         app.world_mut()
-            .entity_mut(character)
+            .get_entity_mut(character)
+            .unwrap()
             .insert(RagdollBlend::new(blend));
         app.update();
         let root_body = body_entities(app.world_mut(), character)
@@ -540,7 +551,7 @@ fn budget_freezes_the_oldest_and_triggers_one_event() {
     app.update();
     let evictions = Arc::new(AtomicUsize::new(0));
     let count = Arc::clone(&evictions);
-    app.world_mut().entity_mut(first).observe(
+    app.world_mut().get_entity_mut(first).unwrap().observe(
         move |_event: bevy::ecs::observer::On<'_, '_, RagdollBudgetEvicted>| {
             count.fetch_add(1, Ordering::Relaxed);
         },
@@ -548,7 +559,8 @@ fn budget_freezes_the_oldest_and_triggers_one_event() {
 
     for character in [first, second, third] {
         app.world_mut()
-            .entity_mut(character)
+            .get_entity_mut(character)
+            .unwrap()
             .insert(RagdollMode::Dynamic);
         app.update();
     }
@@ -582,11 +594,12 @@ fn limp_dynamic_ragdolls_settle_once_and_freeze_when_configured() {
         });
         let (character, _, _) = spawn_character(&mut app, RagdollMode::Dynamic);
         app.world_mut()
-            .entity_mut(character)
+            .get_entity_mut(character)
+            .unwrap()
             .insert(RagdollDrive::new(0.0, 0.0));
         let events = Arc::new(AtomicUsize::new(0));
         let event_count = Arc::clone(&events);
-        app.world_mut().entity_mut(character).observe(
+        app.world_mut().get_entity_mut(character).unwrap().observe(
             move |_event: bevy::ecs::observer::On<'_, '_, RagdollSettled>| {
                 event_count.fetch_add(1, Ordering::Relaxed);
             },
@@ -614,7 +627,8 @@ fn settling_resets_its_timer_when_any_body_speeds_up() {
     });
     let (character, _, _) = spawn_character(&mut app, RagdollMode::Dynamic);
     app.world_mut()
-        .entity_mut(character)
+        .get_entity_mut(character)
+        .unwrap()
         .insert(RagdollDrive::new(0.0, 0.0));
     app.update();
     let bodies = body_entities(app.world_mut(), character)
@@ -623,7 +637,7 @@ fn settling_resets_its_timer_when_any_body_speeds_up() {
         .collect::<Vec<_>>();
     let events = Arc::new(AtomicUsize::new(0));
     let event_count = Arc::clone(&events);
-    app.world_mut().entity_mut(character).observe(
+    app.world_mut().get_entity_mut(character).unwrap().observe(
         move |_event: bevy::ecs::observer::On<'_, '_, RagdollSettled>| {
             event_count.fetch_add(1, Ordering::Relaxed);
         },
@@ -682,7 +696,8 @@ fn dynamic_drive_system_writes_pin_force_and_fallback_joint_torque() {
     let mut app = app();
     let (character, root, child) = spawn_character(&mut app, RagdollMode::Dynamic);
     app.world_mut()
-        .entity_mut(character)
+        .get_entity_mut(character)
+        .unwrap()
         .insert((RagdollBlend::new(0.0), RagdollDrive::new(1.0, 1.0)));
     app.update();
     app.world_mut()

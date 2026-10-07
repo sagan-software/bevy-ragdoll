@@ -991,7 +991,8 @@ mod tests {
             vec![BodyVelocity::default()],
         );
         world
-            .entity_mut(character)
+            .get_entity_mut(character)
+            .unwrap()
             .insert((PinSettings::new(1.5, 1.0, 0.0, 400.0, 2.0), targets));
         let body = world.spawn((RagdollBodyOf(character), body_index(0))).id();
 
@@ -1229,7 +1230,8 @@ mod tests {
         let missing_index = world.spawn(RagdollBodyOf(character)).id();
         let missing_target = world.spawn((RagdollBodyOf(character), body_index(0))).id();
         world
-            .entity_mut(character)
+            .get_entity_mut(character)
+            .unwrap()
             .insert(RagdollTargetPose::default());
 
         drive(&mut world);
@@ -1278,7 +1280,7 @@ mod tests {
             .id();
         let mut targets = RagdollTargetPose::default();
         targets.record(vec![Isometry3d::IDENTITY], vec![BodyVelocity::default()]);
-        world.entity_mut(character).insert(targets);
+        world.get_entity_mut(character).unwrap().insert(targets);
 
         drive(&mut world);
 
@@ -1292,7 +1294,8 @@ mod tests {
     fn drive_omits_fallback_torque_for_native_joint_motors() {
         let (mut world, character) = drive_world();
         world
-            .resource_mut::<BackendCapabilities>()
+            .get_resource_mut::<BackendCapabilities>()
+            .unwrap()
             .has_native_joint_motors = true;
         let parent = world.spawn((RagdollBodyOf(character), body_index(0))).id();
         let child = world
@@ -1315,7 +1318,7 @@ mod tests {
             ],
             vec![BodyVelocity::default(); 2],
         );
-        world.entity_mut(character).insert(targets);
+        world.get_entity_mut(character).unwrap().insert(targets);
 
         drive(&mut world);
 

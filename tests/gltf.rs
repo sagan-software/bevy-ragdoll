@@ -31,7 +31,8 @@ fn generated_profile(rig: &str) -> RagdollProfile {
     app.cleanup();
     let scene = app
         .world()
-        .resource::<AssetServer>()
+        .get_resource::<AssetServer>()
+        .unwrap()
         .load(GltfAssetLabel::Scene(0).from_asset(format!("rigs/{rig}.glb")));
     let scene_id = scene.id();
     let character: Entity = app
@@ -53,7 +54,8 @@ fn generated_profile(rig: &str) -> RagdollProfile {
             .and_then(|r| r.profile.clone());
         if let Some(profile) = handle.and_then(|handle| {
             app.world()
-                .resource::<Assets<RagdollProfile>>()
+                .get_resource::<Assets<RagdollProfile>>()
+                .unwrap()
                 .get(&handle)
                 .cloned()
         }) {
@@ -62,7 +64,8 @@ fn generated_profile(rig: &str) -> RagdollProfile {
     }
     let state = app
         .world()
-        .resource::<AssetServer>()
+        .get_resource::<AssetServer>()
+        .unwrap()
         .get_load_state(scene_id);
     let children = app
         .world()

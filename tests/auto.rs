@@ -36,7 +36,8 @@ fn profile(app: &App, character: Entity) -> RagdollProfile {
         .and_then(|ragdoll| ragdoll.profile.clone())
         .expect("the runtime stores the generated profile handle");
     app.world()
-        .resource::<Assets<RagdollProfile>>()
+        .get_resource::<Assets<RagdollProfile>>()
+        .unwrap()
         .get(&handle)
         .expect("the generated profile is stored")
         .clone()
@@ -71,7 +72,8 @@ fn bone_components_and_override_assets_change_the_profile() {
     let mut app = app();
     let overrides = app
         .world_mut()
-        .resource_mut::<Assets<RagdollOverrides>>()
+        .get_resource_mut::<Assets<RagdollOverrides>>()
+        .unwrap()
         .add(RagdollOverrides {
             mass: Some(60.0),
             bones: [(
@@ -141,7 +143,8 @@ fn x_along_bone_rigs_insert_a_joint_basis_on_their_bodies() {
     }
     let character = spawn(&mut app, Ragdoll::default(), &skeleton);
     app.world_mut()
-        .entity_mut(character)
+        .get_entity_mut(character)
+        .unwrap()
         .insert(bevy_ragdoll::runtime::components::RagdollMode::Kinematic);
     app.update();
     app.update();

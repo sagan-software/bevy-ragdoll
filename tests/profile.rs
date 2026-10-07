@@ -461,13 +461,15 @@ fn overrides_asset_loads_through_the_asset_server() {
         .add_plugins(RagdollPlugin::default());
     let handle = app
         .world()
-        .resource::<AssetServer>()
+        .get_resource::<AssetServer>()
+        .unwrap()
         .load::<RagdollOverrides>("fox.ragdoll.ron");
     for _ in 0..10_000 {
         app.update();
         if let Some(overrides) = app
             .world()
-            .resource::<Assets<RagdollOverrides>>()
+            .get_resource::<Assets<RagdollOverrides>>()
+            .unwrap()
             .get(&handle)
         {
             assert_eq!(overrides.mass, Some(12.0));

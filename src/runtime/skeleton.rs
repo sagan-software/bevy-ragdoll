@@ -936,7 +936,7 @@ mod tests {
         world.insert_resource(RagdollIdCounter::default());
 
         assert_eq!(assign_ragdoll_id(&mut world, Entity::PLACEHOLDER), None);
-        assert_eq!(world.resource::<RagdollIdCounter>().next, 1);
+        assert_eq!(world.get_resource::<RagdollIdCounter>().unwrap().next, 1);
     }
 
     /// Budget enforcement does nothing after its resource has been removed.
