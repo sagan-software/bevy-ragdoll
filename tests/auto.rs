@@ -4,14 +4,18 @@ use bevy::asset::{AssetPlugin, Assets};
 use bevy::prelude::{App, Entity, MinimalPlugins, Transform};
 use bevy_ragdoll::runtime::RagdollError;
 use bevy_ragdoll::{
-    BoneBody, BodyRole, Ragdoll, RagdollBone, RagdollOverrides, RagdollPlugin, RagdollProfile,
+    BodyRole, BoneBody, Ragdoll, RagdollBone, RagdollOverrides, RagdollPlugin, RagdollProfile,
     Skeleton,
 };
 
 /// Builds a headless app with the ragdoll runtime and asset storage.
 fn app() -> App {
     let mut app = App::new();
-    app.add_plugins((MinimalPlugins, AssetPlugin::default(), RagdollPlugin::default()));
+    app.add_plugins((
+        MinimalPlugins,
+        AssetPlugin::default(),
+        RagdollPlugin::default(),
+    ));
     app
 }
 
@@ -53,7 +57,13 @@ fn a_character_without_bones_waits() {
     let mut app = app();
     let character = app.world_mut().spawn(Ragdoll::default()).id();
     app.update();
-    assert!(app.world().get::<Ragdoll>(character).unwrap().profile.is_none());
+    assert!(
+        app.world()
+            .get::<Ragdoll>(character)
+            .unwrap()
+            .profile
+            .is_none()
+    );
 }
 
 #[test]
@@ -99,7 +109,13 @@ fn an_unloaded_override_asset_delays_generation() {
     };
     let character = spawn(&mut app, ragdoll, &Skeleton::humanoid());
     app.update();
-    assert!(app.world().get::<Ragdoll>(character).unwrap().profile.is_none());
+    assert!(
+        app.world()
+            .get::<Ragdoll>(character)
+            .unwrap()
+            .profile
+            .is_none()
+    );
 }
 
 #[test]
@@ -123,11 +139,7 @@ fn x_along_bone_rigs_insert_a_joint_basis_on_their_bodies() {
     for bone in &mut skeleton.bones {
         bone.rest.rotation *= quarter;
     }
-    let character = spawn(
-        &mut app,
-        Ragdoll::default(),
-        &skeleton,
-    );
+    let character = spawn(&mut app, Ragdoll::default(), &skeleton);
     app.world_mut()
         .entity_mut(character)
         .insert(bevy_ragdoll::runtime::components::RagdollMode::Kinematic);

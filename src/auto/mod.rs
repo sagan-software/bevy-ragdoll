@@ -17,10 +17,10 @@ mod tests;
 
 use bevy::math::{Isometry3d, Mat3, Quat, Vec3};
 
-pub(crate) use self::scene::skeleton_from_world;
 pub use self::overrides::{BoneBody, RagdollBone, RagdollOverrides};
 #[cfg(feature = "serialize")]
 pub use self::overrides::{RagdollOverridesLoader, RagdollOverridesLoaderError};
+pub(crate) use self::scene::skeleton_from_world;
 
 use crate::profile::{Mass, ProfileError, ProfileSpec, RagdollProfile};
 
@@ -150,12 +150,19 @@ impl Skeleton {
         for bone in &self.bones {
             let parent = bone.parent.filter(|parent| *parent < entities.len());
             let (parent_entity, local) = match parent {
-                Some(parent) => (entities[parent], self.bones[parent].rest.inverse() * bone.rest),
+                Some(parent) => (
+                    entities[parent],
+                    self.bones[parent].rest.inverse() * bone.rest,
+                ),
                 None => (character, bone.rest),
             };
             let transform =
                 Transform::from_translation(local.translation.into()).with_rotation(local.rotation);
-            let mut entity = commands.spawn((Name::new(bone.name.clone()), transform, ChildOf(parent_entity)));
+            let mut entity = commands.spawn((
+                Name::new(bone.name.clone()),
+                transform,
+                ChildOf(parent_entity),
+            ));
             if bone.overrides != RagdollBone::default() {
                 entity.insert(bone.overrides.clone());
             }
@@ -172,7 +179,9 @@ impl Skeleton {
                 let head = self.bones[index].rest.translation;
                 let parent = self.bones[index].parent;
                 let incoming = parent
-                    .and_then(|parent| Vec3::from(head - self.bones[parent].rest.translation).try_normalize())
+                    .and_then(|parent| {
+                        Vec3::from(head - self.bones[parent].rest.translation).try_normalize()
+                    })
                     .unwrap_or(Vec3::ZERO);
                 // Follow the child that best continues the incoming direction.
                 let child = self
@@ -183,13 +192,15 @@ impl Skeleton {
                     // Ties keep the earlier child, so a root follows its first child.
                     .reduce(|best, next| {
                         let score = |v: Vec3| v.normalize_or_zero().dot(incoming);
-                        if score(next) > score(best) { next } else { best }
+                        if score(next) > score(best) {
+                            next
+                        } else {
+                            best
+                        }
                     });
                 let toward = match (child, parent) {
                     (Some(child), _) => child,
-                    (None, Some(parent)) => {
-                        Vec3::from(head - self.bones[parent].rest.translation)
-                    }
+                    (None, Some(parent)) => Vec3::from(head - self.bones[parent].rest.translation),
                     (None, None) => Vec3::Y,
                 };
                 toward.try_normalize().unwrap_or(Vec3::Y)
@@ -198,7 +209,11 @@ impl Skeleton {
         for (bone, direction) in self.bones.iter_mut().zip(directions) {
             // Local Z stays as close to the +Z front as possible; bones that
             // point mostly forward or backward keep local X horizontal instead.
-            let reference = if direction.z.abs() > 0.7 { Vec3::Y } else { Vec3::Z };
+            let reference = if direction.z.abs() > 0.7 {
+                Vec3::Y
+            } else {
+                Vec3::Z
+            };
             let x = direction
                 .cross(reference)
                 .try_normalize()

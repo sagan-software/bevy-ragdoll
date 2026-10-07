@@ -144,8 +144,8 @@ impl<'a> Rig<'a> {
         for (index, bone) in skeleton.bones.iter().enumerate() {
             skipped[index] = bone.overrides.body == BoneBody::Skip
                 || parents[index].is_some_and(|parent| skipped[parent]);
-            named[index] = bone.overrides.body == BoneBody::Body
-                || !has_fragment(&bone.name, HELPER_NAMES);
+            named[index] =
+                bone.overrides.body == BoneBody::Body || !has_fragment(&bone.name, HELPER_NAMES);
             eligible[index] = !skipped[index] && named[index];
         }
         let heads = skeleton
@@ -234,7 +234,9 @@ impl<'a> Rig<'a> {
     /// Returns whether an automatic bone is long enough to carry a body.
     fn keeps(&self, bone: usize, min_length: f32) -> bool {
         let overrides = &self.skeleton.bones[bone].overrides;
-        if overrides.body == BoneBody::Merge || has_fragment(&self.skeleton.bones[bone].name, MERGE_NAMES) {
+        if overrides.body == BoneBody::Merge
+            || has_fragment(&self.skeleton.bones[bone].name, MERGE_NAMES)
+        {
             return false;
         }
         let Some(parent) = self.eligible_parent(bone) else {
@@ -430,9 +432,7 @@ impl<'a> Rig<'a> {
             .max_by(|a, b| a.distance(start).total_cmp(&b.distance(start)))
             .filter(|tip| tip.distance(start) > 0.02 * self.size);
         let end = farthest.unwrap_or_else(|| {
-            let direction = incoming
-                .and_then(Vec3::try_normalize)
-                .unwrap_or(Vec3::Y);
+            let direction = incoming.and_then(Vec3::try_normalize).unwrap_or(Vec3::Y);
             let length = match roles[body] {
                 BodyRole::Head => 0.077 * self.size,
                 BodyRole::Hand => 0.05 * self.size,
@@ -492,8 +492,18 @@ impl<'a> Rig<'a> {
     /// Redistributes automatic masses by the humanoid segment-mass table.
     ///
     /// The total stays the volume-derived total; overridden masses are kept.
-    fn distribute_humanoid_mass(&self, tree: &BodyTree, roles: &[BodyRole], bodies: &mut [BodySpec]) {
-        let explicit = |body: usize| self.skeleton.bones[tree.bones[body]].overrides.mass.is_some();
+    fn distribute_humanoid_mass(
+        &self,
+        tree: &BodyTree,
+        roles: &[BodyRole],
+        bodies: &mut [BodySpec],
+    ) {
+        let explicit = |body: usize| {
+            self.skeleton.bones[tree.bones[body]]
+                .overrides
+                .mass
+                .is_some()
+        };
         let free = (0..bodies.len()).filter(|body| !explicit(*body));
         let (volume, share) = free.fold((0.0, 0.0), |(volume, share), body| {
             (volume + bodies[body].mass, share + mass_share(roles[body]))
@@ -607,10 +617,23 @@ impl<'a> Rig<'a> {
 /// mannequin with bones along local X, get the quarter or half turn that maps
 /// Y onto the signed local axis nearest `along`.
 pub(super) fn twist_basis(along: Vec3) -> Quat {
-    let axes = [Vec3::Y, Vec3::X, Vec3::Z, Vec3::NEG_X, Vec3::NEG_Y, Vec3::NEG_Z];
+    let axes = [
+        Vec3::Y,
+        Vec3::X,
+        Vec3::Z,
+        Vec3::NEG_X,
+        Vec3::NEG_Y,
+        Vec3::NEG_Z,
+    ];
     let nearest = axes
         .into_iter()
-        .reduce(|best, next| if next.dot(along) > best.dot(along) { next } else { best })
+        .reduce(|best, next| {
+            if next.dot(along) > best.dot(along) {
+                next
+            } else {
+                best
+            }
+        })
         .unwrap_or(Vec3::Y);
     if nearest == Vec3::Y {
         Quat::IDENTITY

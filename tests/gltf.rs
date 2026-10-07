@@ -36,14 +36,21 @@ fn generated_profile(rig: &str) -> RagdollProfile {
     let scene_id = scene.id();
     let character: Entity = app
         .world_mut()
-        .spawn((WorldAssetRoot(scene), Ragdoll::default(), Transform::IDENTITY))
+        .spawn((
+            WorldAssetRoot(scene),
+            Ragdoll::default(),
+            Transform::IDENTITY,
+        ))
         .id();
     // Asset loading runs on other threads, so poll against a wall-clock deadline.
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
     while std::time::Instant::now() < deadline {
         app.update();
         assert!(app.world().get::<RagdollError>(character).is_none());
-        let handle = app.world().get::<Ragdoll>(character).and_then(|r| r.profile.clone());
+        let handle = app
+            .world()
+            .get::<Ragdoll>(character)
+            .and_then(|r| r.profile.clone());
         if let Some(profile) = handle.and_then(|handle| {
             app.world()
                 .resource::<Assets<RagdollProfile>>()
@@ -53,14 +60,24 @@ fn generated_profile(rig: &str) -> RagdollProfile {
             return profile;
         }
     }
-    let state = app.world().resource::<AssetServer>().get_load_state(scene_id);
-    let children = app.world().get::<bevy::prelude::Children>(character).map(|c| c.len());
+    let state = app
+        .world()
+        .resource::<AssetServer>()
+        .get_load_state(scene_id);
+    let children = app
+        .world()
+        .get::<bevy::prelude::Children>(character)
+        .map(|c| c.len());
     panic!("{rig}.glb did not produce a profile: {state:?} children {children:?}");
 }
 
 /// Counts the bodies with `role`.
 fn count(profile: &RagdollProfile, role: BodyRole) -> usize {
-    profile.bodies().iter().filter(|body| body.role() == role).count()
+    profile
+        .bodies()
+        .iter()
+        .filter(|body| body.role() == role)
+        .count()
 }
 
 #[test]

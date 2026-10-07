@@ -61,7 +61,9 @@ fn setup(
     ));
     for (index, rig) in ["humanoid", "quadruped", "alien"].into_iter().enumerate() {
         commands.spawn((
-            WorldAssetRoot(assets.load(GltfAssetLabel::Scene(0).from_asset(format!("rigs/{rig}.glb")))),
+            WorldAssetRoot(
+                assets.load(GltfAssetLabel::Scene(0).from_asset(format!("rigs/{rig}.glb"))),
+            ),
             Ragdoll::default(),
             RagdollMode::Kinematic,
             Transform::from_xyz(index as f32 * 2.0 - 2.0, 0.05, 0.0),

@@ -90,9 +90,17 @@ fn alien() -> Skeleton {
         let angle = index as f32 / count * std::f32::consts::TAU;
         let out = Vec3::new(angle.cos(), 0.0, angle.sin());
         let points = if index < 7 {
-            [out * 0.15 + Vec3::Y * base_y, out * 0.45 + Vec3::Y * 1.0, out * 0.75 + Vec3::Y * 0.02]
+            [
+                out * 0.15 + Vec3::Y * base_y,
+                out * 0.45 + Vec3::Y * 1.0,
+                out * 0.75 + Vec3::Y * 0.02,
+            ]
         } else {
-            [out * 0.15 + Vec3::Y * base_y, out * 0.35 + Vec3::Y * 1.35, out * 0.5 + Vec3::Y * 1.6]
+            [
+                out * 0.15 + Vec3::Y * base_y,
+                out * 0.35 + Vec3::Y * 1.35,
+                out * 0.5 + Vec3::Y * 1.6,
+            ]
         };
         bones.push((&chain[0], Some(parent), points[0]));
         bones.push((&chain[1], Some(&chain[0]), points[1]));
@@ -104,18 +112,38 @@ fn alien() -> Skeleton {
 #[test]
 fn reference_humanoid_gets_sixteen_named_bodies() {
     let profile = generate(&Skeleton::humanoid());
-    let bones = profile.bodies().iter().map(|body| body.bone()).collect::<Vec<_>>();
+    let bones = profile
+        .bodies()
+        .iter()
+        .map(|body| body.bone())
+        .collect::<Vec<_>>();
     assert_eq!(
         bones,
         [
-            "pelvis", "spine_01", "spine_02", "upperarm_l", "lowerarm_l", "hand_l", "upperarm_r",
-            "lowerarm_r", "hand_r", "head", "thigh_l", "calf_l", "foot_l", "thigh_r", "calf_r",
+            "pelvis",
+            "spine_01",
+            "spine_02",
+            "upperarm_l",
+            "lowerarm_l",
+            "hand_l",
+            "upperarm_r",
+            "lowerarm_r",
+            "hand_r",
+            "head",
+            "thigh_l",
+            "calf_l",
+            "foot_l",
+            "thigh_r",
+            "calf_r",
             "foot_r",
         ]
     );
     assert!((profile.total_mass().kilograms() - 80.02).abs() < 1.0e-3);
     assert_eq!(count(&profile, BodyRole::Calf), 2);
-    assert_eq!(profile.body_with_role(BodyRole::Chest), profile.body_index("spine_02"));
+    assert_eq!(
+        profile.body_with_role(BodyRole::Chest),
+        profile.body_index("spine_02")
+    );
 }
 
 #[test]
@@ -152,7 +180,11 @@ fn humanoid_mass_follows_the_segment_table() {
         mass: None,
         ..Skeleton::humanoid()
     });
-    let mass = |bone: &str| profile.bodies()[profile.body_index(bone).unwrap().get()].mass().kilograms();
+    let mass = |bone: &str| {
+        profile.bodies()[profile.body_index(bone).unwrap().get()]
+            .mass()
+            .kilograms()
+    };
     assert!((mass("thigh_l") / mass("calf_l") - 11.33 / 3.46).abs() < 1.0e-4);
 }
 
@@ -169,19 +201,37 @@ fn unnormalized_mass_comes_from_capsule_volume() {
 
 #[test]
 fn names_normalize_across_conventions() {
-    assert_eq!(normalize("mixamorig:LeftForeArm"), ("forearm".into(), Some(Side::Left)));
-    assert_eq!(normalize("mixamorig1_RightUpLeg"), ("upleg".into(), Some(Side::Right)));
-    assert_eq!(normalize("DEF-upper_arm.L.001"), ("upperarm".into(), Some(Side::Left)));
-    assert_eq!(normalize("Armature|thigh_r"), ("thigh".into(), Some(Side::Right)));
+    assert_eq!(
+        normalize("mixamorig:LeftForeArm"),
+        ("forearm".into(), Some(Side::Left))
+    );
+    assert_eq!(
+        normalize("mixamorig1_RightUpLeg"),
+        ("upleg".into(), Some(Side::Right))
+    );
+    assert_eq!(
+        normalize("DEF-upper_arm.L.001"),
+        ("upperarm".into(), Some(Side::Left))
+    );
+    assert_eq!(
+        normalize("Armature|thigh_r"),
+        ("thigh".into(), Some(Side::Right))
+    );
     assert_eq!(normalize("l_hand"), ("hand".into(), Some(Side::Left)));
-    assert_eq!(normalize("leftUpperArm"), ("upperarm".into(), Some(Side::Left)));
+    assert_eq!(
+        normalize("leftUpperArm"),
+        ("upperarm".into(), Some(Side::Left))
+    );
     assert_eq!(normalize("spine_01"), ("spine".into(), None));
     assert_eq!(normalize("l"), ("l".into(), None));
 }
 
 #[test]
 fn mixamo_leg_is_the_lower_leg_and_unsided_limbs_do_not_match() {
-    assert_eq!(role_of("mixamorig:LeftLeg"), Some((BodyRole::Calf, Some(Side::Left))));
+    assert_eq!(
+        role_of("mixamorig:LeftLeg"),
+        Some((BodyRole::Calf, Some(Side::Left)))
+    );
     assert_eq!(role_of("mixamorig:Hips"), Some((BodyRole::Pelvis, None)));
     assert_eq!(role_of("leg"), None);
     assert_eq!(role_of("HeadTop_End"), None);
@@ -254,7 +304,10 @@ fn a_missing_limb_falls_back_to_topology() {
     let skeleton = renamed(|name| name.replace("hand_r", "paw"));
     let profile = generate(&skeleton);
     assert_eq!(profile.bodies()[0].role(), BodyRole::Pelvis);
-    assert!(profile.body_index("clavicle_l").is_some(), "topology keeps clavicles");
+    assert!(
+        profile.body_index("clavicle_l").is_some(),
+        "topology keeps clavicles"
+    );
     assert_eq!(count(&profile, BodyRole::Thigh), 2);
     assert_eq!(count(&profile, BodyRole::UpperArm), 2);
     assert_eq!(count(&profile, BodyRole::Head), 1);
@@ -269,7 +322,10 @@ fn quadruped_gets_four_legs_a_head_and_a_tail() {
     assert_eq!(count(&profile, BodyRole::Tail), 3);
     assert_eq!(count(&profile, BodyRole::Neck), 1);
     assert_eq!(count(&profile, BodyRole::Head), 1);
-    assert_eq!(profile.bodies()[profile.body_index("chest").unwrap().get()].role(), BodyRole::Chest);
+    assert_eq!(
+        profile.bodies()[profile.body_index("chest").unwrap().get()].role(),
+        BodyRole::Chest
+    );
 }
 
 #[test]
@@ -286,10 +342,16 @@ fn alien_gets_seven_legs_three_arms_and_a_head() {
 #[test]
 fn a_creature_of_only_legs_has_no_spine() {
     let mut bones = vec![("body", None, Vec3::new(0.0, 0.5, 0.0))];
-    let names = (0..4).map(|i| [format!("a{i}"), format!("b{i}")]).collect::<Vec<_>>();
+    let names = (0..4)
+        .map(|i| [format!("a{i}"), format!("b{i}")])
+        .collect::<Vec<_>>();
     for (i, [a, b]) in names.iter().enumerate() {
         let out = Vec3::new((i as f32).cos(), 0.0, (i as f32).sin());
-        bones.push((a.as_str(), Some("body"), Vec3::new(0.0, 0.5, 0.0) + out * 0.2));
+        bones.push((
+            a.as_str(),
+            Some("body"),
+            Vec3::new(0.0, 0.5, 0.0) + out * 0.2,
+        ));
         bones.push((b.as_str(), Some(a.as_str()), out * 0.6));
     }
     let profile = generate(&Skeleton::from_positions(bones));
@@ -319,11 +381,19 @@ fn helper_and_twist_bones_get_no_body() {
                 let parent = bone
                     .parent
                     .map_or("root", |parent| skeleton.bones[parent].name.as_str());
-                (bone.name.as_str(), Some(parent), Vec3::from(bone.rest.translation))
+                (
+                    bone.name.as_str(),
+                    Some(parent),
+                    Vec3::from(bone.rest.translation),
+                )
             }))
             .chain([
                 ("ik_foot_l", Some("root"), Vec3::new(0.1, 0.08, 0.0)),
-                ("upperarm_twist_01_l", Some("upperarm_l"), Vec3::new(0.3, 1.45, 0.0)),
+                (
+                    "upperarm_twist_01_l",
+                    Some("upperarm_l"),
+                    Vec3::new(0.3, 1.45, 0.0),
+                ),
                 ("HeadTop_End", Some("head"), Vec3::new(0.0, 1.8, 0.0)),
             ]),
     )
@@ -348,7 +418,11 @@ fn topology_merges_short_bones_into_their_parent() {
         ("tip", Some("finger"), Vec3::new(0.0, -0.01, 0.0)),
     ]);
     let profile = generate(&skeleton);
-    let bones = profile.bodies().iter().map(|body| body.bone()).collect::<Vec<_>>();
+    let bones = profile
+        .bodies()
+        .iter()
+        .map(|body| body.bone())
+        .collect::<Vec<_>>();
     assert_eq!(bones, ["a", "b"]);
     // The leaf body reaches its farthest merged bone.
     let ShapeSpec::Capsule { b, radius, .. } = profile.bodies()[1].shape() else {
@@ -377,7 +451,11 @@ fn extra_roots_keep_only_the_largest_tree() {
         ("lone", None, Vec3::new(3.0, 1.0, 0.0)),
     ]);
     let profile = generate(&skeleton);
-    let bones = profile.bodies().iter().map(|body| body.bone()).collect::<Vec<_>>();
+    let bones = profile
+        .bodies()
+        .iter()
+        .map(|body| body.bone())
+        .collect::<Vec<_>>();
     assert_eq!(bones, ["hips", "chest"]);
 }
 
@@ -389,7 +467,10 @@ fn an_empty_or_skipped_skeleton_is_rejected() {
     );
     let mut skeleton = quadruped();
     skeleton.bones[0].overrides.body = BoneBody::Skip;
-    assert_eq!(RagdollProfile::from_skeleton(&skeleton), Err(ProfileError::Empty));
+    assert_eq!(
+        RagdollProfile::from_skeleton(&skeleton),
+        Err(ProfileError::Empty)
+    );
 }
 
 #[test]
@@ -401,12 +482,32 @@ fn overrides_change_bodies_and_values() {
         skeleton.bones[index].overrides = bone;
     };
     let limits = JointLimits {
-        x: AngleRange { min: -0.1, max: 0.1 },
+        x: AngleRange {
+            min: -0.1,
+            max: 0.1,
+        },
         twist: AngleRange { min: 0.0, max: 0.0 },
-        z: AngleRange { min: -0.2, max: 0.2 },
+        z: AngleRange {
+            min: -0.2,
+            max: 0.2,
+        },
     };
-    set(&mut skeleton, "hand_l", RagdollBone { body: BoneBody::Skip, ..default() });
-    set(&mut skeleton, "neck_01", RagdollBone { body: BoneBody::Body, ..default() });
+    set(
+        &mut skeleton,
+        "hand_l",
+        RagdollBone {
+            body: BoneBody::Skip,
+            ..default()
+        },
+    );
+    set(
+        &mut skeleton,
+        "neck_01",
+        RagdollBone {
+            body: BoneBody::Body,
+            ..default()
+        },
+    );
     set(
         &mut skeleton,
         "head",
@@ -482,8 +583,14 @@ fn from_positions_points_bones_at_their_first_child() {
     ]);
     let along = |index: usize| skeleton.bones[index].rest.rotation * Vec3::Y;
     assert!(along(0).distance(Vec3::X) < 1.0e-5);
-    assert!(along(1).distance(Vec3::X) < 1.0e-5, "a leaf follows its parent link");
-    assert!(along(2).distance(Vec3::Y) < 1.0e-5, "an unknown parent makes a root");
+    assert!(
+        along(1).distance(Vec3::X) < 1.0e-5,
+        "a leaf follows its parent link"
+    );
+    assert!(
+        along(2).distance(Vec3::Y) < 1.0e-5,
+        "an unknown parent makes a root"
+    );
     assert_eq!(skeleton.bones[2].parent, None);
 }
 
@@ -519,13 +626,20 @@ fn x_along_bone_rigs_get_the_same_limits_through_a_basis() {
         assert_eq!(y_joint.basis(), bevy::math::Quat::IDENTITY);
         assert!(x_joint.basis().angle_between(bevy::math::Quat::IDENTITY) > 1.0);
         let (y_limits, x_limits) = (y_joint.limits(), x_joint.limits());
-        for (a, b) in [(y_limits.x, x_limits.x), (y_limits.twist, x_limits.twist), (y_limits.z, x_limits.z)] {
+        for (a, b) in [
+            (y_limits.x, x_limits.x),
+            (y_limits.twist, x_limits.twist),
+            (y_limits.z, x_limits.z),
+        ] {
             assert!((a.min - b.min).abs() < 1.0e-4 && (a.max - b.max).abs() < 1.0e-4);
         }
         let child = y_joint.child();
         let y_angles = y_profile.joint_angles(child, &y_poses).unwrap();
         let x_angles = x_profile.joint_angles(child, &x_poses).unwrap();
-        assert!(y_angles.distance(x_angles) < 1.0e-4, "{y_angles} != {x_angles}");
+        assert!(
+            y_angles.distance(x_angles) < 1.0e-4,
+            "{y_angles} != {x_angles}"
+        );
     }
 }
 
