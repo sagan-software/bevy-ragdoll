@@ -238,7 +238,7 @@ single_use_lifetimes = "warn"
 tail_expr_drop_order = "warn"
 trivial_casts = "warn"
 trivial_numeric_casts = "warn"
-unexpected_cfgs = { level = "warn", check-cfg = ["cfg(coverage)"] }
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(coverage)", "cfg(dylint_lib, values(any()))"] }
 unit_bindings = "warn"
 unknown_lints = "deny"
 unnameable_types = "warn"
