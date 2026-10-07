@@ -290,7 +290,7 @@ impl Param {
             Self::Muscle => params.muscle = 0.1f32.mul_add(sign, params.muscle).clamp(0.0, 1.0),
             Self::Gravity => params.gravity = (params.gravity + sign).clamp(0.0, 30.0),
             Self::TimeScale => {
-                params.time_scale = 0.1f32.mul_add(sign, params.time_scale).clamp(0.1, 2.0)
+                params.time_scale = 0.1f32.mul_add(sign, params.time_scale).clamp(0.1, 2.0);
             }
             Self::Hit => {
                 let len = HIT_PROFILES.len();
