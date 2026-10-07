@@ -229,6 +229,11 @@ deny = [
 
 # Certain crates/versions that will be skipped when doing duplicate detection.
 skip = [
+    { crate = "itertools@0.10.5", reason = "avian3d 0.7.0 requires this through obvhs, rdst and criterion 0.5.1." },
+    { crate = "itertools@0.13.0", reason = "criterion 0.8.2, a benchmark dev-dependency, requires this." },
+    { crate = "itertools@0.14.0", reason = "Bevy 0.19.1 requires this through bevy_math, bevy_gltf and bevy_render." },
+    { crate = "parry3d@0.27.0", reason = "avian3d 0.7.0 requires parry3d 0.27 while Rapier 0.35 requires parry3d 0.30." },
+    { crate = "rstar@0.12.2", reason = "parry3d 0.27.0, required by avian3d 0.7.0, requires rstar 0.12 while parry3d 0.30 requires 0.13." },
     { crate = "foldhash@0.1.5", reason = "Bevy 0.19.1 requires this through petgraph and also uses foldhash 0.2.0." },
     { crate = "heapless@0.8.0", reason = "Rapier 0.35 requires heapless 0.8.0 through rstar while Bevy 0.19.1 requires 0.9.3." },
     { crate = "heapless@0.9.3", reason = "Bevy 0.19.1 requires heapless 0.9.3 through bevy_tasks while Rapier 0.35 requires 0.8.0." },
