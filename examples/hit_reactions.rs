@@ -27,9 +27,7 @@ use bevy_ragdoll::runtime::messages::{
 };
 use bevy_ragdoll::runtime::pin::PinTargets;
 use bevy_ragdoll::runtime::sets::RagdollSystems;
-use bevy_ragdoll::{RagdollDebugPlugin, 
-    Body, BodyIndex, BodyRole, RagdollPlugin, RagdollProfile,
-};
+use bevy_ragdoll::{Body, BodyIndex, BodyRole, RagdollDebugPlugin, RagdollPlugin, RagdollProfile};
 use bevy_ragdoll_rapier3d::{RapierRagdollHooks, RapierRagdollPlugin};
 use bevy_rapier3d::plugin::{RapierPhysicsPlugin, TimestepMode};
 use bevy_rapier3d::prelude::{Collider, RigidBody};
@@ -189,9 +187,11 @@ fn ragdoll_controls(profile: &RagdollProfile) -> (RagdollBodyWeights, PinTargets
     let bodies = profile.bodies();
     let weights = RagdollBodyWeights::new(vec![BodyWeights::new(1.0, 1.0); bodies.len()]);
     let pins = PinTargets::only(
-        (0..bodies.len())
-            .filter(|&position| is_core(&bodies[position]))
-            .map(body_index),
+        bodies
+            .iter()
+            .enumerate()
+            .filter(|(_, body)| is_core(body))
+            .map(|(position, _)| body_index(position)),
     );
     (weights, pins)
 }
@@ -318,9 +318,12 @@ fn spawn_ragdoll(
 }
 
 /// Sways each bone before the runtime captures its world pose as a drive target.
-fn animate_idle_targets(time: Res<'_, Time>, mut bones: Query<'_, '_, (&IdleTarget, &mut Transform)>) {
+fn animate_idle_targets(
+    time: Res<'_, Time>,
+    mut bones: Query<'_, '_, (&IdleTarget, &mut Transform)>,
+) {
     for (bone, mut transform) in &mut bones {
-        let phase = (bone.index % 9) as f32 * 0.47;
+        let phase = f32::from(u8::try_from(bone.index % 9).unwrap_or_default()) * 0.47;
         let amplitude = match bone.role {
             BodyRole::Pelvis | BodyRole::Thigh | BodyRole::Calf | BodyRole::Foot => 0.018,
             BodyRole::Spine | BodyRole::Chest => 0.035,
@@ -604,7 +607,8 @@ mod tests {
 
     /// Generates the reference humanoid profile.
     fn profile() -> RagdollProfile {
-        RagdollProfile::from_skeleton(&bevy_ragdoll::Skeleton::humanoid()).expect("profile validates")
+        RagdollProfile::from_skeleton(&bevy_ragdoll::Skeleton::humanoid())
+            .expect("profile validates")
     }
 
     /// Every body starts at full strength, and the pelvis and chest are pinned.
@@ -620,7 +624,9 @@ mod tests {
         let pelvis = bodies
             .iter()
             .position(|body| body.role() == BodyRole::Pelvis);
-        let spine = bodies.iter().position(|body| body.role() == BodyRole::Chest);
+        let spine = bodies
+            .iter()
+            .position(|body| body.role() == BodyRole::Chest);
         for position in [pelvis, spine] {
             assert!(pins.is_targeted(body_index(position.expect("the humanoid has the body"))));
         }

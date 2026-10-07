@@ -15,7 +15,11 @@ use bevy_rapier3d::prelude::{Collider, RigidBody};
 /// Runs the example.
 fn main() {
     App::new()
-        .add_plugins(DefaultPlugins)
+        // Web servers answer 404 for the `.meta` files Bevy probes by default; the rigs have none.
+        .add_plugins(DefaultPlugins.set(AssetPlugin {
+            meta_check: bevy::asset::AssetMetaCheck::Never,
+            ..default()
+        }))
         // The ragdoll runtime and Rapier both step in `FixedUpdate` at 60 Hz.
         .insert_resource(Time::<Fixed>::from_hz(60.0))
         .insert_resource(TimestepMode::Fixed {
@@ -59,14 +63,14 @@ fn setup(
         },
         Transform::from_xyz(-4.0, 7.0, 5.0).looking_at(Vec3::ZERO, Vec3::Y),
     ));
-    for (index, rig) in ["humanoid", "quadruped", "alien"].into_iter().enumerate() {
+    for (x, rig) in [(-2.0, "humanoid"), (0.0, "quadruped"), (2.0, "alien")] {
         commands.spawn((
             WorldAssetRoot(
                 assets.load(GltfAssetLabel::Scene(0).from_asset(format!("rigs/{rig}.glb"))),
             ),
             Ragdoll::default(),
             RagdollMode::Kinematic,
-            Transform::from_xyz((index as f32).mul_add(2.0, -2.0), 0.05, 0.0),
+            Transform::from_xyz(x, 0.05, 0.0),
         ));
     }
 }

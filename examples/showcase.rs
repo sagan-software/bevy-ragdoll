@@ -28,8 +28,7 @@ use bevy_ragdoll::runtime::body::{BodyMass, BodyPhysicsPose, BodyShape, BodyVelo
 use bevy_ragdoll::runtime::components::{RagdollBodyOf, RagdollDrive, RagdollMode};
 use bevy_ragdoll::runtime::hit::{HitProfile, HitSettings};
 use bevy_ragdoll::runtime::messages::{
-    HitKind, RagdollHit, RagdollImpulse, RagdollRaycast, RagdollRaycastResponse,
-    RagdollRequestId,
+    HitKind, RagdollHit, RagdollImpulse, RagdollRaycast, RagdollRaycastResponse, RagdollRequestId,
 };
 use bevy_ragdoll::runtime::sets::{RagdollFixedSystems, RagdollSystems};
 use bevy_ragdoll::runtime::settings::RagdollPhysicsSettings;
@@ -141,7 +140,8 @@ impl Backend {
                     substeps: 1,
                 })
                 .add_plugins((
-                    RapierPhysicsPlugin::<RapierRagdollHooks<'_, '_>>::default().in_fixed_schedule(),
+                    RapierPhysicsPlugin::<RapierRagdollHooks<'_, '_>>::default()
+                        .in_fixed_schedule(),
                     RapierRagdollPlugin,
                 ));
             }
@@ -149,7 +149,8 @@ impl Backend {
                 use avian3d::prelude::PhysicsPlugins;
                 use bevy_ragdoll_avian3d::{AvianRagdollHooks, AvianRagdollPlugin};
                 app.add_plugins((
-                    PhysicsPlugins::new(FixedUpdate).with_collision_hooks::<AvianRagdollHooks<'_, '_>>(),
+                    PhysicsPlugins::new(FixedUpdate)
+                        .with_collision_hooks::<AvianRagdollHooks<'_, '_>>(),
                     AvianRagdollPlugin,
                 ));
             }
@@ -228,7 +229,10 @@ impl Default for Params {
 impl Params {
     /// Returns the hit preset a click applies.
     fn hit_profile(&self) -> HitProfile {
-        HIT_PROFILES.get(self.hit).copied().unwrap_or(HitProfile::Shotgun)
+        HIT_PROFILES
+            .get(self.hit)
+            .copied()
+            .unwrap_or(HitProfile::Shotgun)
     }
 }
 
@@ -285,7 +289,9 @@ impl Param {
             }
             Self::Muscle => params.muscle = 0.1f32.mul_add(sign, params.muscle).clamp(0.0, 1.0),
             Self::Gravity => params.gravity = (params.gravity + sign).clamp(0.0, 30.0),
-            Self::TimeScale => params.time_scale = 0.1f32.mul_add(sign, params.time_scale).clamp(0.1, 2.0),
+            Self::TimeScale => {
+                params.time_scale = 0.1f32.mul_add(sign, params.time_scale).clamp(0.1, 2.0)
+            }
             Self::Hit => {
                 let len = HIT_PROFILES.len();
                 params.hit = (params.hit + if sign > 0.0 { 1 } else { len - 1 }) % len;
@@ -429,7 +435,10 @@ fn main() {
         }),
         ..default()
     }))
-    .add_plugins((RagdollPlugin::default(), FrameTimeDiagnosticsPlugin::default()))
+    .add_plugins((
+        RagdollPlugin::default(),
+        FrameTimeDiagnosticsPlugin::default(),
+    ))
     .insert_resource(Time::<Fixed>::from_hz(60.0))
     .insert_resource(ClearColor(Color::srgb(0.06, 0.07, 0.09)))
     .insert_resource(GlobalAmbientLight {
@@ -483,9 +492,8 @@ fn main() {
 
 /// Builds the humanoid skeleton and starts loading the glTF creatures.
 fn load_rigs(mut commands: Commands<'_, '_>, assets: Res<'_, AssetServer>) {
-    let creature = |name: &str| {
-        assets.load(GltfAssetLabel::Scene(0).from_asset(format!("rigs/{name}.glb")))
-    };
+    let creature =
+        |name: &str| assets.load(GltfAssetLabel::Scene(0).from_asset(format!("rigs/{name}.glb")));
     commands.insert_resource(Rigs {
         humanoid: Skeleton::humanoid(),
         creatures: [creature("quadruped"), creature("alien")],
@@ -546,7 +554,10 @@ fn setup_scene(
         ..default()
     });
     let obstacles = [
-        (Vec3::new(1.0, 0.5, 1.0), Transform::from_xyz(-5.0, 0.5, -3.0)),
+        (
+            Vec3::new(1.0, 0.5, 1.0),
+            Transform::from_xyz(-5.0, 0.5, -3.0),
+        ),
         (Vec3::new(0.6, 1.0, 0.6), Transform::from_xyz(4.0, 1.0, 4.0)),
         (
             Vec3::new(3.0, 0.15, 1.5),
@@ -576,11 +587,11 @@ fn checker_image() -> Image {
             data.extend_from_slice(&[value, value + 4, value + 10, 255]);
         }
     }
-    let side = u32::try_from(size).expect("the checker fits in u32");
+    let edge_px = u32::try_from(size).expect("the checker fits in u32");
     Image::new(
         Extent3d {
-            width: side,
-            height: side,
+            width: edge_px,
+            height: edge_px,
             depth_or_array_layers: 1,
         },
         TextureDimension::D2,
@@ -591,7 +602,10 @@ fn checker_image() -> Image {
 }
 
 /// Creates the shared character and hit-flash materials.
-fn setup_assets(mut assets: ResMut<'_, BodyAssets>, mut materials: ResMut<'_, Assets<StandardMaterial>>) {
+fn setup_assets(
+    mut assets: ResMut<'_, BodyAssets>,
+    mut materials: ResMut<'_, Assets<StandardMaterial>>,
+) {
     assets.materials = PALETTE
         .iter()
         .map(|&color| {
@@ -671,14 +685,11 @@ fn spawn_character(
         .creatures
         .then(|| rigs.creatures.get((index % 5).checked_sub(3)?))
         .flatten();
-    match creature {
-        Some(scene) => {
-            character.insert(WorldAssetRoot(scene.clone()));
-        }
-        None => {
-            let character = character.id();
-            rigs.humanoid.spawn(commands, character);
-        }
+    if let Some(scene) = creature {
+        character.insert(WorldAssetRoot(scene.clone()));
+    } else {
+        let character = character.id();
+        rigs.humanoid.spawn(commands, character);
     }
 }
 
@@ -696,7 +707,9 @@ fn restore_rest_pose(
 ) {
     // Named children are skeleton bones, from code or from a glTF scene; remember their spawn pose.
     for (entity, transform) in &new_bones {
-        commands.entity(entity).insert(RestRotation(transform.rotation));
+        commands
+            .entity(entity)
+            .insert(RestRotation(transform.rotation));
     }
     for (rest, mut transform) in &mut bones {
         transform.rotation = rest.0;
@@ -721,7 +734,13 @@ fn add_body_meshes(
             })
             .clone();
         let color = characters.get(owner.0).map_or(0, |character| character.0);
-        let material = assets.materials.iter().cycle().nth(color).cloned().unwrap_or_default();
+        let material = assets
+            .materials
+            .iter()
+            .cycle()
+            .nth(color)
+            .cloned()
+            .unwrap_or_default();
         commands.entity(entity).insert(Visibility::Inherited);
         commands.spawn((
             Mesh3d(mesh),
@@ -733,7 +752,11 @@ fn add_body_meshes(
 }
 
 /// Spawns the control panel: metrics, parameter steppers, backend choice, and actions.
-fn spawn_panel(mut commands: Commands<'_, '_>, backend: Res<'_, ActiveBackend>, params: Res<'_, Params>) {
+fn spawn_panel(
+    mut commands: Commands<'_, '_>,
+    backend: Res<'_, ActiveBackend>,
+    params: Res<'_, Params>,
+) {
     let panel = commands
         .spawn((
             Node {
@@ -791,7 +814,13 @@ fn spawn_panel(mut commands: Commands<'_, '_>, backend: Res<'_, ActiveBackend>, 
     ));
     for option in Backend::ALL {
         let selected = option == backend.0;
-        button(&mut commands, row, option.name(), Action::UseBackend(option), selected);
+        button(
+            &mut commands,
+            row,
+            option.name(),
+            Action::UseBackend(option),
+            selected,
+        );
     }
     let row = commands.spawn((row_node(), ChildOf(panel))).id();
     button(&mut commands, row, "Explode", Action::Explode, false);
@@ -834,7 +863,13 @@ fn text(value: &str, size: f32, color: Color) -> impl Bundle {
 }
 
 /// Spawns a labelled button in `row` that performs `action` when pressed.
-fn button(commands: &mut Commands<'_, '_>, row: Entity, label: &str, action: Action, selected: bool) {
+fn button(
+    commands: &mut Commands<'_, '_>,
+    row: Entity,
+    label: &str,
+    action: Action,
+    selected: bool,
+) {
     let background = if selected {
         ACCENT.with_alpha(0.35)
     } else {
@@ -1009,7 +1044,10 @@ fn read_pick(
         let camera = camera.translation();
         pointer.target = Some(Target {
             body,
-            local_point: body_transform.affine().inverse().transform_point3(hit.point),
+            local_point: body_transform
+                .affine()
+                .inverse()
+                .transform_point3(hit.point),
             depth: camera.distance(hit.point),
             direction: (hit.point - camera).normalize_or(Vec3::NEG_Z),
             goal: hit.point,

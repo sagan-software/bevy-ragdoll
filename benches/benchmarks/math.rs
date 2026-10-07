@@ -33,10 +33,10 @@ fn math_benchmarks(criterion: &mut Criterion) {
 
     for evaluation_count in [1, 16, 1024] {
         let angle_children = (0..evaluation_count)
-            .map(|_| {
+            .filter_map(|_| {
                 let offset =
                     usize::try_from(random.next_u32()).unwrap_or_default() % joint_children.len();
-                joint_children[offset]
+                joint_children.get(offset).copied()
             })
             .collect::<Vec<_>>();
         let inputs = (0..evaluation_count)
@@ -149,6 +149,10 @@ fn first_body_per_character(world: &mut World) -> Vec<Entity> {
 }
 
 /// Derives one deterministic angle in the inclusive half-radian range.
+#[expect(
+    clippy::cast_precision_loss,
+    reason = "a 24-bit integer converts to f32 exactly"
+)]
 fn next_angle(random: &mut ChaCha8Rng) -> f32 {
     let bits = random.next_u32() >> 8;
     let unit = bits as f32 / 16_777_215.0;

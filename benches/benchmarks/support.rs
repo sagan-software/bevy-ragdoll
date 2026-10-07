@@ -183,6 +183,10 @@ pub(crate) fn chain_profile(body_count: usize, seed: u64) -> RagdollProfile {
 /// let spec = chain_spec(8, 42);
 /// assert_eq!(spec.bodies.len(), 8);
 /// ```
+#[expect(
+    clippy::cast_precision_loss,
+    reason = "bench body and character counts stay far below 2^24"
+)]
 pub(crate) fn chain_spec(body_count: usize, seed: u64) -> ProfileSpec {
     // Seed one generator so equal arguments produce equal geometry in each benchmark process.
     let mut random = ChaCha8Rng::seed_from_u64(seed);
@@ -337,6 +341,10 @@ fn empty_app() -> App {
 
 /// Adds one shared profile asset and a deterministic parent-first character
 /// population.
+#[expect(
+    clippy::cast_precision_loss,
+    reason = "bench body and character counts stay far below 2^24"
+)]
 fn add_population(
     app: &mut App,
     profile: RagdollProfile,
@@ -447,6 +455,10 @@ fn grid_columns(character_count: usize) -> usize {
 
 /// Places one character on the seeded square grid at its mode-specific starting
 /// height.
+#[expect(
+    clippy::cast_precision_loss,
+    reason = "bench body and character counts stay far below 2^24"
+)]
 fn character_transform(
     index: usize,
     columns: usize,
@@ -632,6 +644,10 @@ fn prepare_writeback_poses(world: &mut World, seed: u64) {
 
 /// Converts one seeded random word into a signed value in the inclusive unit
 /// range.
+#[expect(
+    clippy::cast_precision_loss,
+    reason = "a 24-bit integer converts to f32 exactly"
+)]
 fn next_unit(random: &mut ChaCha8Rng) -> f32 {
     // Discard the low eight bits so conversion uses the full 24-bit mantissa of `f32`.
     let bits = random.next_u32() >> 8;

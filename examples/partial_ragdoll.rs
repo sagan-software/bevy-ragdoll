@@ -16,9 +16,7 @@ use bevy_ragdoll::runtime::components::{
 };
 use bevy_ragdoll::runtime::pin::PinTargets;
 use bevy_ragdoll::runtime::sets::RagdollSystems;
-use bevy_ragdoll::{RagdollDebugPlugin, 
-    Body, BodyIndex, BodyRole, RagdollPlugin, RagdollProfile,
-};
+use bevy_ragdoll::{Body, BodyIndex, BodyRole, RagdollDebugPlugin, RagdollPlugin, RagdollProfile};
 use bevy_ragdoll_rapier3d::{RapierRagdollHooks, RapierRagdollPlugin};
 use bevy_rapier3d::plugin::{RapierPhysicsPlugin, TimestepMode};
 use bevy_rapier3d::prelude::{Collider, Damping, Restitution, RigidBody, Velocity};
@@ -234,9 +232,12 @@ fn spawn_ragdoll(
 }
 
 /// Sways each bone before the runtime captures its world pose as a drive target.
-fn animate_idle_targets(time: Res<'_, Time>, mut bones: Query<'_, '_, (&IdleTarget, &mut Transform)>) {
+fn animate_idle_targets(
+    time: Res<'_, Time>,
+    mut bones: Query<'_, '_, (&IdleTarget, &mut Transform)>,
+) {
     for (bone, mut transform) in &mut bones {
-        let phase = (bone.index % 9) as f32 * 0.47;
+        let phase = f32::from(u8::try_from(bone.index % 9).unwrap_or_default()) * 0.47;
         let amplitude = match bone.role {
             BodyRole::Pelvis | BodyRole::Thigh | BodyRole::Calf | BodyRole::Foot => 0.018,
             BodyRole::Spine | BodyRole::Chest => 0.035,
@@ -322,7 +323,8 @@ mod tests {
     /// The pelvis and legs are pinned at full strength; every other body is loose.
     #[test]
     fn lower_body_is_driven_and_upper_body_is_loose() {
-        let profile = RagdollProfile::from_skeleton(&bevy_ragdoll::Skeleton::humanoid()).expect("profile validates");
+        let profile = RagdollProfile::from_skeleton(&bevy_ragdoll::Skeleton::humanoid())
+            .expect("profile validates");
         let (weights, pins) = ragdoll_controls(&profile);
         let mut legs = 0;
         for (position, body) in profile.bodies().iter().enumerate() {

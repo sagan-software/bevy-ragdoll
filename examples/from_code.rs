@@ -6,8 +6,8 @@ use bevy::prelude::*;
 use bevy_ragdoll::runtime::components::{
     BodyWeights, Ragdoll, RagdollBodyWeights, RagdollDrive, RagdollMode,
 };
-use bevy_ragdoll::{RagdollDebugPlugin, 
-    AngleRange, JointLimits, ProfileBuilder, ProfileError, RagdollPlugin,
+use bevy_ragdoll::{
+    AngleRange, JointLimits, ProfileBuilder, ProfileError, RagdollDebugPlugin, RagdollPlugin,
     RagdollProfile, ShapeSpec,
 };
 use bevy_ragdoll_rapier3d::{RapierRagdollHooks, RapierRagdollPlugin};
@@ -199,4 +199,3 @@ fn spawn_skeleton(commands: &mut Commands<'_, '_>, character: Entity, profile: &
         bones.push(bone);
     }
 }
-

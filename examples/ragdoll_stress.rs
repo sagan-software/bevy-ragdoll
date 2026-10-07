@@ -20,7 +20,6 @@ use bevy::app::ScheduleRunnerPlugin;
 use bevy::platform::time::Instant;
 use bevy::prelude::*;
 use bevy::time::TimeUpdateStrategy;
-use bevy::transform::TransformSystems;
 use bevy_ragdoll::runtime::body::{BodyPhysicsPose, BodyShape, BodyVelocity};
 use bevy_ragdoll::runtime::components::{RagdollBodyOf, RagdollDrive, RagdollMode};
 use bevy_ragdoll::runtime::sets::RagdollSystems;
@@ -47,7 +46,7 @@ struct Args {
     scenario: Scenario,
     /// Number of ragdolls.
     #[arg(long, default_value_t = 64)]
-    count: u32,
+    count: u16,
     /// Measured simulated seconds after the warmup.
     #[arg(long, default_value_t = 10.0)]
     duration: f64,
@@ -107,13 +106,14 @@ impl Summary {
     /// Summarizes the samples; all fields are zero when there are none.
     fn new(mut samples: Vec<f64>) -> Self {
         samples.sort_by(f64::total_cmp);
-        let rank = |p: f64| {
-            let index = ((p * samples.len() as f64).ceil() as usize).saturating_sub(1);
+        // Nearest rank: the smallest sample with at least `percent`% of samples at or below it.
+        let rank = |percent: usize| {
+            let index = (samples.len() * percent).div_ceil(100).saturating_sub(1);
             samples.get(index).copied().unwrap_or_default()
         };
         Self {
-            p50: rank(0.5),
-            p95: rank(0.95),
+            p50: rank(50),
+            p95: rank(95),
             max: samples.last().copied().unwrap_or_default(),
         }
     }
@@ -209,20 +209,26 @@ fn spawn_ragdolls(mut commands: Commands<'_, '_>, run: Res<'_, Run>) {
         Collider::cuboid(100.0, 0.1, 100.0),
         Transform::from_xyz(0.0, -0.1, 0.0),
     ));
-    let columns = (run.args.count as f32).sqrt().ceil() as u32;
-    for index in 0..run.args.count {
+    // The smallest square grid that fits every ragdoll.
+    let count = run.args.count;
+    let columns = (1..=count)
+        .find(|c| u32::from(*c).pow(2) >= u32::from(count))
+        .unwrap_or(1);
+    for index in 0..count {
         let position = match run.args.scenario {
-            Scenario::Pile => Vec3::new(0.0, (index as f32).mul_add(0.8, 0.3), 0.0),
+            Scenario::Pile => Vec3::new(0.0, f32::from(index).mul_add(0.8, 0.3), 0.0),
             Scenario::Grid => {
-                let offset = (columns as f32 - 1.0) * 0.5;
-                let (column, row) = ((index % columns) as f32, (index / columns) as f32);
+                let offset = (f32::from(columns) - 1.0) * 0.5;
+                let (column, row) = (f32::from(index % columns), f32::from(index / columns));
                 Vec3::new((column - offset) * 1.5, 0.3, (row - offset) * 1.5)
             }
         };
         // Pile ragdolls lie flat so the stack builds up contacts.
         let rotation = match run.args.scenario {
-            Scenario::Pile => Quat::from_rotation_x(-std::f32::consts::FRAC_PI_2)
-                * Quat::from_rotation_z(index as f32),
+            Scenario::Pile => {
+                Quat::from_rotation_x(-std::f32::consts::FRAC_PI_2)
+                    * Quat::from_rotation_z(f32::from(index))
+            }
             Scenario::Grid => Quat::IDENTITY,
         };
         let character = commands

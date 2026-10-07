@@ -16,7 +16,7 @@ fn plugin_build_time(criterion: &mut Criterion) {
             app.add_plugins(MinimalPlugins);
             app.add_plugins((AssetPlugin::default(), TransformPlugin));
             app.add_plugins(RagdollPlugin::default());
-            let _ = black_box(app);
+            drop(black_box(app));
         });
     });
 }

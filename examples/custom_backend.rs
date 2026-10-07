@@ -9,8 +9,8 @@
 
 use bevy::prelude::*;
 use bevy_ragdoll::runtime::components::{Ragdoll, RagdollDrive, RagdollMode};
-use bevy_ragdoll::{RagdollDebugPlugin, 
-    AngleRange, JointLimits, ProfileBuilder, ProfileError, RagdollPlugin,
+use bevy_ragdoll::{
+    AngleRange, JointLimits, ProfileBuilder, ProfileError, RagdollDebugPlugin, RagdollPlugin,
     RagdollProfile, ShapeSpec,
 };
 use bevy_ragdoll_conformance::mock::MockBackendPlugin;
@@ -151,4 +151,3 @@ fn spawn_ragdoll(mut commands: Commands<'_, '_>, mut profiles: ResMut<'_, Assets
         ChildOf(chest),
     ));
 }
-
