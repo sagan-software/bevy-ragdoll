@@ -35,6 +35,7 @@ use super::skeleton::SkeletonMap;
 /// assert_eq!(interpolate_translation(Vec3::ZERO, Vec3::X, 0.5), Vec3::X *
 /// 0.5);
 /// ```
+#[must_use]
 pub fn interpolate_translation(previous: Vec3, current: Vec3, alpha: f32) -> Vec3 {
     previous.lerp(current, alpha.clamp(0.0, 1.0))
 }
@@ -55,6 +56,7 @@ pub fn interpolate_translation(previous: Vec3, current: Vec3, alpha: f32) -> Vec
 /// let end = Isometry3d::from_translation(Vec3::X);
 /// assert_eq!(interpolate_physics_pose(Isometry3d::IDENTITY, end, 1.0), end);
 /// ```
+#[must_use]
 pub fn interpolate_physics_pose(
     previous: Isometry3d,
     current: Isometry3d,
@@ -160,7 +162,7 @@ fn blended_local_changes(
         let body_blend = blend
             * weights
                 .get(body_index)
-                .map_or(1.0, |body_weights| body_weights.muscle());
+                .map_or(1.0, super::components::BodyWeights::muscle);
         let next = blended_body_transform(animated, local_physics, body_blend);
 
         // Preserve scale and skip sub-micrometre changes to limit Bevy change detection.

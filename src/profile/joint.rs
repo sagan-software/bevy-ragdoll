@@ -58,6 +58,7 @@ impl Joint {
     /// joint.basis()
     /// # }
     /// ```
+    #[must_use]
     pub const fn basis(&self) -> Quat {
         self.basis
     }
@@ -75,6 +76,7 @@ impl Joint {
     /// joint.child().get()
     /// # }
     /// ```
+    #[must_use]
     pub const fn child(&self) -> BodyIndex {
         self.child
     }
@@ -92,6 +94,7 @@ impl Joint {
     /// joint.parent().get()
     /// # }
     /// ```
+    #[must_use]
     pub const fn parent(&self) -> BodyIndex {
         self.parent
     }
@@ -110,6 +113,7 @@ impl Joint {
     /// joint.frame()
     /// # }
     /// ```
+    #[must_use]
     pub const fn frame(&self) -> Isometry3d {
         self.frame
     }
@@ -127,6 +131,7 @@ impl Joint {
     /// joint.limits()
     /// # }
     /// ```
+    #[must_use]
     pub const fn limits(&self) -> JointLimits {
         self.limits
     }
@@ -144,6 +149,7 @@ impl Joint {
     /// joint.max_torque()
     /// # }
     /// ```
+    #[must_use]
     pub const fn max_torque(&self) -> f32 {
         self.max_torque
     }
@@ -161,6 +167,7 @@ impl Joint {
     /// joint.is_hinge()
     /// # }
     /// ```
+    #[must_use]
     pub const fn is_hinge(&self) -> bool {
         self.limits.is_hinge()
     }
@@ -178,6 +185,7 @@ impl Joint {
     /// joint.bend_range()
     /// # }
     /// ```
+    #[must_use]
     pub const fn bend_range(&self) -> AngleRange {
         self.limits.x
     }

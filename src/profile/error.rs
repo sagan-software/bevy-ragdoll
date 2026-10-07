@@ -29,7 +29,7 @@ pub enum JointAxis {
 ///
 /// The variants separate empty and oversized profiles, tree failures, invalid
 /// body data, invalid joint data, and duplicate bone names for caller handling.
-#[derive(Clone, Debug, PartialEq, thiserror::Error)]
+#[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
 pub enum ProfileError {
     /// Returned when the authoring spec contains no bodies and therefore cannot
     /// identify a root body or produce a runtime profile for any backend.

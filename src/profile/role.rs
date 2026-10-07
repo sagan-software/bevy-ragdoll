@@ -130,6 +130,7 @@ impl BodyRole {
     ///
     /// assert_eq!(BodyRole::Pelvis.muscle_floor(), 0.15);
     /// ```
+    #[must_use]
     pub const fn muscle_floor(self) -> f32 {
         match self {
             Self::Pelvis => 0.15,
@@ -160,6 +161,7 @@ impl BodyRole {
     ///
     /// assert_eq!(BodyRole::Hand.recovery_order_delay(), Duration::from_millis(300));
     /// ```
+    #[must_use]
     pub const fn recovery_order_delay(self) -> std::time::Duration {
         let milliseconds = match self {
             Self::Pelvis | Self::Spine | Self::Other => 0,

@@ -18,6 +18,10 @@ use bevy::prelude::{Entity, Resource};
 /// should replace the whole resource during plugin setup so every capability
 /// describes the same active physics implementation.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Resource, bevy::prelude::Reflect)]
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "each flag is an independent backend capability in the public API"
+)]
 pub struct BackendCapabilities {
     /// Whether the backend applies joint motor targets as native physics
     /// constraints each step. The core or query reader consumes this member

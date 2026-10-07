@@ -35,6 +35,7 @@ impl RagdollRequestId {
     /// let request_id = RagdollRequestId::new(17); assert_eq!(request_id.get(),
     /// 17);
     /// ```
+    #[must_use]
     pub const fn new(value: u64) -> Self {
         Self(value)
     }
@@ -52,6 +53,7 @@ impl RagdollRequestId {
     ///
     /// assert_eq!(RagdollRequestId::new(17).get(), 17);
     /// ```
+    #[must_use]
     pub const fn get(self) -> u64 {
         self.0
     }

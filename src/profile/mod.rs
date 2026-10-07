@@ -84,6 +84,7 @@ impl BodyIndex {
     /// assert_eq!(index.get(), 3);
     /// # Ok::<(), &str>(())
     /// ```
+    #[must_use]
     pub const fn get(self) -> usize {
         self.0 as usize
     }
@@ -95,7 +96,7 @@ impl TryFrom<usize> for BodyIndex {
     /// Converts a mask position when it falls inside the supported body range.
     fn try_from(index: usize) -> Result<Self, Self::Error> {
         if index < MAX_BODIES {
-            Ok(Self(index as u8))
+            Ok(Self(u8::try_from(index).unwrap_or(u8::MAX)))
         } else {
             Err(index)
         }
@@ -130,6 +131,10 @@ impl RagdollProfile {
     /// limits, torque bounds, and duplicate bone names in a stable error order.
     /// Contact derivation takes O(n²) time and O(n) auxiliary space for at most
     /// 64 bodies.
+    ///
+    /// # Errors
+    ///
+    /// Returns the first [`ProfileError`] found in that validation order.
     ///
     /// # Examples
     ///
@@ -175,6 +180,7 @@ impl RagdollProfile {
     /// bevy_ragdoll::MAX_BODIES);
     /// # }
     /// ```
+    #[must_use]
     pub fn bodies(&self) -> &[Body] {
         &self.bodies
     }
@@ -194,6 +200,7 @@ impl RagdollProfile {
     /// profile.bodies().len());
     /// # }
     /// ```
+    #[must_use]
     pub fn joints(&self) -> &[Joint] {
         &self.joints
     }
@@ -212,6 +219,7 @@ impl RagdollProfile {
     /// profile.bodies().len());
     /// # }
     /// ```
+    #[must_use]
     pub fn no_contact_masks(&self) -> &[u64] {
         &self.no_contact
     }
@@ -230,6 +238,7 @@ impl RagdollProfile {
     /// assert_eq!(masks.len(), profile.bodies().len());
     /// # }
     /// ```
+    #[must_use]
     pub fn children_masks(&self) -> &[u64] {
         &self.children
     }
@@ -247,6 +256,7 @@ impl RagdollProfile {
     /// profile.total_mass().kilograms()
     /// # }
     /// ```
+    #[must_use]
     pub const fn total_mass(&self) -> Mass {
         self.total_mass
     }
@@ -284,6 +294,7 @@ impl RagdollProfile {
     /// let _joint = profile.joint_of(body);
     /// # }
     /// ```
+    #[must_use]
     pub fn joint_of(&self, body: BodyIndex) -> Option<&Joint> {
         self.joints.iter().find(|joint| joint.child() == body)
     }
@@ -348,6 +359,7 @@ impl RagdollProfile {
     /// _angles = profile.joint_angles(child, &poses);
     /// # }
     /// ```
+    #[must_use]
     pub fn joint_angles(&self, child: BodyIndex, poses: &[Isometry3d]) -> Option<Vec3> {
         // A root body has no joint, and both related poses must be present.
         let joint = self.joint_of(child)?;
@@ -405,7 +417,7 @@ impl TryFrom<ProfileSpec> for ValidatedProfile {
                     .role
                     .unwrap_or_else(|| BodyRole::from(body.bone.as_str()));
                 Body::new(
-                    BodyIndex(index as u8),
+                    BodyIndex(u8::try_from(index).unwrap_or(u8::MAX)),
                     body.bone,
                     body.shape,
                     mass,
@@ -423,7 +435,7 @@ impl TryFrom<ProfileSpec> for ValidatedProfile {
             .filter_map(|(child, joint)| joint.map(|joint| (child, joint)))
             .map(|(child, joint)| {
                 Joint::new(
-                    BodyIndex(child as u8),
+                    BodyIndex(u8::try_from(child).unwrap_or(u8::MAX)),
                     BodyIndex(joint.parent),
                     joint.frame,
                     joint.limits,
@@ -461,7 +473,7 @@ fn arrange_joints(
 
 /// Checks the closed body-count range before profile-sized storage is
 /// allocated.
-fn validate_body_count(body_count: usize) -> Result<(), ProfileError> {
+const fn validate_body_count(body_count: usize) -> Result<(), ProfileError> {
     // Test the lower boundary before the upper bound so an empty profile is distinct.
     if body_count == 0 {
         return Err(ProfileError::Empty);
@@ -501,7 +513,7 @@ fn validate_masses(body_specs: &[BodySpec]) -> Result<(Vec<Mass>, Mass), Profile
     // Validate each body mass and reject overflow at the body that caused it.
     for (index, body) in body_specs.iter().enumerate() {
         // The earlier body-count check bounds every index to the stored u8 range.
-        let checked_index = BodyIndex(index as u8);
+        let checked_index = BodyIndex(u8::try_from(index).unwrap_or(u8::MAX));
         let mass = Mass::try_from(body.mass).map_err(|error| match error {
             MassError => ProfileError::BadMass {
                 body: checked_index,
@@ -516,7 +528,7 @@ fn validate_masses(body_specs: &[BodySpec]) -> Result<(Vec<Mass>, Mass), Profile
         masses.push(mass);
     }
     // The body-count check guarantees at least one body before selecting its error index.
-    let last_body = BodyIndex((body_specs.len().saturating_sub(1)) as u8);
+    let last_body = BodyIndex(u8::try_from(body_specs.len().saturating_sub(1)).unwrap_or(u8::MAX));
     let total_mass = validate_total_mass(total_mass, last_body)?;
     Ok((masses, total_mass))
 }

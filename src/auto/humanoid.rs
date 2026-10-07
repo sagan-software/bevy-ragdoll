@@ -103,9 +103,13 @@ pub(super) struct Bones<'a> {
     pub(super) eligible: &'a [bool],
 }
 
+#[expect(
+    clippy::indexing_slicing,
+    reason = "bone indexes come from the same skeleton vectors and limb chains have three bones"
+)]
 impl Bones<'_> {
     /// Returns whether `ancestor` is `bone` or one of its ancestors.
-    fn is_ancestor(&self, ancestor: usize, mut bone: usize) -> bool {
+    const fn is_ancestor(&self, ancestor: usize, mut bone: usize) -> bool {
         loop {
             if bone == ancestor {
                 return true;
@@ -140,6 +144,10 @@ impl Bones<'_> {
 ///
 /// The result pairs each body bone with its role in parent-first order: hips,
 /// spine (when one exists), chest, head and three bones per limb.
+#[expect(
+    clippy::indexing_slicing,
+    reason = "bone indexes come from the same skeleton vectors and limb chains have three bones"
+)]
 pub(super) fn detect(bones: &Bones<'_>) -> Option<Vec<(usize, BodyRole)>> {
     // Keep the matching bone closest to the root for each role and side.
     let mut found: Vec<((BodyRole, Option<Side>), usize)> = Vec::new();

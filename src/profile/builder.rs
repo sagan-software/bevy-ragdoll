@@ -24,6 +24,11 @@ impl ProfileBuilder {
     /// The bone name, local collision shape, mass in kilograms, and skeleton
     /// rest transform remain unvalidated until `build` checks the full profile.
     ///
+    /// # Errors
+    ///
+    /// Returns [`ProfileError::TooManyBodies`] when the builder already holds
+    /// the maximum number of bodies.
+    ///
     /// # Examples
     ///
     /// ```
@@ -48,7 +53,7 @@ impl ProfileBuilder {
         if index >= MAX_BODIES {
             return Err(ProfileError::TooManyBodies(index + 1));
         }
-        let body_index = BodyIndex(index as u8);
+        let body_index = BodyIndex(u8::try_from(index).unwrap_or(u8::MAX));
         // Retain the name and geometry only after the body position is representable.
         self.spec.bodies.push(BodySpec {
             bone: bone.into(),
@@ -111,6 +116,7 @@ impl ProfileBuilder {
     /// let builder = ProfileBuilder::default();
     /// assert!(builder.spec().bodies.is_empty());
     /// ```
+    #[must_use]
     pub const fn spec(&self) -> &ProfileSpec {
         &self.spec
     }
@@ -128,6 +134,7 @@ impl ProfileBuilder {
     /// let spec = ProfileBuilder::default().into_spec();
     /// assert!(spec.bodies.is_empty());
     /// ```
+    #[must_use]
     pub fn into_spec(self) -> ProfileSpec {
         self.spec
     }
@@ -148,6 +155,10 @@ impl ProfileBuilder {
     /// assert_eq!(builder.build()?.bodies().len(), 1);
     /// # Ok::<(), bevy_ragdoll::ProfileError>(())
     /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ProfileError`] when validation rejects the accumulated data.
     pub fn build(self) -> Result<RagdollProfile, ProfileError> {
         RagdollProfile::new(self.spec)
     }

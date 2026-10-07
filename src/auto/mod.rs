@@ -50,6 +50,10 @@ pub struct SkeletonBone {
     pub overrides: RagdollBone,
 }
 
+#[expect(
+    clippy::indexing_slicing,
+    reason = "bone indexes come from the same parent-first skeleton vectors"
+)]
 impl Skeleton {
     /// Builds a skeleton from `(name, parent name, head position)` triples.
     ///
@@ -94,6 +98,7 @@ impl Skeleton {
     }
 
     /// Returns the index of the bone named `name`.
+    #[must_use]
     pub fn bone_index(&self, name: &str) -> Option<usize> {
         self.bones.iter().position(|bone| bone.name == name)
     }
@@ -102,6 +107,7 @@ impl Skeleton {
     ///
     /// It faces +Z with +Y up and its feet on `y = 0`. Tests, benches and
     /// examples use it when no glTF asset is loaded.
+    #[must_use]
     pub fn humanoid() -> Self {
         const BONES: &[(&str, Option<&str>, [f32; 3])] = &[
             ("pelvis", None, [0.0, 0.96, 0.0]),
@@ -142,20 +148,19 @@ impl Skeleton {
     /// [`crate::Ragdoll`] on `character` binds to these bones by name.
     pub fn spawn(
         &self,
-        commands: &mut bevy::prelude::Commands,
+        commands: &mut bevy::prelude::Commands<'_, '_>,
         character: bevy::prelude::Entity,
     ) -> Vec<bevy::prelude::Entity> {
         use bevy::prelude::{ChildOf, Name, Transform};
         let mut entities: Vec<bevy::prelude::Entity> = Vec::with_capacity(self.bones.len());
         for bone in &self.bones {
             let parent = bone.parent.filter(|parent| *parent < entities.len());
-            let (parent_entity, local) = match parent {
-                Some(parent) => (
+            let (parent_entity, local) = parent.map_or((character, bone.rest), |parent| {
+                (
                     entities[parent],
                     self.bones[parent].rest.inverse() * bone.rest,
-                ),
-                None => (character, bone.rest),
-            };
+                )
+            });
             let transform =
                 Transform::from_translation(local.translation.into()).with_rotation(local.rotation);
             let mut entity = commands.spawn((
@@ -164,7 +169,7 @@ impl Skeleton {
                 ChildOf(parent_entity),
             ));
             if bone.overrides != RagdollBone::default() {
-                entity.insert(bone.overrides.clone());
+                entity.insert(bone.overrides);
             }
             entities.push(entity.id());
         }

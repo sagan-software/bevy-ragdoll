@@ -121,6 +121,10 @@ struct BodyTree {
     owner: Vec<Option<usize>>,
 }
 
+#[expect(
+    clippy::indexing_slicing,
+    reason = "bone, segment and body indexes all come from the same skeleton vectors"
+)]
 impl<'a> Rig<'a> {
     /// Computes parents, children, eligibility and skeleton size.
     fn new(skeleton: &'a Skeleton) -> Self {
@@ -268,19 +272,20 @@ impl<'a> Rig<'a> {
             parents: &self.parents,
             eligible: &self.named,
         };
-        let mut roles = match humanoid::detect(&bones) {
-            Some(slots) => tree
-                .bones
-                .iter()
-                .map(|bone| {
-                    slots
-                        .iter()
-                        .find(|(slot, _)| slot == bone)
-                        .map_or(BodyRole::Other, |(_, role)| *role)
-                })
-                .collect(),
-            None => self.topology_roles(tree),
-        };
+        let mut roles = humanoid::detect(&bones).map_or_else(
+            || self.topology_roles(tree),
+            |slots| {
+                tree.bones
+                    .iter()
+                    .map(|bone| {
+                        slots
+                            .iter()
+                            .find(|(slot, _)| slot == bone)
+                            .map_or(BodyRole::Other, |(_, role)| *role)
+                    })
+                    .collect()
+            },
+        );
         for (role, bone) in roles.iter_mut().zip(&tree.bones) {
             if let Some(explicit) = self.skeleton.bones[*bone].overrides.role {
                 *role = explicit;
@@ -399,20 +404,24 @@ impl<'a> Rig<'a> {
         let incoming = tree.parents[body].map(|parent| start - self.heads[tree.bones[parent]]);
         let children = &tree.children[body];
         // Prefer the child body that continues the incoming direction.
-        let main_child = match incoming.and_then(Vec3::try_normalize) {
-            Some(direction) => children.iter().copied().max_by(|a, b| {
-                let score = |child: usize| {
-                    (self.heads[tree.bones[child]] - start)
-                        .try_normalize()
-                        .map_or(-2.0, |toward| toward.dot(direction))
-                };
-                score(*a).total_cmp(&score(*b))
-            }),
-            None => children
-                .iter()
-                .copied()
-                .max_by_key(|child| tree.subtree(*child).len()),
-        };
+        let main_child = incoming.and_then(Vec3::try_normalize).map_or_else(
+            || {
+                children
+                    .iter()
+                    .copied()
+                    .max_by_key(|child| tree.subtree(*child).len())
+            },
+            |direction| {
+                children.iter().copied().max_by(|a, b| {
+                    let score = |child: usize| {
+                        (self.heads[tree.bones[child]] - start)
+                            .try_normalize()
+                            .map_or(-2.0, |toward| toward.dot(direction))
+                    };
+                    score(*a).total_cmp(&score(*b))
+                })
+            },
+        );
         if let Some(child) = main_child {
             // End at the first bone toward the main child, so a merged neck
             // ends the chest at the neck instead of the head.
@@ -555,7 +564,7 @@ impl<'a> Rig<'a> {
         let basis = twist_basis(source.rest.rotation.inverse() * along);
         let limit_axes = source.rest.rotation * basis;
         let limits = source.overrides.limits.unwrap_or_else(|| {
-            let axis = self.flex_axis(role, &segments[parent], &segments[child]);
+            let axis = Self::flex_axis(role, &segments[parent], &segments[child]);
             let away = self.abduction(role, &segments[child]);
             // Rotating about an axis moves the tip toward `axis × along`.
             template.limits(limit_axes.inverse() * axis, |side_x| {
@@ -564,8 +573,9 @@ impl<'a> Rig<'a> {
             })
         });
         JointSpec {
-            child: child as u8,
-            parent: parent as u8,
+            // Out-of-range indexes saturate so profile validation rejects them.
+            child: u8::try_from(child).unwrap_or(u8::MAX),
+            parent: u8::try_from(parent).unwrap_or(u8::MAX),
             frame: parent_rest.inverse() * source.rest,
             limits,
             max_torque: source
@@ -590,7 +600,7 @@ impl<'a> Rig<'a> {
     /// A bent hinge keeps its rest bend direction. Otherwise the child tip
     /// flexes toward the role's default direction: knees backward (-Z), feet
     /// upward, hands downward and everything else forward (+Z, the glTF front).
-    fn flex_axis(&self, role: BodyRole, parent: &Segment, child: &Segment) -> Vec3 {
+    fn flex_axis(role: BodyRole, parent: &Segment, child: &Segment) -> Vec3 {
         let along = child.direction();
         let hinge = matches!(role, BodyRole::LowerArm | BodyRole::Calf);
         let bent = parent.direction().cross(along);
@@ -664,7 +674,7 @@ fn default_radius(role: BodyRole, length: f32, size: f32) -> f32 {
 }
 
 /// Share of total mass for a humanoid body role, from an 80 kg reference.
-fn mass_share(role: BodyRole) -> f32 {
+const fn mass_share(role: BodyRole) -> f32 {
     match role {
         BodyRole::Pelvis => 8.94,
         BodyRole::Spine => 13.06,
@@ -730,9 +740,13 @@ struct Template {
 
 impl Template {
     /// Returns the template for a child body role.
-    #[allow(
+    #[expect(
         clippy::approx_constant,
         reason = "the table lists rounded tuned radians, not mathematical constants"
+    )]
+    #[expect(
+        clippy::similar_names,
+        reason = "abduct and adduct are the anatomical names of opposite side ranges"
     )]
     const fn of(role: BodyRole) -> Self {
         // Radians rounded to six decimals. The Rapier conformance scenes are
@@ -800,6 +814,10 @@ impl Template {
     }
 }
 
+#[expect(
+    clippy::indexing_slicing,
+    reason = "bone, segment and body indexes all come from the same skeleton vectors"
+)]
 impl BodyTree {
     /// Links selected bodies to their nearest body ancestors.
     ///

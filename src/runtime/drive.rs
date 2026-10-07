@@ -80,6 +80,7 @@ pub struct PinDriveOutput {
 /// joint_motor_values(1.0, 8.0, &settings); assert!((motor.max_torque -
 /// 8.4).abs() < 1.0e-5);
 /// ```
+#[must_use]
 pub fn joint_motor_values(
     muscle: f32,
     joint_max_torque: f32,
@@ -121,6 +122,7 @@ pub fn joint_motor_values(
 /// let end = Isometry3d::from_translation(Vec3::X);
 /// assert_eq!(interpolate_pose(Isometry3d::IDENTITY, end, 1.0), end);
 /// ```
+#[must_use]
 pub fn interpolate_pose(previous: Isometry3d, current: Isometry3d, alpha: f32) -> Isometry3d {
     // Clamp render overstep so callers never extrapolate beyond completed physics states.
     let alpha = alpha.clamp(0.0, 1.0);
@@ -146,6 +148,7 @@ pub fn interpolate_pose(previous: Isometry3d, current: Isometry3d, alpha: f32) -
 /// assert!(rotation_error(Quat::IDENTITY, Quat::from_rotation_z(0.5))
 /// .abs_diff_eq(Vec3::Z * 0.5, 1.0e-6));
 /// ```
+#[must_use]
 pub fn rotation_error(current: Quat, target: Quat) -> Vec3 {
     // Normalize the quaternion representative to its positive-w shortest-arc form.
     let mut error = target * current.inverse();
@@ -214,6 +217,7 @@ pub struct PinDriveInput {
 /// 1.0, }; let output = pin_drive(input, &RagdollPhysicsSettings::default());
 /// assert_eq!(output.force.length(), 0.0);
 /// ```
+#[must_use]
 pub fn pin_drive(input: PinDriveInput, settings: &RagdollPhysicsSettings) -> PinDriveOutput {
     // Sanitize physical scalars before they enter acceleration and force calculations.
     let strength = clamp_unit(input.strength);
@@ -365,6 +369,7 @@ struct JointDriveConfig<'a> {
 /// 60.0, }; let motor = JointMotorValues { stiffness: 1.0, damping: 0.0,
 /// max_torque: 2.0 }; assert!(stable_pd_torque(input, motor).z > 0.0);
 /// ```
+#[must_use]
 pub fn stable_pd_torque(input: StablePdInput, motor: JointMotorValues) -> Vec3 {
     // Reject invalid fixed-step durations before evaluating the stable-PD denominator.
     if !input.delta_seconds.is_finite() || input.delta_seconds <= 0.0 {
@@ -443,7 +448,7 @@ fn gather_body_drive_states(
             world
                 .get::<BodyIndex>(*entity)
                 .and_then(|index| weights.get(index.get()))
-                .map_or(1.0, |body_weights| body_weights.muscle())
+                .map_or(1.0, super::components::BodyWeights::muscle)
                 > 0.0
         });
 
@@ -606,12 +611,12 @@ fn body_pin_output(
     };
     if !body_index.is_some_and(|index| pin_targets.is_targeted(index)) {
         return output;
-    };
+    }
     // Scale pin strength independently for this checked profile body position.
     let pin_strength = drive.pin()
         * body_index
             .and_then(|index| weights.get(index.get()))
-            .map_or(1.0, |body_weights| body_weights.pin());
+            .map_or(1.0, super::components::BodyWeights::pin);
     // Apply the resolved per-body strength with the checked controller settings.
     let pin = pin_drive(
         PinDriveInput {
@@ -765,7 +770,7 @@ fn calculate_child_joint_target(
         * world
             .get::<BodyIndex>(child_entity)
             .and_then(|index| config.weights.get(index.get()))
-            .map_or(1.0, |body_weights| body_weights.muscle());
+            .map_or(1.0, super::components::BodyWeights::muscle);
     let motor = joint_motor_values(muscle, joint.max_torque, &config.settings);
 
     // Publish the native target before calculating any backend fallback torque.
@@ -838,7 +843,7 @@ fn angular_limit_excess(angle: f32, range: crate::profile::AngleRange) -> f32 {
 }
 
 /// Maps invalid input to zero and clamps finite strength to the unit interval.
-fn clamp_unit(value: f32) -> f32 {
+const fn clamp_unit(value: f32) -> f32 {
     // Keep strengths finite before they scale any force or torque calculation.
     if value.is_finite() {
         value.clamp(0.0, 1.0)
@@ -848,7 +853,7 @@ fn clamp_unit(value: f32) -> f32 {
 }
 
 /// Maps negative and non-finite physical magnitudes to zero.
-fn finite_nonnegative(value: f32) -> f32 {
+const fn finite_nonnegative(value: f32) -> f32 {
     // Convert invalid physical magnitudes to zero before they reach backend outputs.
     if value.is_finite() {
         value.max(0.0)
@@ -986,7 +991,8 @@ mod tests {
             vec![BodyVelocity::default()],
         );
         world
-            .entity_mut(character)
+            .get_entity_mut(character)
+            .unwrap()
             .insert((PinSettings::new(1.5, 1.0, 0.0, 400.0, 2.0), targets));
         let body = world.spawn((RagdollBodyOf(character), body_index(0))).id();
 
@@ -1224,7 +1230,8 @@ mod tests {
         let missing_index = world.spawn(RagdollBodyOf(character)).id();
         let missing_target = world.spawn((RagdollBodyOf(character), body_index(0))).id();
         world
-            .entity_mut(character)
+            .get_entity_mut(character)
+            .unwrap()
             .insert(RagdollTargetPose::default());
 
         drive(&mut world);
@@ -1273,7 +1280,7 @@ mod tests {
             .id();
         let mut targets = RagdollTargetPose::default();
         targets.record(vec![Isometry3d::IDENTITY], vec![BodyVelocity::default()]);
-        world.entity_mut(character).insert(targets);
+        world.get_entity_mut(character).unwrap().insert(targets);
 
         drive(&mut world);
 
@@ -1287,7 +1294,8 @@ mod tests {
     fn drive_omits_fallback_torque_for_native_joint_motors() {
         let (mut world, character) = drive_world();
         world
-            .resource_mut::<BackendCapabilities>()
+            .get_resource_mut::<BackendCapabilities>()
+            .unwrap()
             .has_native_joint_motors = true;
         let parent = world.spawn((RagdollBodyOf(character), body_index(0))).id();
         let child = world
@@ -1310,7 +1318,7 @@ mod tests {
             ],
             vec![BodyVelocity::default(); 2],
         );
-        world.entity_mut(character).insert(targets);
+        world.get_entity_mut(character).unwrap().insert(targets);
 
         drive(&mut world);
 

@@ -108,7 +108,6 @@ fn explicit_profile_roles_override_bone_name_hints() {
     assert_eq!(profile.bodies()[0].role(), BodyRole::Tail);
 }
 
-
 /// Creates the core and mock backend with one fixed step per app update.
 fn app() -> App {
     let mut app = App::new();
@@ -126,7 +125,7 @@ fn app() -> App {
 }
 
 /// Builds a two-body pelvis and spine profile for one hit behavior check.
-fn two_body_profile() -> bevy_ragdoll::RagdollProfile {
+fn two_body_profile() -> RagdollProfile {
     let shape = ShapeSpec::Sphere {
         center: Vec3::ZERO,
         radius: 0.1,
@@ -170,7 +169,8 @@ fn body_at_index(world: &mut bevy::prelude::World, character: Entity, index: usi
 fn spawn_two_body_character(app: &mut App) -> Entity {
     let profile = app
         .world_mut()
-        .resource_mut::<Assets<bevy_ragdoll::RagdollProfile>>()
+        .get_resource_mut::<Assets<RagdollProfile>>()
+        .unwrap()
         .add(two_body_profile());
     let character = app
         .world_mut()
@@ -233,7 +233,8 @@ fn spawn_chain_with_masses(app: &mut App, names: &[&str], masses: &[f32]) -> Ent
     }
     let profile = app
         .world_mut()
-        .resource_mut::<Assets<RagdollProfile>>()
+        .get_resource_mut::<Assets<RagdollProfile>>()
+        .unwrap()
         .add(builder.build().expect("the named chain is a valid profile"));
     let character = app
         .world_mut()
@@ -502,7 +503,10 @@ fn impulse_clamp_passes_the_excess_to_the_parent() {
     });
     app.update();
 
-    let messages = app.world().resource::<Messages<RagdollImpulse>>();
+    let messages = app
+        .world()
+        .get_resource::<Messages<RagdollImpulse>>()
+        .unwrap();
     let delivered = messages
         .iter_current_update_messages()
         .copied()
@@ -623,7 +627,8 @@ fn a_hit_reduces_the_hit_body_muscle_weight() {
     let mut app = app();
     let profile = app
         .world_mut()
-        .resource_mut::<Assets<bevy_ragdoll::RagdollProfile>>()
+        .get_resource_mut::<Assets<RagdollProfile>>()
+        .unwrap()
         .add(two_body_profile());
     let character = app
         .world_mut()
@@ -696,7 +701,8 @@ fn malformed_hit_vectors_do_not_change_strength_or_publish_impulses() {
     );
     assert!(
         app.world()
-            .resource::<Messages<RagdollImpulse>>()
+            .get_resource::<Messages<RagdollImpulse>>()
+            .unwrap()
             .iter_current_update_messages()
             .next()
             .is_none()
@@ -728,7 +734,8 @@ fn stale_body_hit_does_not_change_character_state() {
     );
     assert!(
         app.world()
-            .resource::<Messages<RagdollImpulse>>()
+            .get_resource::<Messages<RagdollImpulse>>()
+            .unwrap()
             .iter_current_update_messages()
             .next()
             .is_none()
@@ -755,7 +762,10 @@ fn body_with_missing_character_state_does_not_publish_an_impulse() {
             RagdollBodyOf(owner),
         ))
         .id();
-    app.world_mut().entity_mut(owner).remove::<RagdollMode>();
+    app.world_mut()
+        .get_entity_mut(owner)
+        .unwrap()
+        .remove::<RagdollMode>();
     assert!(app.world().get::<RagdollMode>(owner).is_none());
     assert!(app.world().get::<RagdollBodyWeights>(owner).is_some());
     assert!(app.world().get::<LastHit>(owner).is_some());
@@ -770,7 +780,8 @@ fn body_with_missing_character_state_does_not_publish_an_impulse() {
 
     assert!(
         app.world()
-            .resource::<Messages<RagdollImpulse>>()
+            .get_resource::<Messages<RagdollImpulse>>()
+            .unwrap()
             .iter_current_update_messages()
             .next()
             .is_none()
@@ -843,7 +854,8 @@ fn frozen_ragdolls_ignore_hit_messages() {
     );
     assert!(
         app.world()
-            .resource::<Messages<RagdollImpulse>>()
+            .get_resource::<Messages<RagdollImpulse>>()
+            .unwrap()
             .iter_current_update_messages()
             .next()
             .is_none()
@@ -921,7 +933,10 @@ fn root_hit_uses_the_current_body_centre() {
 
     app.update();
 
-    let impulses = app.world().resource::<Messages<RagdollImpulse>>();
+    let impulses = app
+        .world()
+        .get_resource::<Messages<RagdollImpulse>>()
+        .unwrap();
     let impulse = impulses
         .iter_current_update_messages()
         .next()
@@ -937,7 +952,10 @@ fn root_hit_falls_back_to_the_supplied_contact_point() {
     let mut app = app();
     let character = spawn_chain(&mut app, &["pelvis"]);
     let root = body_at_index(app.world_mut(), character, 0);
-    app.world_mut().entity_mut(root).remove::<BodyPhysicsPose>();
+    app.world_mut()
+        .get_entity_mut(root)
+        .unwrap()
+        .remove::<BodyPhysicsPose>();
     let point = Vec3::new(1.0, 2.0, 3.0);
     app.world_mut().write_message(RagdollHit {
         body: root,
@@ -948,7 +966,10 @@ fn root_hit_falls_back_to_the_supplied_contact_point() {
 
     app.update();
 
-    let impulses = app.world().resource::<Messages<RagdollImpulse>>();
+    let impulses = app
+        .world()
+        .get_resource::<Messages<RagdollImpulse>>()
+        .unwrap();
     let impulse = impulses
         .iter_current_update_messages()
         .next()
@@ -965,7 +986,8 @@ fn hit_does_not_propagate_through_a_parent_without_pose_data() {
     let pelvis = body_at_index(app.world_mut(), character, 0);
     let spine = body_at_index(app.world_mut(), character, 1);
     app.world_mut()
-        .entity_mut(pelvis)
+        .get_entity_mut(pelvis)
+        .unwrap()
         .remove::<BodyPhysicsPose>();
     app.world_mut().write_message(RagdollHit {
         body: spine,
@@ -976,7 +998,10 @@ fn hit_does_not_propagate_through_a_parent_without_pose_data() {
 
     app.update();
 
-    let impulses = app.world().resource::<Messages<RagdollImpulse>>();
+    let impulses = app
+        .world()
+        .get_resource::<Messages<RagdollImpulse>>()
+        .unwrap();
     let delivered = impulses
         .iter_current_update_messages()
         .copied()
@@ -1001,7 +1026,10 @@ fn small_hit_does_not_continue_past_the_addressed_body() {
 
     app.update();
 
-    let impulses = app.world().resource::<Messages<RagdollImpulse>>();
+    let impulses = app
+        .world()
+        .get_resource::<Messages<RagdollImpulse>>()
+        .unwrap();
     let delivered = impulses
         .iter_current_update_messages()
         .copied()
@@ -1045,7 +1073,8 @@ fn spawn_branch_character(app: &mut App) -> Entity {
     builder.add_joint(right, chest, Isometry3d::IDENTITY, limits, 30.0);
     let profile = app
         .world_mut()
-        .resource_mut::<Assets<RagdollProfile>>()
+        .get_resource_mut::<Assets<RagdollProfile>>()
+        .unwrap()
         .add(builder.build().expect("the branch profile forms a tree"));
     let character = app
         .world_mut()

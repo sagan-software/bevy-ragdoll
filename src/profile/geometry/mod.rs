@@ -197,6 +197,10 @@ impl Obb {
 }
 
 /// Computes Ericson's closest distance between two finite segments.
+#[expect(
+    clippy::many_single_char_names,
+    reason = "the names follow Ericson's Real-Time Collision Detection, section 5.1.9"
+)]
 fn segment_distance(p0: Vec3, p1: Vec3, q0: Vec3, q1: Vec3) -> f32 {
     // Compute each segment direction and the vector between their starting points.
     let (d1, d2, r) = (p1 - p0, q1 - q0, p0 - q0);
@@ -213,6 +217,10 @@ fn segment_distance(p0: Vec3, p1: Vec3, q0: Vec3, q1: Vec3) -> f32 {
         } else {
             // Solve the unconstrained closest pair, using zero for parallel lines.
             let b = d1.dot(d2);
+            #[expect(
+                clippy::suspicious_operation_groupings,
+                reason = "Ericson's determinant is a * e - b * b"
+            )]
             let denominator = a * e - b * b;
             let mut s = if denominator > 1.0e-12 {
                 ((b * f - c * e) / denominator).clamp(0.0, 1.0)
@@ -333,7 +341,7 @@ fn segment_aabb_interval_distance(
     high: f32,
 ) -> f32 {
     // The midpoint identifies which box faces contribute throughout this interval.
-    let middle = (low + high) * 0.5;
+    let middle = f32::midpoint(low, high);
     let point = a + delta * middle;
     let mut denominator = 0.0;
     let mut numerator = 0.0;

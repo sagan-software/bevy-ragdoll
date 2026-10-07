@@ -2,8 +2,6 @@
 
 use std::f32::consts::FRAC_PI_4;
 
-use bevy::math::Isometry3d;
-
 use super::*;
 
 /// Creates a unit-oriented box at the supplied centre and half extents.
