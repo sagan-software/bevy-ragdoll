@@ -430,7 +430,7 @@ fn main() {
     .insert_resource(Orbit {
         yaw: 0.6,
         pitch: 0.38,
-        distance: 22.0,
+        distance: 17.0,
     })
     .init_resource::<Params>()
     .init_resource::<PointerState>()
@@ -721,7 +721,7 @@ fn spawn_panel(mut commands: Commands, backend: Res<ActiveBackend>, params: Res<
                 position_type: PositionType::Absolute,
                 top: px(14),
                 left: px(14),
-                width: px(290),
+                width: px(310),
                 flex_direction: FlexDirection::Column,
                 row_gap: px(6),
                 padding: UiRect::all(px(14)),
@@ -751,7 +751,7 @@ fn spawn_panel(mut commands: Commands, backend: Res<ActiveBackend>, params: Res<
         commands.spawn((
             text(&param.value(&params), 14.0, Color::WHITE),
             Node {
-                width: px(82),
+                width: px(100),
                 justify_content: JustifyContent::Center,
                 ..default()
             },
