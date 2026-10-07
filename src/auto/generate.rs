@@ -74,6 +74,7 @@ fn children_of(parents: &[Option<usize>], count: usize) -> Vec<Vec<usize>> {
     reason = "parent indexes precede their child, so every lookup is already filled"
 )]
 fn eligibility(skeleton: &Skeleton, parents: &[Option<usize>]) -> (Vec<bool>, Vec<bool>) {
+    // Every flag starts false and is filled in one forward pass.
     let count = skeleton.bones.len();
     let mut skipped = vec![false; count];
     let mut eligible = vec![false; count];
@@ -492,6 +493,7 @@ impl Rig<'_> {
         segments: &[Segment],
         is_humanoid: bool,
     ) -> Vec<BodySpec> {
+        // Start from volume-derived masses; the passes below only rescale them.
         let mut body_specs = tree
             .bones
             .iter()
@@ -924,8 +926,29 @@ impl BodyTree {
     /// When several bodies have no body ancestor, the root with the most
     /// descendants is kept and the other roots' subtrees are dropped.
     fn new(rig: &Rig<'_>, selected: Vec<usize>) -> Self {
+        let kept = Self::largest_tree(rig, &selected);
+        // Rebuild ownership for the kept bodies only.
+        let owner = Self::owners(rig, &kept);
+        let parents = kept
+            .iter()
+            .map(|bone| rig.parents[*bone].and_then(|parent| owner[parent]))
+            .collect::<Vec<_>>();
+        // Children lists let later stages walk subtrees top-down.
+        let children = children_of(&parents, kept.len());
+        Self {
+            bones: kept,
+            parents,
+            children,
+            owner,
+        }
+    }
+
+    /// Returns the selected bones in the body tree with the most bodies.
+    ///
+    /// Ties go to the root that comes first in parent-first order.
+    fn largest_tree(rig: &Rig<'_>, selected: &[usize]) -> Vec<usize> {
         // Assign every bone to a body before choosing among several roots.
-        let owner = Self::owners(rig, &selected);
+        let owner = Self::owners(rig, selected);
         // A body's parent body is whichever body owns its parent bone.
         let parent_body = |bone: usize| rig.parents[bone].and_then(|parent| owner[parent]);
         // Count descendants per root to choose the single root.
@@ -947,26 +970,12 @@ impl BodyTree {
                 (members, std::cmp::Reverse(*root))
             })
             .unwrap_or(0);
-        let kept = selected
+        selected
             .iter()
             .enumerate()
             .filter(|(body, _)| root_of[*body] == root)
             .map(|(_, bone)| *bone)
-            .collect::<Vec<_>>();
-        // Rebuild ownership for the kept bodies only.
-        let owner = Self::owners(rig, &kept);
-        let parents = kept
-            .iter()
-            .map(|bone| rig.parents[*bone].and_then(|parent| owner[parent]))
-            .collect::<Vec<_>>();
-        // Children lists let later stages walk subtrees top-down.
-        let children = children_of(&parents, kept.len());
-        Self {
-            bones: kept,
-            parents,
-            children,
-            owner,
-        }
+            .collect()
     }
 
     /// Returns the body index that owns each bone's geometry.
