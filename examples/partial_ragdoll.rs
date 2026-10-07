@@ -188,20 +188,28 @@ fn spawn_ragdoll(
     let bodies = profile.bodies();
     let mut parents = vec![None; bodies.len()];
     for joint in profile.joints() {
-        parents[joint.child().get()] = Some(joint.parent().get());
+        if let Some(slot) = parents.get_mut(joint.child().get()) {
+            *slot = Some(joint.parent().get());
+        }
     }
 
     // Profiles list parents before children, so each parent bone already exists.
     let mut bones = Vec::with_capacity(bodies.len());
     for (index, body) in bodies.iter().enumerate() {
         let rest = body.rest();
-        let (parent, transform) = match parents[index] {
-            Some(parent) => {
-                let inverse = bodies[parent].rest().rotation.inverse();
-                let offset = inverse * (rest.translation - bodies[parent].rest().translation);
+        // The parent's bone entity and rest pose, when this body has a parent.
+        let parent = parents
+            .get(index)
+            .copied()
+            .flatten()
+            .and_then(|parent| Some((*bones.get(parent)?, bodies.get(parent)?.rest())));
+        let (parent, transform) = match parent {
+            Some((parent, parent_rest)) => {
+                let inverse = parent_rest.rotation.inverse();
+                let offset = inverse * (rest.translation - parent_rest.translation);
                 let local = Transform::from_translation(offset.into())
                     .with_rotation(inverse * rest.rotation);
-                (bones[parent], local)
+                (parent, local)
             }
             None => (
                 character,

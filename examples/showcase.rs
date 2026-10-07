@@ -20,11 +20,9 @@ use bevy::asset::RenderAssetUsages;
 use bevy::diagnostic::{DiagnosticsStore, FrameTimeDiagnosticsPlugin};
 use bevy::input::mouse::{AccumulatedMouseMotion, AccumulatedMouseScroll};
 use bevy::light::CascadeShadowConfigBuilder;
-use bevy::pbr::{DistanceFog, FogFalloff};
 use bevy::platform::time::Instant;
 use bevy::prelude::*;
 use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
-use bevy::transform::TransformSystems;
 use bevy::window::PrimaryWindow;
 use bevy_ragdoll::runtime::body::{BodyMass, BodyPhysicsPose, BodyShape, BodyVelocity};
 use bevy_ragdoll::runtime::components::{RagdollBodyOf, RagdollDrive, RagdollMode};
@@ -36,10 +34,11 @@ use bevy_ragdoll::runtime::messages::{
 use bevy_ragdoll::runtime::sets::{RagdollFixedSystems, RagdollSystems};
 use bevy_ragdoll::runtime::settings::RagdollPhysicsSettings;
 use bevy_ragdoll::{BodyIndex, Ragdoll, RagdollPlugin, Skeleton};
-use bevy::world_serialization::WorldAsset;
 
 /// Half the side length of the square arena floor, in metres.
 const ARENA_HALF_EXTENT: f32 = 20.0;
+/// Checker cells along each floor edge: one per metre of `2 * ARENA_HALF_EXTENT`.
+const CHECKER_CELLS: usize = 40;
 /// Characters spawned per frame while the population grows, to spread spawn cost.
 const SPAWNS_PER_FRAME: usize = 4;
 /// Cursor travel in logical pixels that turns a click into a drag.
@@ -226,6 +225,13 @@ impl Default for Params {
     }
 }
 
+impl Params {
+    /// Returns the hit preset a click applies.
+    fn hit_profile(&self) -> HitProfile {
+        HIT_PROFILES.get(self.hit).copied().unwrap_or(HitProfile::Shotgun)
+    }
+}
+
 /// A panel value the user can step up or down.
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Param {
@@ -295,7 +301,7 @@ impl Param {
             Self::Muscle => format!("{:.0}%", params.muscle * 100.0),
             Self::Gravity => format!("{:.1} m/s2", params.gravity),
             Self::TimeScale => format!("{:.1}x", params.time_scale),
-            Self::Hit => format!("{:?}", HIT_PROFILES[params.hit]),
+            Self::Hit => format!("{:?}", params.hit_profile()),
             Self::Creatures => if params.creatures { "Mixed" } else { "Off" }.to_owned(),
         }
     }
@@ -399,7 +405,7 @@ struct StepTimer {
     /// Summed fixed-step seconds since the last readout.
     total: f32,
     /// Fixed steps since the last readout.
-    steps: u32,
+    steps: u16,
     /// Smoothed milliseconds per fixed step.
     average_ms: f32,
 }
@@ -559,7 +565,7 @@ fn setup_scene(
 
 /// Builds a two-tone checker texture with one-metre cells across the floor.
 fn checker_image() -> Image {
-    let cells = (ARENA_HALF_EXTENT * 2.0) as usize;
+    let cells = CHECKER_CELLS;
     let cell_px = 16;
     let size = cells * cell_px;
     let mut data = Vec::with_capacity(size * size * 4);
@@ -606,6 +612,10 @@ fn setup_assets(mut assets: ResMut<'_, BodyAssets>, mut materials: ResMut<'_, As
 /// Spawns or despawns characters until the population matches `Params::count`.
 ///
 /// Characters that fall off the arena are despawned and replaced.
+#[expect(
+    clippy::cast_precision_loss,
+    reason = "population and spawn counts stay far below 2^24"
+)]
 fn sync_population(
     mut commands: Commands<'_, '_>,
     params: Res<'_, Params>,
@@ -657,11 +667,15 @@ fn spawn_character(
         RagdollDrive::new(params.muscle, 0.0),
         Transform::from_translation(position).with_rotation(Quat::from_rotation_y(yaw)),
     ));
-    match index % 5 {
-        creature @ 3..=4 if params.creatures => {
-            character.insert(WorldAssetRoot(rigs.creatures[creature - 3].clone()));
+    let creature = params
+        .creatures
+        .then(|| rigs.creatures.get((index % 5).checked_sub(3)?))
+        .flatten();
+    match creature {
+        Some(scene) => {
+            character.insert(WorldAssetRoot(scene.clone()));
         }
-        _ => {
+        None => {
             let character = character.id();
             rigs.humanoid.spawn(commands, character);
         }
@@ -707,7 +721,7 @@ fn add_body_meshes(
             })
             .clone();
         let color = characters.get(owner.0).map_or(0, |character| character.0);
-        let material = assets.materials[color % assets.materials.len()].clone();
+        let material = assets.materials.iter().cycle().nth(color).cloned().unwrap_or_default();
         commands.entity(entity).insert(Visibility::Inherited);
         commands.spawn((
             Mesh3d(mesh),
@@ -1029,7 +1043,7 @@ fn release_pointer(
         return;
     };
     let magnitude = settings
-        .impulse_magnitude(HIT_PROFILES[params.hit])
+        .impulse_magnitude(params.hit_profile())
         .unwrap_or_default();
     hits.write(RagdollHit {
         body: target.body,
@@ -1113,7 +1127,7 @@ fn start_step_timer(mut timer: ResMut<'_, StepTimer>) {
 fn finish_step_timer(mut timer: ResMut<'_, StepTimer>) {
     if let Some(started) = timer.started.take() {
         timer.total += started.elapsed().as_secs_f32();
-        timer.steps += 1;
+        timer.steps = timer.steps.saturating_add(1);
     }
 }
 
@@ -1141,7 +1155,7 @@ fn update_panel(
     }
     *since_refresh = 0.0;
     if timer.steps > 0 {
-        timer.average_ms = timer.total * 1000.0 / timer.steps as f32;
+        timer.average_ms = timer.total * 1000.0 / f32::from(timer.steps);
     }
     (timer.total, timer.steps) = (0.0, 0);
     let fps = diagnostics
