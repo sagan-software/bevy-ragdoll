@@ -53,16 +53,10 @@
           inherit (pkgs) lib;
           inherit (pkgs.stdenv.hostPlatform) isLinux isx86_64;
 
-          # Stable Rust satisfies the workspace `rust-version`; Dylint alone uses nightly.
-          stable = pkgs.rust-bin.stable.latest.default;
-          rust = stable.override {
-            extensions = [
-              "clippy"
-              "rustfmt"
-              "llvm-tools-preview"
-            ];
-          };
-          devRust = stable.override {
+          # rust-toolchain.toml pins the stable toolchain; Dylint alone uses nightly.
+          rust = pkgs.rust-bin.fromRustupToolchainFile ./rust-toolchain.toml;
+          # The development shell adds rust-analyzer and the WASI target.
+          devRust = rust.override {
             extensions = [
               "rust-src"
               "clippy"
