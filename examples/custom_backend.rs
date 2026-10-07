@@ -8,12 +8,9 @@
 //! Run with `cargo run --example custom_backend`.
 
 use bevy::prelude::*;
-use bevy::transform::TransformSystems;
-use bevy_ragdoll::runtime::body::BodyShape;
 use bevy_ragdoll::runtime::components::{Ragdoll, RagdollDrive, RagdollMode};
-use bevy_ragdoll::runtime::sets::RagdollSystems;
-use bevy_ragdoll::{
-    AngleRange, BodyIndex, JointLimits, ProfileBuilder, ProfileError, RagdollPlugin,
+use bevy_ragdoll::{RagdollDebugPlugin, 
+    AngleRange, JointLimits, ProfileBuilder, ProfileError, RagdollPlugin,
     RagdollProfile, ShapeSpec,
 };
 use bevy_ragdoll_conformance::mock::MockBackendPlugin;
@@ -26,12 +23,7 @@ fn main() {
         // Swap `MockBackendPlugin` for your own backend plugin.
         .add_plugins((RagdollPlugin::default(), MockBackendPlugin))
         .add_systems(Startup, (setup_scene, spawn_ragdoll))
-        .add_systems(
-            PostUpdate,
-            add_body_meshes
-                .after(RagdollSystems::Bind)
-                .before(TransformSystems::Propagate),
-        )
+        .add_plugins(RagdollDebugPlugin)
         .run();
 }
 
@@ -160,46 +152,3 @@ fn spawn_ragdoll(mut commands: Commands, mut profiles: ResMut<Assets<RagdollProf
     ));
 }
 
-/// Gives each new physics body a mesh that matches its collision shape.
-fn add_body_meshes(
-    mut commands: Commands,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
-    bodies: Query<(Entity, &BodyShape, &BodyIndex), Added<BodyShape>>,
-) {
-    let palette = [
-        Color::srgb(0.18, 0.62, 0.76),
-        Color::srgb(0.25, 0.78, 0.64),
-        Color::srgb(0.92, 0.66, 0.34),
-    ];
-    for (body, shape, index) in &bodies {
-        let (mesh, transform): (Mesh, Transform) = match shape.0 {
-            ShapeSpec::Capsule { a, b, radius } => (
-                Capsule3d::new(radius, a.distance(b)).into(),
-                Transform::from_translation((a + b) * 0.5).with_rotation(Quat::from_rotation_arc(
-                    Vec3::Y,
-                    (b - a).try_normalize().unwrap_or(Vec3::Y),
-                )),
-            ),
-            ShapeSpec::Sphere { center, radius } => (
-                Sphere::new(radius).into(),
-                Transform::from_translation(center),
-            ),
-            ShapeSpec::Cuboid {
-                center,
-                rotation,
-                half_extents,
-            } => (
-                Cuboid::from_size(half_extents * 2.0).into(),
-                Transform::from_translation(center).with_rotation(rotation),
-            ),
-        };
-        commands.entity(body).insert(Visibility::Inherited);
-        commands.spawn((
-            Mesh3d(meshes.add(mesh)),
-            MeshMaterial3d(materials.add(palette[index.get().min(2)])),
-            transform,
-            ChildOf(body),
-        ));
-    }
-}
