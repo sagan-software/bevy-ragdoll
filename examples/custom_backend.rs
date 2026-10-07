@@ -16,7 +16,7 @@ use bevy_ragdoll::{
 use bevy_ragdoll_conformance::mock::MockBackendPlugin;
 
 /// Runs the example.
-fn main() {
+fn main() -> AppExit {
     App::new()
         .add_plugins(DefaultPlugins)
         .insert_resource(Time::<Fixed>::from_hz(60.0))
@@ -24,7 +24,7 @@ fn main() {
         .add_plugins((RagdollPlugin::default(), MockBackendPlugin))
         .add_systems(Startup, (setup_scene, spawn_ragdoll))
         .add_plugins(RagdollDebugPlugin)
-        .run();
+        .run()
 }
 
 /// Adds a floor, a camera, a light, and a label.

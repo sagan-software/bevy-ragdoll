@@ -18,7 +18,7 @@ use bevy_rapier3d::prelude::{Collider, RigidBody};
 const LABEL: &str = "Profile built in Rust\nThe pinned pelvis holds while the chain swings.";
 
 /// Runs the example.
-fn main() {
+fn main() -> AppExit {
     App::new()
         .add_plugins(DefaultPlugins)
         // The ragdoll runtime and Rapier both step in `FixedUpdate` at 60 Hz.
@@ -34,7 +34,7 @@ fn main() {
         ))
         .add_systems(Startup, (setup_scene, spawn_ragdoll))
         .add_plugins(RagdollDebugPlugin)
-        .run();
+        .run()
 }
 
 /// Builds the pelvis, chest, and head chain in code.

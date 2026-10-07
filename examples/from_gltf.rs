@@ -13,7 +13,7 @@ use bevy_rapier3d::plugin::{RapierPhysicsPlugin, TimestepMode};
 use bevy_rapier3d::prelude::{Collider, RigidBody};
 
 /// Runs the example.
-fn main() {
+fn main() -> AppExit {
     App::new()
         // Web servers answer 404 for the `.meta` files Bevy probes by default; the rigs have none.
         .add_plugins(DefaultPlugins.set(AssetPlugin {
@@ -34,7 +34,7 @@ fn main() {
         ))
         .add_systems(Startup, setup)
         .add_systems(Update, drop_on_space)
-        .run();
+        .run()
 }
 
 /// Spawns the floor, camera, light and the three creatures.
