@@ -30,6 +30,25 @@ const LIMB_ALIASES: &[(&[&str], BodyRole)] = &[
 /// It strips namespace prefixes (`mixamorig:`, `Armature|`), `mixamorigN_`,
 /// `DEF-`, trailing numeric segments (`.001`) and side markers.
 pub(super) fn normalize(name: &str) -> (String, Option<Side>) {
+    // Rig prefixes and a leading side word come off first, then tokens split.
+    let (lower, mut side) = strip_prefixes(name);
+    let mut tokens = lower
+        .split(['_', '.', '-', ' '])
+        .filter(|token| !token.is_empty())
+        .collect::<Vec<_>>();
+    // Trailing numbers name segments (`spine_01`, `upper_arm.L.001`).
+    while tokens.last().copied().is_some_and(is_number) {
+        tokens.pop();
+    }
+    // A side token wins over a side word because it is the more specific marker.
+    if let Some(marker) = strip_side_token(&mut tokens) {
+        side = Some(marker);
+    }
+    (tokens.concat(), side)
+}
+
+/// Lowercases `name` and strips namespace, Mixamo, Rigify and side-word prefixes.
+fn strip_prefixes(name: &str) -> (String, Option<Side>) {
     // Drop namespace prefixes such as `mixamorig:` and `Armature|`.
     let name = name.rsplit([':', '|']).next().unwrap_or(name);
     let mut lower = name.to_ascii_lowercase();
@@ -51,18 +70,19 @@ pub(super) fn normalize(name: &str) -> (String, Option<Side>) {
             lower = rest.to_owned();
         }
     }
-    let mut tokens = lower
-        .split(['_', '.', '-', ' '])
-        .filter(|token| !token.is_empty())
-        .collect::<Vec<_>>();
-    // Trailing numbers name segments (`spine_01`, `upper_arm.L.001`).
-    while tokens
-        .last()
-        .is_some_and(|token| token.chars().all(|c| c.is_ascii_digit()))
-    {
-        tokens.pop();
-    }
-    // Side tokens at either end (`hand_l`, `thigh.R`, `l_hand`).
+    (lower, side)
+}
+
+/// Returns whether `token` is a segment number such as `01` or `001`.
+fn is_number(token: &str) -> bool {
+    token.chars().all(|c| c.is_ascii_digit())
+}
+
+/// Removes a side token at either end (`hand_l`, `thigh.R`, `l_hand`).
+///
+/// A lone token is kept, so a bone named `l` keeps its name.
+fn strip_side_token(tokens: &mut Vec<&str>) -> Option<Side> {
+    // The last token is checked first because suffixes are the common form.
     for index in [tokens.len().wrapping_sub(1), 0] {
         let marker = match tokens.get(index).copied() {
             Some("l" | "left") => Some(Side::Left),
@@ -70,12 +90,11 @@ pub(super) fn normalize(name: &str) -> (String, Option<Side>) {
             _ => None,
         };
         if let (Some(marker), true) = (marker, tokens.len() > 1) {
-            side = Some(marker);
             tokens.remove(index);
-            break;
+            return Some(marker);
         }
     }
-    (tokens.concat(), side)
+    None
 }
 
 /// Returns the humanoid role named by `name`, with its side for limbs.
@@ -165,6 +184,19 @@ pub(super) fn detect(bones: &Bones<'_>) -> Option<Vec<(usize, BodyRole)>> {
             .find(|(key, _)| *key == (role, side))
             .map(|(_, bone)| *bone)
     };
+    // All four limbs must match before the torso is located from them.
+    let limbs = limbs(bones, get)?;
+    let mut slots = torso(bones, get, &limbs)?;
+    slots.extend(limbs);
+    slots.sort_by_key(|(bone, _)| *bone);
+    Some(slots)
+}
+
+/// Finds the twelve limb bones, left arm and leg first, each chain proximal first.
+fn limbs(
+    bones: &Bones<'_>,
+    get: impl Fn(BodyRole, Option<Side>) -> Option<usize>,
+) -> Option<Vec<(usize, BodyRole)>> {
     let mut limbs = Vec::with_capacity(12);
     for side in [Side::Left, Side::Right] {
         for chain in [
@@ -180,11 +212,25 @@ pub(super) fn detect(bones: &Bones<'_>) -> Option<Vec<(usize, BodyRole)>> {
             limbs.extend([(first, chain[0]), (second, chain[1]), (third, chain[2])]);
         }
     }
+    Some(limbs)
+}
+
+/// Finds the hips, spine, chest and head slots from names and the limb roots.
+#[expect(
+    clippy::indexing_slicing,
+    reason = "bone indexes come from the same skeleton vectors and limbs holds twelve slots"
+)]
+fn torso(
+    bones: &Bones<'_>,
+    get: impl Fn(BodyRole, Option<Side>) -> Option<usize>,
+    limbs: &[(usize, BodyRole)],
+) -> Option<Vec<(usize, BodyRole)>> {
     let [arm_l, leg_l, arm_r, leg_r] = [limbs[0].0, limbs[3].0, limbs[6].0, limbs[9].0];
     // Hips come from the name, else from where the legs meet (Rigify `DEF-spine`).
     let hips = get(BodyRole::Pelvis, None).or_else(|| bones.common_ancestor(leg_l, leg_r))?;
     let head = get(BodyRole::Head, None)?;
     let chest = bones.common_ancestor(arm_l, arm_r)?;
+    // The torso must form one chain from the hips through the chest to the head.
     if !bones.is_ancestor(hips, chest) || !bones.is_ancestor(chest, head) {
         return None;
     }
@@ -205,7 +251,5 @@ pub(super) fn detect(bones: &Bones<'_>) -> Option<Vec<(usize, BodyRole)>> {
         slots.push((chest, BodyRole::Chest));
     }
     slots.push((head, BodyRole::Head));
-    slots.extend(limbs);
-    slots.sort_by_key(|(bone, _)| *bone);
     Some(slots)
 }

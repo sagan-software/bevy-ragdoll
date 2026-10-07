@@ -22,36 +22,7 @@ pub(crate) fn skeleton_from_world(
     character: Entity,
     overrides: Option<&RagdollOverrides>,
 ) -> Option<Skeleton> {
-    // Breadth-first order keeps parents before children.
-    let mut order = Vec::new();
-    let mut queue = VecDeque::from([(character, Affine3A::IDENTITY, None::<usize>)]);
-    let mut joints = HashSet::new();
-    while let Some((entity, parent_pose, parent)) = queue.pop_front() {
-        let pose = if entity == character {
-            Affine3A::IDENTITY
-        } else {
-            parent_pose
-                * world
-                    .get::<Transform>(entity)
-                    .copied()
-                    .unwrap_or_default()
-                    .compute_affine()
-        };
-        if let Some(skin) = world.get::<SkinnedMesh>(entity) {
-            joints.extend(skin.joints.iter().copied());
-        }
-        let index = (entity != character).then(|| {
-            order.push((entity, pose, parent));
-            order.len() - 1
-        });
-        if let Some(children) = world.get::<Children>(entity) {
-            queue.extend(
-                children
-                    .iter()
-                    .map(|child| (*child, pose, index.or(parent))),
-            );
-        }
-    }
+    let (order, joints) = descendants(world, character);
     // Keep joints of skinned meshes when present, else all named entities.
     let is_bone = |entity: Entity| {
         world.get::<Name>(entity).is_some() && (joints.is_empty() || joints.contains(&entity))
@@ -67,6 +38,7 @@ pub(crate) fn skeleton_from_world(
         };
         let name = name.as_str().to_owned();
         let (_, rotation, translation) = pose.to_scale_rotation_translation();
+        // A component on the bone entity beats the overrides asset.
         let overrides = world
             .get::<RagdollBone>(*entity)
             .or_else(|| overrides.and_then(|overrides| overrides.get(&name)))
@@ -81,4 +53,47 @@ pub(crate) fn skeleton_from_world(
         bone_of[index] = Some(skeleton.bones.len() - 1);
     }
     (!skeleton.bones.is_empty()).then_some(skeleton)
+}
+
+/// Lists descendants of `character` with their character-space pose and parent.
+///
+/// Each entry's parent is the index of its nearest listed ancestor. The set
+/// holds every joint entity named by a skinned mesh below `character`.
+fn descendants(
+    world: &World,
+    character: Entity,
+) -> (Vec<(Entity, Affine3A, Option<usize>)>, HashSet<Entity>) {
+    // Breadth-first order keeps parents before children.
+    let mut order = Vec::new();
+    let mut queue = VecDeque::from([(character, Affine3A::IDENTITY, None::<usize>)]);
+    let mut joints = HashSet::new();
+    while let Some((entity, parent_pose, parent)) = queue.pop_front() {
+        // The character itself is the origin of skeleton space.
+        let pose = if entity == character {
+            Affine3A::IDENTITY
+        } else {
+            parent_pose
+                * world
+                    .get::<Transform>(entity)
+                    .copied()
+                    .unwrap_or_default()
+                    .compute_affine()
+        };
+        if let Some(skin) = world.get::<SkinnedMesh>(entity) {
+            joints.extend(skin.joints.iter().copied());
+        }
+        // The character is not listed, so its children get no parent index.
+        let index = (entity != character).then(|| {
+            order.push((entity, pose, parent));
+            order.len() - 1
+        });
+        if let Some(children) = world.get::<Children>(entity) {
+            queue.extend(
+                children
+                    .iter()
+                    .map(|child| (*child, pose, index.or(parent))),
+            );
+        }
+    }
+    (order, joints)
 }
