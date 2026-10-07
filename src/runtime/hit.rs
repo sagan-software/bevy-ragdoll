@@ -823,9 +823,11 @@ mod tests {
     /// Selects the local graph radius at each documented impulse boundary.
     #[test]
     fn maximum_hops_changes_at_twelve_and_forty() {
+        // The next representable values above each threshold must already reach the next hop count.
         let above_twelve = f32::from_bits(12.0_f32.to_bits() + 1);
         let above_forty = f32::from_bits(40.0_f32.to_bits() + 1);
 
+        // Each threshold itself still belongs to the lower hop count.
         assert_eq!(maximum_hops(12.0), 1);
         assert_eq!(maximum_hops(above_twelve), 2);
         assert_eq!(maximum_hops(40.0), 2);
@@ -835,12 +837,14 @@ mod tests {
     /// Keeps ancestor and descendant falloff distinct and sibling falloff absent.
     #[test]
     fn hop_falloff_respects_tree_direction_and_siblings() {
+        // A root, one middle body, and two sibling leaves under it.
         let mut tree = empty_tree();
         tree.body_count = 4;
         tree.parents[1] = Some(0);
         tree.parents[2] = Some(1);
         tree.parents[3] = Some(1);
 
+        // Falloff walks up the tree, scales by distance, and never crosses to a sibling.
         assert_eq!(hop_falloff(2, 2, &tree), Some((0, 1.0)));
         assert_eq!(hop_falloff(0, 2, &tree), Some((2, 0.25)));
         assert_eq!(hop_falloff(3, 1, &tree), Some((1, 0.7)));
@@ -865,6 +869,7 @@ mod tests {
     /// Collects only the body's owner's relationship members in profile order.
     #[test]
     fn hit_tree_collects_related_bodies_without_foreign_owners() {
+        // Two characters, so the tree must keep only the first owner's bodies.
         let mut world = World::new();
         let first_owner = world.spawn(RagdollBodies::default()).id();
         let second_owner = world.spawn(RagdollBodies::default()).id();
@@ -899,6 +904,7 @@ mod tests {
                 RagdollBodyOf(second_owner),
             ))
             .id();
+        // Collect the tree the way process_hits does, from the owner's relationship.
         let related_bodies = world
             .get::<RagdollBodies>(first_owner)
             .expect("the first owner's relationship is populated")
@@ -908,6 +914,7 @@ mod tests {
 
         let tree = HitImpulseTree::collect(first_owner, &related_bodies, &body_query);
 
+        // Only the first owner's two bodies are in the tree, in index order.
         assert_eq!(tree.body_count, 2);
         assert_eq!(tree.body(0), Some(first_body));
         assert_eq!(tree.body(1), Some(second_body));
@@ -917,11 +924,13 @@ mod tests {
     /// Saturates rapid-fire hit counts instead of wrapping after `u32::MAX`.
     #[test]
     fn rapid_fire_streak_saturates_at_its_integer_limit() {
+        // A streak already at u32::MAX inside the rapid-fire window.
         let mut last_hit = LastHit {
             last_at: Some(Duration::ZERO),
             streak: u32::MAX,
         };
 
+        // Another quick hit must saturate instead of wrapping to zero.
         last_hit.record(Duration::from_millis(1));
 
         assert_eq!(last_hit.streak(), u32::MAX);
@@ -930,12 +939,14 @@ mod tests {
     /// Skips hit state changes when the body owner lacks required character state.
     #[test]
     fn process_hits_skips_a_body_with_missing_character_state() {
+        // Run process_hits alone so the test controls every input message.
         let mut app = App::new();
         app.add_message::<RagdollHit>()
             .add_message::<RagdollImpulse>()
             .insert_resource(Time::<Fixed>::from_hz(60.0))
             .add_systems(PostUpdate, super::process_hits);
 
+        // The owner lacks RagdollMode and RagdollBodies, so it is not a valid character.
         let owner = app
             .world_mut()
             .spawn((RagdollBodyWeights::default(), LastHit::default()))
@@ -957,6 +968,7 @@ mod tests {
 
         app.update();
 
+        // The hit is ignored: no history, no weight change, and no impulse.
         assert_eq!(
             app.world()
                 .get::<LastHit>(owner)
@@ -977,6 +989,7 @@ mod tests {
     /// Ignores an out-of-range index introduced through mutable reflection.
     #[test]
     fn process_hits_skips_an_out_of_range_reflected_body_index() {
+        // Run process_hits alone so the test controls every input message.
         let mut app = App::new();
         app.add_message::<RagdollHit>()
             .add_message::<RagdollImpulse>()
@@ -999,6 +1012,7 @@ mod tests {
                 RagdollBodyOf(owner),
             ))
             .id();
+        // Reflection can write an index past MAX_BODIES that normal construction rejects.
         {
             let mut index = app
                 .world_mut()
@@ -1017,6 +1031,7 @@ mod tests {
 
         app.update();
 
+        // The hit is ignored: no history, no weight change, and no impulse.
         assert_eq!(
             app.world()
                 .get::<LastHit>(owner)
@@ -1037,6 +1052,7 @@ mod tests {
     /// Rejects a hit when another body occupies its validated index.
     #[test]
     fn process_hits_skips_duplicate_body_indexes() {
+        // Run process_hits alone so the test controls every input message.
         let mut app = App::new();
         app.add_message::<RagdollHit>()
             .add_message::<RagdollImpulse>()
@@ -1059,6 +1075,7 @@ mod tests {
                 RagdollBodyOf(owner),
             ))
             .id();
+        // A second body with the same index makes the body tree ambiguous.
         app.world_mut().spawn((
             BodyIndex::try_from(0).expect("zero is a valid body index"),
             BodyRole::Spine,
@@ -1073,6 +1090,7 @@ mod tests {
 
         app.update();
 
+        // The hit is ignored: no history, no weight change, and no impulse.
         assert_eq!(
             app.world()
                 .get::<LastHit>(owner)
@@ -1097,6 +1115,7 @@ mod tests {
         app.add_message::<RagdollImpulse>().add_systems(
             PostUpdate,
             |mut impulses: bevy::ecs::message::MessageWriter<'_, RagdollImpulse>| {
+                // Body 0 points at a parent slot that holds no data.
                 let mut tree = HitImpulseTree {
                     masses: [1.0; MAX_BODIES],
                     body_count: 1,
@@ -1112,6 +1131,7 @@ mod tests {
                     &mut impulses,
                 );
 
+                // A placeholder entity with a zero impulse must also publish nothing.
                 tree.body_entities[0] = Some(bevy::prelude::Entity::PLACEHOLDER);
                 distribute_impulse(
                     bevy::math::Vec3::ZERO,
