@@ -2,7 +2,7 @@
 //!
 //! Each rig under `assets/rigs` goes through the real glTF loader and scene
 //! spawn, so these tests catch naming or hierarchy changes in the generated
-//! assets that code-built skeletons would miss.
+//! assets that code-built skeletons would miss. They need no window or GPU.
 
 use bevy::animation::AnimationPlugin;
 use bevy::asset::{AssetPlugin, Assets};

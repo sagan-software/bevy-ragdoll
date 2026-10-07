@@ -55,7 +55,7 @@ pub struct Ragdoll {
     /// body's mass from its collider volume and a uniform density.
     pub mass: Option<crate::profile::Mass>,
     /// Sparse per-bone overrides for a generated profile, usually loaded from a
-    /// `.ragdoll.ron` file; `None` keeps every generated shape, mass, and limit.
+    /// `.ragdoll.ron` file; `None` keeps every generated shape, mass, and joint limit.
     pub overrides: Option<bevy::asset::Handle<crate::auto::RagdollOverrides>>,
 }
 

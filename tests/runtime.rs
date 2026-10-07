@@ -2,7 +2,7 @@
 //!
 //! The tests drive characters through mode changes, binding, budgets, pins,
 //! settling, and writeback in a headless app, so they cover the core runtime
-//! without depending on a real physics engine.
+//! without depending on a real physics engine or a window.
 
 use std::sync::{
     Arc,
@@ -311,11 +311,13 @@ fn dynamic_mode_spawns_one_entity_per_body() {
             app.world().get::<BodyIndex>(body).map(|value| value.get()),
             Some(index)
         );
+        // Each body carries the shape, mass, motion, and drive data a backend reads.
         assert!(app.world().get::<BodyShape>(body).is_some());
         assert!(app.world().get::<BodyMass>(body).is_some());
         assert!(app.world().get::<BodyVelocity>(body).is_some());
         assert!(app.world().get::<BodyPhysicsPose>(body).is_some());
         assert!(app.world().get::<BodyDriveOutput>(body).is_some());
+        // A freshly spawned body is not at rest yet.
         assert!(app.world().get::<BodyAtRest>(body).is_none());
     }
 }

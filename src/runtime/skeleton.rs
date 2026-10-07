@@ -164,7 +164,12 @@ fn resolve_profile(
     let mass = ragdoll.mass;
     // Returning `None` while the overrides asset loads retries on a later frame.
     let overrides = match &ragdoll.overrides {
-        Some(handle) => Some(loaded_overrides(world, handle)?),
+        Some(handle) => Some(
+            world
+                .get_resource::<Assets<crate::auto::RagdollOverrides>>()?
+                .get(handle)?
+                .clone(),
+        ),
         None => None,
     };
     let mut skeleton = crate::auto::skeleton_from_world(world, character, overrides.as_ref())?;
@@ -181,17 +186,6 @@ fn resolve_profile(
         .add(profile);
     world.get_mut::<Ragdoll>(character)?.profile = Some(handle.clone());
     Some(handle)
-}
-
-/// Returns the loaded overrides asset, or `None` while it is still loading.
-fn loaded_overrides(
-    world: &World,
-    handle: &bevy::asset::Handle<crate::auto::RagdollOverrides>,
-) -> Option<crate::auto::RagdollOverrides> {
-    world
-        .get_resource::<Assets<crate::auto::RagdollOverrides>>()?
-        .get(handle)
-        .cloned()
 }
 
 /// Builds a profile from `skeleton`, or records [`RagdollError::InvalidSkeleton`]

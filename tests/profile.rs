@@ -2,7 +2,8 @@
 //!
 //! The tests build profiles through every public entry point and check that
 //! validation rejects malformed shapes, joints, and limits while valid input
-//! keeps its bodies, joints, masses, and rest poses.
+//! keeps its bodies, joints, masses, and rest poses exactly as written, including
+//! after a RON round trip.
 
 #![cfg(feature = "serialize")]
 

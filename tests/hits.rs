@@ -2,7 +2,7 @@
 //!
 //! The tests write `RagdollHit` messages against the conformance mock backend
 //! and check muscle and pin weights, streaks, recovery, velocity limits, and
-//! the impulses the runtime publishes for a backend to apply.
+//! the impulses the runtime publishes for a backend to apply, frame by frame.
 
 use bevy::asset::{AssetPlugin, Assets};
 use bevy::ecs::message::Messages;
@@ -150,6 +150,7 @@ fn two_body_profile() -> RagdollProfile {
     let spine = builder
         .add_body("spine", shape, 2.0, Isometry3d::from_translation(Vec3::Y))
         .expect("the spine index is within the profile limit");
+    // A symmetric bend lets the hit tree treat the joint like any limb joint.
     let bend = AngleRange {
         min: -0.5,
         max: 0.5,
@@ -376,6 +377,7 @@ fn strength_drop_follows_the_falloff_table() {
         kind: HitKind::Impact,
     });
 
+    // One frame runs the hit through the fixed-step hit system.
     app.update();
 
     // Each body's muscle matches the falloff table for its hop distance.
@@ -416,6 +418,8 @@ fn streaks_stack_within_the_window() {
         impulse: Vec3::X * 20.0,
         kind: HitKind::Impact,
     });
+    // One frame runs the hit through the fixed-step hit system.
+    // The first hit starts the streak window.
     app.update();
     for _ in 0..28 {
         app.update();
@@ -457,6 +461,8 @@ fn do_not_stack_after_it() {
         impulse: Vec3::X * 20.0,
         kind: HitKind::Impact,
     });
+    // One frame runs the hit through the fixed-step hit system.
+    // The first hit starts the streak window.
     app.update();
     for _ in 0..30 {
         app.update();
@@ -611,6 +617,7 @@ fn velocity_limits_apply_while_muscles_are_active() {
         velocity.angular = Vec3::Y * 24.0;
     }
 
+    // One frame lets the drive apply the speed caps.
     app.update();
 
     // The drive clamps them to the 10 m/s and 20 rad/s caps.
@@ -648,6 +655,7 @@ fn full_limp_disables_velocity_limits() {
         velocity.angular = Vec3::Y * 24.0;
     }
 
+    // One frame lets the drive skip the caps for a limp body.
     app.update();
 
     // A fully limp ragdoll keeps its speed and publishes no caps.
@@ -733,6 +741,7 @@ fn malformed_hit_vectors_do_not_change_strength_or_publish_impulses() {
         });
     }
 
+    // One frame runs the hit through the fixed-step hit system.
     app.update();
 
     // None of them may weaken a body, start a streak, or publish an impulse.
@@ -966,6 +975,7 @@ fn root_hit_uses_the_current_body_centre() {
         kind: HitKind::Impact,
     });
 
+    // One frame runs the hit through the fixed-step hit system.
     app.update();
 
     // The impulse is applied at the body's current centre, not the contact point.
@@ -997,6 +1007,7 @@ fn root_hit_falls_back_to_the_supplied_contact_point() {
         kind: HitKind::Impact,
     });
 
+    // One frame runs the hit through the fixed-step hit system.
     app.update();
 
     // The impulse falls back to the contact point from the hit.
@@ -1027,6 +1038,7 @@ fn hit_does_not_propagate_through_a_parent_without_pose_data() {
         kind: HitKind::Impact,
     });
 
+    // One frame runs the hit through the fixed-step hit system.
     app.update();
 
     // Only the spine receives an impulse.
@@ -1089,6 +1101,7 @@ fn spawn_branch_character(app: &mut App) -> Entity {
     let right = builder
         .add_body("upperarm_r", shape, 2.0, Isometry3d::IDENTITY)
         .expect("the right arm index is valid");
+    // All three joints share one symmetric bend range.
     let bend = AngleRange {
         min: -0.5,
         max: 0.5,
