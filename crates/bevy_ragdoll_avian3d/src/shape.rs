@@ -61,6 +61,7 @@ mod tests {
         let b = Vec3::new(0.0, 0.9, 0.0);
         // Use a vertical capsule whose endpoints differ from the origin.
         let collider = collider_for_shape(ShapeSpec::Capsule { a, b, radius: 0.2 });
+        // Avian keeps capsules as segment capsules, so the endpoints are exact.
         let capsule = collider
             .shape()
             .as_capsule()

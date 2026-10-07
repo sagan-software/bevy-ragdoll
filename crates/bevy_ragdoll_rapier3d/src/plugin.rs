@@ -366,6 +366,7 @@ mod tests {
     /// Non-finite shared gravity writes a zero vector to Rapier contexts.
     #[test]
     fn non_finite_gravity_is_replaced_with_zero() {
+        // Use a valid fixed Rapier step so the plugin accepts the stack.
         let mut app = app_with_timestep(TimestepMode::Fixed {
             dt: 1.0 / 60.0,
             substeps: 1,
@@ -396,6 +397,7 @@ mod tests {
     #[test]
     fn force_sleep_only_marks_the_slow_unpinned_owner() {
         let mut world = World::new();
+        // Advance fixed time past the 10 ms sleep delay.
         let mut fixed_time = Time::<Fixed>::from_hz(60.0);
         fixed_time.advance_by(Duration::from_millis(17));
         world.insert_resource(fixed_time);

@@ -1251,6 +1251,7 @@ mod tests {
             half_extents: Vec3::new(1.0, 2.0, 3.0),
         };
 
+        // Each result is the pose height plus the shape's lowest local point.
         assert_eq!(lowest_point(capsule, pose), 9.25);
         assert_eq!(lowest_point(sphere, pose), 10.5);
         assert_eq!(lowest_point(cuboid, pose), 8.5);

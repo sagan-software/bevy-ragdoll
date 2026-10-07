@@ -404,6 +404,7 @@ mod tests {
 
         schedule.run(&mut world);
 
+        // Only the live owner with a body keeps a timer.
         assert_eq!(tracked_owners(&world), vec![with_bodies]);
     }
 

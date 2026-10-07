@@ -527,13 +527,12 @@ mod tests {
                 Ragdoll::new(bevy::asset::Handle::default()),
                 GlobalTransform::default(),
                 RagdollTargetPose::default(),
+                RagdollDrive::new(0.0, 0.0),
             ))
             .id();
-        if let Ok(mut owner_entity) = world.get_entity_mut(owner) {
-            owner_entity.insert(RagdollDrive::new(0.0, 0.0));
-        }
         let index = BodyIndex::try_from(0).expect("profile body index zero is valid");
         let missing_root = world.spawn(GlobalTransform::default()).id();
+        // One body has a valid owner and one names a root without targets.
         let body = spawn_kinematic(&mut world, owner, index);
         let orphan = spawn_kinematic(&mut world, missing_root, index);
         // Run both systems once and apply their deferred commands.
@@ -626,6 +625,7 @@ mod tests {
             rotation,
             half_extents,
         });
+        // The compound holds exactly one cuboid child.
         let compound = collider
             .as_compound()
             .expect("profile cuboids use one-shape compounds");

@@ -526,7 +526,9 @@ mod tests {
     use bevy_ragdoll::runtime::RagdollPlugin;
     use bevy_ragdoll::runtime::body::{BodyKind, BodyPhysicsPose, BodyShape, BodyVelocity};
     use bevy_ragdoll::runtime::components::{RagdollBodyOf, RagdollTargetPose};
-    use bevy_ragdoll::runtime::messages::{RagdollRaycast, RagdollRaycastResponse};
+    use bevy_ragdoll::runtime::messages::{
+        RagdollRaycast, RagdollRaycastResponse, RagdollRequestId,
+    };
 
     use super::{ImpulseAccumulator, MockBackendPlugin, ray_capsule, ray_shape, ray_sphere};
 
@@ -671,7 +673,11 @@ mod tests {
 
     /// Sends one raycast through the mock backend and returns whether the
     /// response for `request_id` reports no hit.
-    fn raycast_has_no_hit(request_id: u64, direction: Vec3, max_distance: f32) -> bool {
+    fn raycast_has_no_hit(
+        request_id: RagdollRequestId,
+        direction: Vec3,
+        max_distance: f32,
+    ) -> bool {
         let mut app = raycast_app();
         // Start reading after any responses that already exist.
         let mut cursor = app
@@ -680,7 +686,7 @@ mod tests {
             .map(Messages::get_cursor)
             .unwrap_or_default();
         app.world_mut().write_message(RagdollRaycast {
-            request_id: bevy_ragdoll::runtime::messages::RagdollRequestId::new(request_id),
+            request_id,
             origin: Vec3::ZERO,
             direction,
             max_distance,
@@ -695,7 +701,7 @@ mod tests {
             .and_then(|messages| {
                 cursor
                     .read(messages)
-                    .find(|response| response.request_id.get() == request_id)
+                    .find(|response| response.request_id == request_id)
                     .copied()
             })
             .is_some_and(|response| response.hit.is_none())
@@ -704,15 +710,23 @@ mod tests {
     /// A zero direction returns no hit.
     #[test]
     fn raycast_rejects_a_zero_direction() {
-        assert!(raycast_has_no_hit(1, Vec3::ZERO, 4.0));
+        assert!(raycast_has_no_hit(
+            RagdollRequestId::new(1),
+            Vec3::ZERO,
+            4.0
+        ));
     }
 
     /// Negative, NaN, and zero distances return no hit.
     #[test]
     fn raycast_rejects_invalid_distances() {
-        assert!(raycast_has_no_hit(2, Vec3::X, -1.0));
-        assert!(raycast_has_no_hit(3, Vec3::X, f32::NAN));
-        assert!(raycast_has_no_hit(4, Vec3::X, 0.0));
+        assert!(raycast_has_no_hit(RagdollRequestId::new(2), Vec3::X, -1.0));
+        assert!(raycast_has_no_hit(
+            RagdollRequestId::new(3),
+            Vec3::X,
+            f32::NAN
+        ));
+        assert!(raycast_has_no_hit(RagdollRequestId::new(4), Vec3::X, 0.0));
     }
 
     /// A ray across a vertical capsule hits its cylinder side.
@@ -739,6 +753,7 @@ mod tests {
     /// Rays that pass above or beside the capsule miss it.
     #[test]
     fn ray_capsule_misses_outside_rays() {
+        // One ray passes over the top cap, one leaves the axis diagonally.
         let above = ray_capsule(Vec3::new(-2.0, 2.0, 0.0), Vec3::X, Vec3::ZERO, Vec3::Y, 0.5);
         let diagonal = Vec3::new(0.0, 1.0, 1.0).normalize();
         let beside = ray_capsule(
