@@ -407,7 +407,14 @@ impl<'a> Rig<'a> {
         }
         kinds
     }
+}
 
+/// Geometry, mass and joint stages, kept apart from the selection and role stages.
+#[expect(
+    clippy::indexing_slicing,
+    reason = "bone, segment and body indexes all come from the same skeleton vectors"
+)]
+impl Rig<'_> {
     /// Computes a body's capsule segment in skeleton space.
     fn segment(&self, tree: &BodyTree, roles: &[BodyRole], body: usize) -> Segment {
         // The incoming link direction picks the main child and estimates leaf tips.
@@ -685,6 +692,13 @@ pub(super) fn twist_basis(along: Vec3) -> Quat {
 /// Default capsule radius in metres for a role.
 ///
 /// Torso radii scale with the skeleton size and limb radii with segment length.
+#[cfg_attr(
+    dylint_lib = "sagan_lints",
+    expect(
+        cyclomatic_complexity,
+        reason = "one match arm per body role; the arms are table data"
+    )
+)]
 fn default_radius(role: BodyRole, length: f32, size: f32) -> f32 {
     match role {
         BodyRole::Pelvis | BodyRole::Spine => 0.077 * size,
@@ -702,6 +716,13 @@ fn default_radius(role: BodyRole, length: f32, size: f32) -> f32 {
 }
 
 /// Share of total mass for a humanoid body role, from an 80 kg reference.
+#[cfg_attr(
+    dylint_lib = "sagan_lints",
+    expect(
+        cyclomatic_complexity,
+        reason = "one match arm per body role; the arms are the segment-mass table"
+    )
+)]
 const fn mass_share(role: BodyRole) -> f32 {
     match role {
         BodyRole::Pelvis => 8.94,
@@ -734,6 +755,13 @@ enum ChainKind {
 
 impl ChainKind {
     /// Role of the body at `depth` in a chain whose deepest body is at `last`.
+    #[cfg_attr(
+        dylint_lib = "sagan_lints",
+        expect(
+            cyclomatic_complexity,
+            reason = "one guarded match arm per chain kind and position; the arms are table data"
+        )
+    )]
     const fn role(self, depth: usize, last: usize) -> BodyRole {
         // Two-body limbs have no foot or hand; the end needs a third body.
         let is_distal = depth == last && last >= 2;
@@ -776,6 +804,13 @@ impl Template {
     #[expect(
         clippy::similar_names,
         reason = "abduct and adduct are the anatomical names of opposite side ranges"
+    )]
+    #[cfg_attr(
+        dylint_lib = "sagan_lints",
+        expect(
+            cyclomatic_complexity,
+            reason = "one match arm per body role; the arms are the tuned limit table"
+        )
     )]
     const fn of(role: BodyRole) -> Self {
         // Radians rounded to six decimals. The Rapier conformance scenes are

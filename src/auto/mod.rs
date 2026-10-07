@@ -18,6 +18,13 @@ mod tests;
 use bevy::math::{Isometry3d, Mat3, Quat, Vec3};
 
 pub use self::overrides::{BoneBody, RagdollBone, RagdollOverrides};
+#[cfg_attr(
+    dylint_lib = "sagan_lints",
+    expect(
+        repeated_cfg_gate,
+        reason = "each gate guards a different serde-only item; a shared module would split the overrides types"
+    )
+)]
 #[cfg(feature = "serialize")]
 pub use self::overrides::{RagdollOverridesLoader, RagdollOverridesLoaderError};
 pub(crate) use self::scene::skeleton_from_world;
@@ -189,6 +196,13 @@ impl Skeleton {
     /// }
     /// # bevy::ecs::system::assert_is_system(spawn_character);
     /// ```
+    #[cfg_attr(
+        dylint_lib = "sagan_lints",
+        expect(
+            bevy_borrowed_reborrowable,
+            reason = "taking Commands by value would break the published spawn signature and every caller"
+        )
+    )]
     pub fn spawn(
         &self,
         commands: &mut bevy::prelude::Commands<'_, '_>,
