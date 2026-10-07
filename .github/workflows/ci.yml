@@ -4,64 +4,51 @@ on:
   push:
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
-  fmt:
-    name: Format
+  flake-check:
+    name: Nix flake check
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: clippy, rustfmt
-      - uses: Swatinem/rust-cache@v2
-      - run: sudo apt-get update && sudo apt-get install --yes libasound2-dev libudev-dev libwayland-dev libxkbcommon-dev
-      - run: cargo fmt --all -- --check
-
-  clippy:
-    name: Clippy
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: clippy, rustfmt
-      - uses: Swatinem/rust-cache@v2
-      - run: sudo apt-get update && sudo apt-get install --yes libasound2-dev libudev-dev libwayland-dev libxkbcommon-dev
-      - run: cargo clippy --workspace --all-targets --locked -- -D warnings
-
-  test:
-    name: Test
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: clippy, rustfmt
-      - uses: Swatinem/rust-cache@v2
-      - run: sudo apt-get update && sudo apt-get install --yes libasound2-dev libudev-dev libwayland-dev libxkbcommon-dev
-      - run: cargo test --workspace --locked
+      - uses: actions/checkout@v7
+      - uses: DeterminateSystems/nix-installer-action@v23
+      - uses: DeterminateSystems/magic-nix-cache-action@v15
+      # Formatting, Clippy, tests, cargo-deny, and Sagan Dylint.
+      # Advisories use the latest RustSec database instead of the locked one.
+      - run: nix flake check -L --override-input advisory-db github:rustsec/advisory-db
 
   stress-smoke:
     name: Stress smoke
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
+      - uses: actions/checkout@v7
+      - uses: DeterminateSystems/nix-installer-action@v23
+      - uses: DeterminateSystems/magic-nix-cache-action@v15
       - run: >-
-          cargo run -p bevy_ragdoll_examples --example ragdoll_stress
-          --features rapier3d -- --headless --scenario pile --count 4
-          --duration 2 --warmup 0 --report stress-smoke.json
+          nix develop -c cargo run --example ragdoll_stress --features rapier3d --
+          --headless --scenario pile --count 4 --duration 2 --warmup 0
+          --report stress-smoke.json
       - run: >-
           python3 -c 'import json; from pathlib import Path; report =
           json.loads(Path("stress-smoke.json").read_text()); assert
           report["metrics"]["unstable_bodies"] == 0, report["metrics"]'
 
-  deny:
-    name: Dependency licenses and advisories
+  coverage:
+    name: Coverage
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-      - uses: EmbarkStudios/cargo-deny-action@v2
+      - uses: actions/checkout@v7
+      - uses: DeterminateSystems/nix-installer-action@v23
+      - uses: DeterminateSystems/magic-nix-cache-action@v15
+      # Writes lcov.info, html/, summary.json, and the Shields.io endpoint badge.json.
+      - run: nix build .#coverage -L
+      - run: cp -rL result coverage
+      - run: >-
+          jq -r '"Line coverage: \(.message)"' coverage/badge.json
+          >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: coverage
+          path: coverage
