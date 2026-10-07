@@ -12,7 +12,8 @@ use crate::shape::collider_for_shape;
 ///
 /// The adapter checks each body at 1 cm intervals up to the configured bound,
 /// matching the Rapier adapter's spawn-lift policy. A body with no clear
-/// position in range contributes no lift; the largest successful correction moves the whole rig.
+/// position in range contributes no lift; the largest successful correction
+/// moves the whole rig.
 /// `is_world_collider` accepts only static, non-ragdoll colliders.
 pub(crate) fn spawn_lift(
     spatial_query: &SpatialQuery<'_, '_>,

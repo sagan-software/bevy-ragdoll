@@ -45,7 +45,7 @@ pub(crate) fn spawn_lift(
         // Search increasing offsets and keep the first clear centimetre position.
         let mut body_lift = None;
         for step in 1..=steps {
-            let distance = step as f32 * 0.01;
+            let distance = f32::from(step) * 0.01;
             let candidate = Isometry3d::new(
                 pose.translation + bevy::math::Vec3A::Y * distance,
                 pose.rotation,
@@ -85,10 +85,10 @@ fn shape_is_intersecting_fixed(
 }
 
 /// Converts a finite lift bound to a rounded centimetre count.
-fn lift_steps(max_spawn_lift: f32) -> usize {
+fn lift_steps(max_spawn_lift: f32) -> u16 {
     if max_spawn_lift.is_finite() && max_spawn_lift > 0.0 {
         let rounded_steps = (max_spawn_lift / 0.01).round();
-        rounded_steps.to_usize().unwrap_or(usize::MAX)
+        rounded_steps.to_u16().unwrap_or(u16::MAX)
     } else {
         0
     }
@@ -117,6 +117,6 @@ mod tests {
     /// Bounds beyond the addressable step count saturate without a lossy cast.
     #[test]
     fn oversized_bound_saturates_at_the_usize_limit() {
-        assert_eq!(lift_steps(f32::MAX), usize::MAX);
+        assert_eq!(lift_steps(f32::MAX), u16::MAX);
     }
 }

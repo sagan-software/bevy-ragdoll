@@ -583,7 +583,9 @@ mod tests {
         let character = app.world_mut().spawn_empty().id();
         let body = kinematic_body(&mut app, character, 0);
 
-        app.world_mut().run_schedule(FixedUpdate);
+        app.world_mut()
+            .try_run_schedule(FixedUpdate)
+            .expect("the fixed schedule exists");
 
         assert_eq!(
             app.world()
@@ -600,7 +602,9 @@ mod tests {
         let character = app.world_mut().spawn(RagdollTargetPose::default()).id();
         let body = kinematic_body(&mut app, character, 1);
 
-        app.world_mut().run_schedule(FixedUpdate);
+        app.world_mut()
+            .try_run_schedule(FixedUpdate)
+            .expect("the fixed schedule exists");
 
         assert_eq!(
             app.world()
@@ -680,7 +684,9 @@ mod tests {
                 max_distance,
                 filter: None,
             });
-            app.world_mut().run_schedule(FixedUpdate);
+            app.world_mut()
+                .try_run_schedule(FixedUpdate)
+                .expect("the fixed schedule exists");
             let response = cursor
                 .read(
                     app.world()

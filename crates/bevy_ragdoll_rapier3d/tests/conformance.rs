@@ -1,4 +1,9 @@
 //! Run the shared contract and physics tiers against the public Rapier adapter.
+//!
+//! Each test builds a headless app with Rapier on Bevy's 60 Hz fixed
+//! schedule, adds the adapter through its public plugin, and calls one
+//! check from `bevy_ragdoll_conformance`. Measurements such as energy read
+//! Rapier mass properties directly.
 
 use bevy::math::{Isometry3d, Quat, Vec3};
 use bevy::prelude::{App, Entity, Transform};
@@ -15,11 +20,12 @@ use bevy_rapier3d::prelude::{Collider, ReadMassProperties, RigidBody};
 fn add_rapier(app: &mut App) {
     let dt = app
         .world()
-        .resource::<Time<Fixed>>()
-        .timestep()
-        .as_secs_f32();
+        .get_resource::<Time<Fixed>>()
+        .map_or(1.0 / 60.0, |time| time.timestep().as_secs_f32());
     app.insert_resource(TimestepMode::Fixed { dt, substeps: 1 });
-    app.add_plugins(RapierPhysicsPlugin::<RapierRagdollHooks>::default().in_fixed_schedule());
+    app.add_plugins(
+        RapierPhysicsPlugin::<RapierRagdollHooks<'static, 'static>>::default().in_fixed_schedule(),
+    );
     app.add_plugins(RapierRagdollPlugin);
 }
 
@@ -44,11 +50,7 @@ fn add_fixed_shape(app: &mut App, shape: ShapeSpec, pose: Isometry3d) -> Entity 
         .spawn((
             RigidBody::Fixed,
             collider,
-            Transform {
-                translation: pose.translation.into(),
-                rotation: pose.rotation,
-                ..Default::default()
-            },
+            Transform::from_translation(pose.translation.into()).with_rotation(pose.rotation),
         ))
         .id()
 }
@@ -72,12 +74,14 @@ fn measure_energy(app: &mut App, character: Entity, gravity: Vec3) -> f32 {
             let principal_to_world =
                 pose.current.rotation * properties.principal_inertia_local_frame;
             let angular_velocity = principal_to_world.inverse() * velocity.angular;
-            0.5 * properties.mass * velocity.linear.length_squared()
-                + 0.5
-                    * (properties.principal_inertia.x * angular_velocity.x.powi(2)
-                        + properties.principal_inertia.y * angular_velocity.y.powi(2)
-                        + properties.principal_inertia.z * angular_velocity.z.powi(2))
-                - properties.mass * gravity.dot(center)
+            let rotational = properties
+                .principal_inertia
+                .dot(angular_velocity * angular_velocity);
+            let kinetic = properties
+                .mass
+                .mul_add(velocity.linear.length_squared(), rotational);
+            let potential = properties.mass * gravity.dot(center);
+            0.5_f32.mul_add(kinetic, -potential)
         })
         .sum()
 }
@@ -189,7 +193,8 @@ fn motors_hold_a_target_pose() {
     bevy_ragdoll_conformance::physics::motors_hold_a_target_pose(rapier_backend());
 }
 
-/// Checks the backend-neutral torque fallback holds a target when native motors are disabled.
+/// Checks that the backend-neutral torque fallback holds a target when native
+/// motors are disabled.
 #[test]
 fn torque_drive_holds_a_target_pose() {
     bevy_ragdoll_conformance::physics::torque_drive_holds_a_target_pose(rapier_backend());

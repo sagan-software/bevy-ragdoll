@@ -512,7 +512,9 @@ mod tests {
                 RagdollTargetPose::default(),
             ))
             .id();
-        world.entity_mut(owner).insert(RagdollDrive::new(0.0, 0.0));
+        if let Ok(mut owner_entity) = world.get_entity_mut(owner) {
+            owner_entity.insert(RagdollDrive::new(0.0, 0.0));
+        }
         let index = BodyIndex::try_from(0).expect("profile body index zero is valid");
         let missing_root = world.spawn(GlobalTransform::default()).id();
         let body = world

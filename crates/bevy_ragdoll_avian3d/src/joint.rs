@@ -13,9 +13,9 @@
 //! test pins this behavior.
 
 use avian3d::prelude::{FixedJoint, JointCollisionDisabled, RevoluteJoint, SphericalJoint};
-use bevy::math::Vec3;
+use bevy::math::{Isometry3d, Quat, Vec3};
 use bevy::prelude::{Added, ChildOf, Commands, Entity, Query};
-use bevy_ragdoll::runtime::body::JointToParent;
+use bevy_ragdoll::runtime::body::{JointBasis, JointToParent};
 
 /// The Avian joint selected for one profile joint.
 #[derive(Clone, Debug, PartialEq)]
@@ -35,11 +35,13 @@ pub(crate) enum AvianJoint {
 /// from colliding with each other.
 pub(crate) fn create_avian_joints(
     mut commands: Commands<'_, '_>,
-    joints: Query<'_, '_, (Entity, &JointToParent), Added<JointToParent>>,
+    joints: Query<'_, '_, (Entity, &JointToParent, Option<&JointBasis>), Added<JointToParent>>,
 ) {
-    for (child, joint) in &joints {
+    for (child, joint, basis) in &joints {
+        // A missing basis means the limit axes are the child body's own axes.
+        let basis = basis.map_or(Quat::IDENTITY, |basis| basis.0);
         let mut joint_entity = commands.spawn((JointCollisionDisabled, ChildOf(child)));
-        match avian_joint(child, joint) {
+        match avian_joint(child, joint, basis) {
             AvianJoint::Fixed(fixed) => joint_entity.insert(fixed),
             AvianJoint::Revolute(revolute) => joint_entity.insert(revolute),
             AvianJoint::Spherical(spherical) => joint_entity.insert(spherical),
@@ -48,26 +50,31 @@ pub(crate) fn create_avian_joints(
 }
 
 /// Builds the Avian joint for one child body and its profile joint.
-pub(crate) fn avian_joint(child: Entity, joint: &JointToParent) -> AvianJoint {
+///
+/// `basis` is the [`JointBasis`] rotation: the joint frame sits at
+/// `joint.frame.rotation * basis` on the parent and at `basis` on the child.
+pub(crate) fn avian_joint(child: Entity, joint: &JointToParent, basis: Quat) -> AvianJoint {
     let limits = joint.limits;
+    let frame1 = Isometry3d::new(joint.frame.translation, joint.frame.rotation * basis);
+    let frame2 = Isometry3d::from_rotation(basis);
     let (x_locked, twist_locked, z_locked) = (
         limits.x.is_locked(),
         limits.twist.is_locked(),
         limits.z.is_locked(),
     );
-    // Anchor at the parent frame and the child origin with an identity child basis.
+    // Anchor at the parent frame and the child origin, both rotated by the basis.
     if x_locked && twist_locked && z_locked {
         return AvianJoint::Fixed(
             FixedJoint::new(joint.parent, child)
-                .with_local_frame1(joint.frame)
-                .with_local_anchor2(Vec3::ZERO),
+                .with_local_frame1(frame1)
+                .with_local_frame2(frame2),
         );
     }
     if twist_locked && z_locked {
         return AvianJoint::Revolute(
             RevoluteJoint::new(joint.parent, child)
-                .with_local_frame1(joint.frame)
-                .with_local_anchor2(Vec3::ZERO)
+                .with_local_frame1(frame1)
+                .with_local_frame2(frame2)
                 .with_hinge_axis(Vec3::X)
                 .with_angle_limits(limits.x.min, limits.x.max),
         );
@@ -79,8 +86,8 @@ pub(crate) fn avian_joint(child: Entity, joint: &JointToParent) -> AvianJoint {
         .fold(0.0_f32, |extent, angle| extent.max(angle.abs()));
     AvianJoint::Spherical(
         SphericalJoint::new(joint.parent, child)
-            .with_local_frame1(joint.frame)
-            .with_local_anchor2(Vec3::ZERO)
+            .with_local_frame1(frame1)
+            .with_local_frame2(frame2)
             .with_twist_axis(Vec3::X)
             .with_twist_limits(limits.twist.min, limits.twist.max)
             .with_swing_limits(0.0, swing),
@@ -128,7 +135,8 @@ mod tests {
             twist: LOCKED,
             z: LOCKED,
         };
-        let AvianJoint::Fixed(fixed) = avian_joint(child, &joint(parent, limits)) else {
+        let AvianJoint::Fixed(fixed) = avian_joint(child, &joint(parent, limits), Quat::IDENTITY)
+        else {
             panic!("a fully locked joint is fixed");
         };
         assert_eq!((fixed.body1, fixed.body2), (parent, child));
@@ -147,7 +155,9 @@ mod tests {
             twist: LOCKED,
             z: LOCKED,
         };
-        let AvianJoint::Revolute(revolute) = avian_joint(child, &joint(parent, limits)) else {
+        let AvianJoint::Revolute(revolute) =
+            avian_joint(child, &joint(parent, limits), Quat::IDENTITY)
+        else {
             panic!("an X-only joint is a hinge");
         };
         assert_eq!(revolute.hinge_axis, Vec3::X);
@@ -185,7 +195,7 @@ mod tests {
             .id();
         let joint = joint(parent, limits);
         let mut joint_entity = app.world_mut().spawn(JointCollisionDisabled);
-        match avian_joint(child, &joint) {
+        match avian_joint(child, &joint, Quat::IDENTITY) {
             AvianJoint::Spherical(spherical) => joint_entity.insert(spherical),
             AvianJoint::Revolute(revolute) => joint_entity.insert(revolute),
             AvianJoint::Fixed(fixed) => joint_entity.insert(fixed),
@@ -312,11 +322,57 @@ mod tests {
                 max: 0.1,
             },
         };
-        let AvianJoint::Spherical(spherical) = avian_joint(child, &joint(parent, limits)) else {
+        let AvianJoint::Spherical(spherical) =
+            avian_joint(child, &joint(parent, limits), Quat::IDENTITY)
+        else {
             panic!("a free joint is spherical");
         };
         assert_eq!(spherical.twist_axis, Vec3::X);
         assert_eq!(spherical.twist_limit, Some(AngleLimit::new(-0.5, 0.4)));
         assert_eq!(spherical.swing_limit, Some(AngleLimit::new(0.0, 0.9)));
+    }
+
+    /// A non-identity basis rotates the parent frame after the profile frame
+    /// and becomes the child frame rotation, with both anchors unchanged.
+    #[test]
+    fn joint_basis_rotates_both_frames() {
+        let mut world = World::new();
+        let (parent, child) = (world.spawn_empty().id(), world.spawn_empty().id());
+        let basis = Quat::from_rotation_z(0.7);
+        let free = AngleRange {
+            min: -0.5,
+            max: 0.5,
+        };
+        let limits = JointLimits {
+            x: free,
+            twist: free,
+            z: free,
+        };
+        let mut profile_joint = joint(parent, limits);
+        profile_joint.frame.rotation = Quat::from_rotation_y(0.3);
+        let AvianJoint::Spherical(spherical) = avian_joint(child, &profile_joint, basis) else {
+            panic!("a free joint is spherical");
+        };
+        let frames = (
+            spherical.frame1.get_local_isometry(),
+            spherical.frame2.get_local_isometry(),
+        );
+        let (Some(parent_frame), Some(child_frame)) = frames else {
+            panic!("both frames are local");
+        };
+        assert!(
+            parent_frame
+                .rotation
+                .angle_between(profile_joint.frame.rotation * basis)
+                < 1.0e-6
+        );
+        assert!(child_frame.rotation.angle_between(basis) < 1.0e-6);
+        assert_eq!(
+            (
+                Vec3::from(parent_frame.translation),
+                Vec3::from(child_frame.translation)
+            ),
+            (Vec3::Y, Vec3::ZERO)
+        );
     }
 }

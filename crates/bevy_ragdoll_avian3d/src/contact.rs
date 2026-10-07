@@ -153,7 +153,7 @@ mod tests {
     }
 
     /// Evaluates the pair filter for two entities of a test world.
-    fn collide(pairs: &mut PairWorld, first: Entity, second: Entity) -> bool {
+    fn is_colliding(pairs: &mut PairWorld, first: Entity, second: Entity) -> bool {
         let mut state: SystemState<RagdollPairQuery<'static, 'static>> =
             SystemState::new(&mut pairs.world);
         state
@@ -166,8 +166,8 @@ mod tests {
     fn masked_same_owner_pair_does_not_collide() {
         let mut pairs = pair_world();
         let (pelvis, spine) = (pairs.pelvis, pairs.spine);
-        assert!(!collide(&mut pairs, pelvis, spine));
-        assert!(!collide(&mut pairs, spine, pelvis));
+        assert!(!is_colliding(&mut pairs, pelvis, spine));
+        assert!(!is_colliding(&mut pairs, spine, pelvis));
     }
 
     /// Unmasked bodies and bodies of another character still collide.
@@ -175,8 +175,8 @@ mod tests {
     fn unmasked_or_foreign_pairs_collide() {
         let mut pairs = pair_world();
         let (pelvis, head, foreign) = (pairs.pelvis, pairs.head, pairs.foreign_spine);
-        assert!(collide(&mut pairs, pelvis, head));
-        assert!(collide(&mut pairs, pelvis, foreign));
+        assert!(is_colliding(&mut pairs, pelvis, head));
+        assert!(is_colliding(&mut pairs, pelvis, foreign));
     }
 
     /// A non-ragdoll collider collides with ragdoll bodies in either order.
@@ -184,7 +184,7 @@ mod tests {
     fn non_ragdoll_pairs_collide() {
         let mut pairs = pair_world();
         let (pelvis, floor) = (pairs.pelvis, pairs.floor);
-        assert!(collide(&mut pairs, pelvis, floor));
-        assert!(collide(&mut pairs, floor, pelvis));
+        assert!(is_colliding(&mut pairs, pelvis, floor));
+        assert!(is_colliding(&mut pairs, floor, pelvis));
     }
 }

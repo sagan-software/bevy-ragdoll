@@ -78,7 +78,7 @@ impl SpawnLiftWorld<'_, '_> {
     fn owner_lifts(
         &self,
         bodies: &NewBodyQuery<'_, '_>,
-        poses: &BodyPoseQuery<'_, '_>,
+        poses: &Query<'_, '_, (&'static BodyPhysicsPose, &'static Transform)>,
         max_spawn_lift: f32,
     ) -> BTreeMap<Entity, f32> {
         // Group each owner's new shapes at their captured world poses.
@@ -126,7 +126,7 @@ pub(crate) fn create_avian_bodies(
         return;
     }
     let max_spawn_lift = finite_nonnegative(settings.max_spawn_lift).unwrap_or(0.0);
-    let lift_by_owner = lift_world.owner_lifts(&bodies, &poses, max_spawn_lift);
+    let lift_by_owner = lift_world.owner_lifts(&bodies, &poses.as_readonly(), max_spawn_lift);
     let is_swept_ccd_used = settings.is_ccd_enabled && avian_settings.is_swept_ccd_enabled;
     for (entity, owner, shape, mass, velocity, kind) in &bodies {
         let Ok((mut pose, mut transform)) = poses.get_mut(entity) else {

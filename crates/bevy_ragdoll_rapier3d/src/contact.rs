@@ -8,9 +8,10 @@ use bevy_ragdoll::runtime::components::RagdollBodyOf;
 use bevy_rapier3d::pipeline::{BevyPhysicsHooks, PairFilterContextView};
 use bevy_rapier3d::rapier::prelude::SolverFlags;
 
-/// Default Rapier hook that preserves ordinary contacts and reads each ragdoll
-/// body's owner, profile index, and exclusion mask to suppress only masked pairs
-/// within the same character. Configure `RapierPhysicsPlugin` with this system
+/// Default Rapier hook that suppresses only masked pairs within one character.
+///
+/// It reads each ragdoll body's owner, profile index, and exclusion mask and
+/// keeps every other contact. Configure `RapierPhysicsPlugin` with this system
 /// parameter when the application has no custom hook. Use
 /// [`ragdoll_filter_contact_pair`] from a custom hook otherwise.
 #[derive(Debug, SystemParam)]
@@ -57,6 +58,7 @@ impl BevyPhysicsHooks for RapierRagdollHooks<'_, '_> {
 ///     ragdoll_filter_contact_pair(context, bodies)
 /// }
 /// ```
+#[must_use]
 pub fn ragdoll_filter_contact_pair(
     context: PairFilterContextView<'_>,
     ragdoll_bodies: &Query<'_, '_, (&RagdollBodyOf, &BodyIndex, &NoContactWith)>,
@@ -90,7 +92,7 @@ pub fn ragdoll_filter_contact_pair(
 }
 
 /// Checks symmetric profile exclusion masks for two bodies in one ragdoll.
-fn pair_is_excluded(
+const fn pair_is_excluded(
     first_index: BodyIndex,
     first_mask: u64,
     second_index: BodyIndex,

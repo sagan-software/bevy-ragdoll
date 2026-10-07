@@ -142,7 +142,7 @@ fn finite_vec3(value: Vec3) -> Vec3 {
 }
 
 /// Keeps a finite nonnegative motor scalar while replacing invalid values with zero.
-fn finite_nonnegative(value: f32) -> f32 {
+const fn finite_nonnegative(value: f32) -> f32 {
     if value.is_finite() {
         value.max(0.0)
     } else {
@@ -198,10 +198,12 @@ mod tests {
     #[test]
     fn apply_motor_skips_invalid_rotation() {
         let mut world = World::new();
+        let capabilities = BackendCapabilities::default();
         world.insert_resource(BackendCapabilities {
             has_native_joint_motors: true,
-            ..Default::default()
+            ..capabilities
         });
+        let target = JointDriveTarget::default();
         let parent = world.spawn_empty().id();
         let locked = AngleRange { min: 0.0, max: 0.0 };
         let limits = JointLimits {
@@ -213,7 +215,7 @@ mod tests {
             .spawn((
                 JointDriveTarget {
                     rotation: Quat::from_xyzw(f32::NAN, 0.0, 0.0, 1.0),
-                    ..Default::default()
+                    ..target
                 },
                 JointToParent {
                     parent,

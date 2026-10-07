@@ -1,4 +1,9 @@
 //! Contract tier shared by every physics backend.
+//!
+//! These tests run the contract checks against the mock backend, so the
+//! checks themselves stay valid without a real physics engine. Backend
+//! crates run the same checks from their own integration tests with their
+//! own plugin setup.
 
 use bevy::prelude::App;
 use bevy_ragdoll_conformance::{contract, mock::MockBackendPlugin};
