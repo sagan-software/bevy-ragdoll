@@ -19,7 +19,9 @@ fn add_rapier(app: &mut App) {
         .timestep()
         .as_secs_f32();
     app.insert_resource(TimestepMode::Fixed { dt, substeps: 1 });
-    app.add_plugins(RapierPhysicsPlugin::<RapierRagdollHooks>::default().in_fixed_schedule());
+    app.add_plugins(
+        RapierPhysicsPlugin::<RapierRagdollHooks<'static, 'static>>::default().in_fixed_schedule(),
+    );
     app.add_plugins(RapierRagdollPlugin);
 }
 
@@ -72,12 +74,14 @@ fn measure_energy(app: &mut App, character: Entity, gravity: Vec3) -> f32 {
             let principal_to_world =
                 pose.current.rotation * properties.principal_inertia_local_frame;
             let angular_velocity = principal_to_world.inverse() * velocity.angular;
-            0.5 * properties.mass * velocity.linear.length_squared()
-                + 0.5
-                    * (properties.principal_inertia.x * angular_velocity.x.powi(2)
-                        + properties.principal_inertia.y * angular_velocity.y.powi(2)
-                        + properties.principal_inertia.z * angular_velocity.z.powi(2))
-                - properties.mass * gravity.dot(center)
+            let rotational = properties
+                .principal_inertia
+                .dot(angular_velocity * angular_velocity);
+            let kinetic = properties
+                .mass
+                .mul_add(velocity.linear.length_squared(), rotational);
+            let potential = properties.mass * gravity.dot(center);
+            0.5_f32.mul_add(kinetic, -potential)
         })
         .sum()
 }

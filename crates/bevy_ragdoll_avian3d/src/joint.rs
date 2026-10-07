@@ -357,20 +357,20 @@ mod tests {
             spherical.frame1.get_local_isometry(),
             spherical.frame2.get_local_isometry(),
         );
-        let (Some(frame1), Some(frame2)) = frames else {
+        let (Some(parent_frame), Some(child_frame)) = frames else {
             panic!("both frames are local");
         };
         assert!(
-            frame1
+            parent_frame
                 .rotation
                 .angle_between(profile_joint.frame.rotation * basis)
                 < 1.0e-6
         );
-        assert!(frame2.rotation.angle_between(basis) < 1.0e-6);
+        assert!(child_frame.rotation.angle_between(basis) < 1.0e-6);
         assert_eq!(
             (
-                Vec3::from(frame1.translation),
-                Vec3::from(frame2.translation)
+                Vec3::from(parent_frame.translation),
+                Vec3::from(child_frame.translation)
             ),
             (Vec3::Y, Vec3::ZERO)
         );

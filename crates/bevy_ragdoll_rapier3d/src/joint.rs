@@ -142,7 +142,7 @@ fn finite_vec3(value: Vec3) -> Vec3 {
 }
 
 /// Keeps a finite nonnegative motor scalar while replacing invalid values with zero.
-fn finite_nonnegative(value: f32) -> f32 {
+const fn finite_nonnegative(value: f32) -> f32 {
     if value.is_finite() {
         value.max(0.0)
     } else {

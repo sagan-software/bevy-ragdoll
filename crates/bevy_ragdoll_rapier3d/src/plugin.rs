@@ -330,12 +330,13 @@ mod tests {
         app.add_plugins(RagdollPlugin::default());
         app.insert_resource(timestep);
         app.add_plugins(
-            RapierPhysicsPlugin::<crate::RapierRagdollHooks>::default().in_fixed_schedule(),
+            RapierPhysicsPlugin::<crate::RapierRagdollHooks<'static, 'static>>::default()
+                .in_fixed_schedule(),
         );
         app
     }
 
-    /// A variable Rapier step is rejected even when Rapier uses FixedUpdate.
+    /// A variable Rapier step is rejected even when Rapier uses `FixedUpdate`.
     #[test]
     #[should_panic(expected = "RapierRagdollPlugin requires TimestepMode::Fixed in FixedUpdate")]
     fn plugin_rejects_variable_timestep_mode() {
