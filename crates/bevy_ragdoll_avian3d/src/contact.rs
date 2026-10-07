@@ -137,10 +137,12 @@ mod tests {
         let mut world = World::new();
         let owner = world.spawn_empty().id();
         let other_owner = world.spawn_empty().id();
+        // The pelvis mask excludes body index 1, the spine.
         let pelvis = body(&mut world, owner, 0, 1 << 1);
         let spine = body(&mut world, owner, 1, 0);
         let head = body(&mut world, owner, 2, 0);
         let foreign_spine = body(&mut world, other_owner, 1, 0);
+        // The floor carries no ragdoll components.
         let floor = world.spawn_empty().id();
         PairWorld {
             world,

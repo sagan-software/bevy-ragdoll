@@ -55,43 +55,43 @@ pub(crate) fn create_avian_joints(
 /// `joint.frame.rotation * basis` on the parent and at `basis` on the child.
 pub(crate) fn avian_joint(child: Entity, joint: &JointToParent, basis: Quat) -> AvianJoint {
     let limits = joint.limits;
+    // Anchor at the parent frame and the child origin, both rotated by the basis.
     let frame1 = Isometry3d::new(joint.frame.translation, joint.frame.rotation * basis);
     let frame2 = Isometry3d::from_rotation(basis);
-    let (x_locked, twist_locked, z_locked) = (
+    // Select the joint kind from which of the X, twist and Z ranges are locked.
+    match (
         limits.x.is_locked(),
         limits.twist.is_locked(),
         limits.z.is_locked(),
-    );
-    // Anchor at the parent frame and the child origin, both rotated by the basis.
-    if x_locked && twist_locked && z_locked {
-        return AvianJoint::Fixed(
+    ) {
+        (true, true, true) => AvianJoint::Fixed(
             FixedJoint::new(joint.parent, child)
                 .with_local_frame1(frame1)
                 .with_local_frame2(frame2),
-        );
-    }
-    if twist_locked && z_locked {
-        return AvianJoint::Revolute(
+        ),
+        (false, true, true) => AvianJoint::Revolute(
             RevoluteJoint::new(joint.parent, child)
                 .with_local_frame1(frame1)
                 .with_local_frame2(frame2)
                 .with_hinge_axis(Vec3::X)
                 .with_angle_limits(limits.x.min, limits.x.max),
-        );
+        ),
+        // The cone is a hard backstop at the largest bend extent; the core's
+        // soft limit torque enforces the asymmetric X and Z ranges inside it.
+        _ => AvianJoint::Spherical(
+            SphericalJoint::new(joint.parent, child)
+                .with_local_frame1(frame1)
+                .with_local_frame2(frame2)
+                .with_twist_axis(Vec3::X)
+                .with_twist_limits(limits.twist.min, limits.twist.max)
+                .with_swing_limits(
+                    0.0,
+                    [limits.x.min, limits.x.max, limits.z.min, limits.z.max]
+                        .into_iter()
+                        .fold(0.0_f32, |extent, angle| extent.max(angle.abs())),
+                ),
+        ),
     }
-    // The cone is a hard backstop at the largest bend extent; the core's soft
-    // limit torque enforces the asymmetric X and Z ranges inside it.
-    let swing = [limits.x.min, limits.x.max, limits.z.min, limits.z.max]
-        .into_iter()
-        .fold(0.0_f32, |extent, angle| extent.max(angle.abs()));
-    AvianJoint::Spherical(
-        SphericalJoint::new(joint.parent, child)
-            .with_local_frame1(frame1)
-            .with_local_frame2(frame2)
-            .with_twist_axis(Vec3::X)
-            .with_twist_limits(limits.twist.min, limits.twist.max)
-            .with_swing_limits(0.0, swing),
-    )
 }
 
 #[cfg(test)]
@@ -130,11 +130,13 @@ mod tests {
     fn locked_joint_is_fixed() {
         let mut world = World::new();
         let (parent, child) = (world.spawn_empty().id(), world.spawn_empty().id());
+        // Lock X, twist and Z.
         let limits = JointLimits {
             x: LOCKED,
             twist: LOCKED,
             z: LOCKED,
         };
+        // All three ranges are locked, so the mapping must pick a fixed joint.
         let AvianJoint::Fixed(fixed) = avian_joint(child, &joint(parent, limits), Quat::IDENTITY)
         else {
             panic!("a fully locked joint is fixed");
@@ -147,6 +149,7 @@ mod tests {
     fn x_only_joint_is_revolute_with_exact_limits() {
         let mut world = World::new();
         let (parent, child) = (world.spawn_empty().id(), world.spawn_empty().id());
+        // Free only X with an asymmetric range.
         let limits = JointLimits {
             x: AngleRange {
                 min: -0.1,
@@ -155,6 +158,7 @@ mod tests {
             twist: LOCKED,
             z: LOCKED,
         };
+        // Only X is free, so the mapping must pick a hinge.
         let AvianJoint::Revolute(revolute) =
             avian_joint(child, &joint(parent, limits), Quat::IDENTITY)
         else {
@@ -164,17 +168,24 @@ mod tests {
         assert_eq!(revolute.angle_limit, Some(AngleLimit::new(-0.1, 2.0)));
     }
 
-    /// Pushes a child with a constant `torque` against a joint to a static
-    /// parent built by [`avian_joint`] and returns the child's final rotation.
-    fn spin_child(limits: JointLimits, torque: Vec3) -> Quat {
+    /// Builds a zero-gravity Avian app that advances 1/60 s per update.
+    fn joint_test_app() -> App {
         let mut app = App::new();
+        // Remove gravity so only the applied torque moves the child.
         app.add_plugins((MinimalPlugins, TransformPlugin, PhysicsPlugins::default()));
         app.insert_resource(Gravity(Vec3::ZERO));
         app.insert_resource(TimeUpdateStrategy::ManualDuration(Duration::from_secs_f64(
             1.0 / 60.0,
         )));
+        // Finish plugin setup so the first update steps physics.
         app.finish();
         app.cleanup();
+        app
+    }
+
+    /// Spawns a static parent sphere and a damped dynamic child sphere one
+    /// metre above it under a constant `torque`.
+    fn spawn_spin_pair(app: &mut App, torque: Vec3) -> (Entity, Entity) {
         let parent = app
             .world_mut()
             .spawn((
@@ -193,20 +204,29 @@ mod tests {
                 AngularDamping(5.0),
             ))
             .id();
-        let joint = joint(parent, limits);
+        (parent, child)
+    }
+
+    /// Pushes a child with a constant `torque` against a joint to a static
+    /// parent built by [`avian_joint`] and returns the child's final rotation.
+    fn spin_child(limits: JointLimits, torque: Vec3) -> Quat {
+        // Pair a static parent with a torqued child.
+        let mut app = joint_test_app();
+        let (parent, child) = spawn_spin_pair(&mut app, torque);
+        // Insert whichever joint kind the limits select.
         let mut joint_entity = app.world_mut().spawn(JointCollisionDisabled);
-        match avian_joint(child, &joint, Quat::IDENTITY) {
+        match avian_joint(child, &joint(parent, limits), Quat::IDENTITY) {
             AvianJoint::Spherical(spherical) => joint_entity.insert(spherical),
             AvianJoint::Revolute(revolute) => joint_entity.insert(revolute),
             AvianJoint::Fixed(fixed) => joint_entity.insert(fixed),
         };
+        // Two seconds lets the damped child settle against its limit.
         for _ in 0..120 {
             app.update();
         }
         app.world()
             .get::<Transform>(child)
-            .expect("the child keeps its transform")
-            .rotation
+            .map_or(Quat::IDENTITY, |transform| transform.rotation)
     }
 
     /// Returns the rotation angle about the unit `axis` for a positive-w quaternion.
@@ -221,62 +241,72 @@ mod tests {
             .atan2(rotation.w)
     }
 
+    /// Settling tolerance for limit tests, in radians.
+    const TOLERANCE: f32 = 0.05;
+
+    /// Twist range used by the swing-axis tests.
+    const TWIST: AngleRange = AngleRange {
+        min: -0.2,
+        max: 0.6,
+    };
+
+    /// Limits with a 0.4 rad bend extent and the [`TWIST`] range.
+    const fn cone_limits() -> JointLimits {
+        let bend = AngleRange {
+            min: -0.4,
+            max: 0.4,
+        };
+        JointLimits {
+            x: bend,
+            twist: TWIST,
+            z: bend,
+        }
+    }
+
     /// Settles physics-api B5: with the adapter's `twist_axis = X`, Avian's
-    /// twist limit stops rotation about the frame Y axis with its signed range,
-    /// and the swing cone stops rotation about X and about Z.
+    /// twist limit stops rotation about the frame Y axis with its signed range.
     #[test]
-    fn swing_limit_axis_is_as_documented_in_this_crate() {
-        let wide = AngleRange {
-            min: -1.5,
-            max: 1.5,
-        };
-        let tolerance = 0.05;
-        // Twist about +Y stops at the twist maximum, about -Y at the minimum.
-        let twist = AngleRange {
-            min: -0.2,
-            max: 0.6,
-        };
-        let limits = JointLimits {
-            x: AngleRange {
-                min: -0.4,
-                max: 0.4,
-            },
-            twist,
-            z: AngleRange {
-                min: -0.4,
-                max: 0.4,
-            },
-        };
-        let positive = angle_about(spin_child(limits, Vec3::Y * 0.05), Vec3::Y);
-        let negative = angle_about(spin_child(limits, Vec3::Y * -0.05), Vec3::Y);
+    fn twist_limit_bounds_rotation_about_y() {
+        let positive = angle_about(spin_child(cone_limits(), Vec3::Y * 0.05), Vec3::Y);
+        let negative = angle_about(spin_child(cone_limits(), Vec3::Y * -0.05), Vec3::Y);
         assert!(
-            (positive - twist.max).abs() < tolerance,
+            (positive - TWIST.max).abs() < TOLERANCE,
             "+Y twist {positive}"
         );
         assert!(
-            (negative - twist.min).abs() < tolerance,
+            (negative - TWIST.min).abs() < TOLERANCE,
             "-Y twist {negative}"
         );
-        // Bending about X or Z stops at the 0.4 rad cone, not at the twist range.
-        let bend_x = angle_about(spin_child(limits, Vec3::X * 0.05), Vec3::X);
-        let bend_z = angle_about(spin_child(limits, Vec3::Z * 0.05), Vec3::Z);
-        assert!((bend_x - 0.4).abs() < tolerance, "X bend {bend_x}");
-        assert!((bend_z - 0.4).abs() < tolerance, "Z bend {bend_z}");
-        // A wide twist range does not limit bending.
+    }
+
+    /// The swing cone stops bending about X and about Z at the 0.4 rad extent,
+    /// not at the twist range.
+    #[test]
+    fn swing_cone_bounds_x_and_z_bends() {
+        let bend_x = angle_about(spin_child(cone_limits(), Vec3::X * 0.05), Vec3::X);
+        let bend_z = angle_about(spin_child(cone_limits(), Vec3::Z * 0.05), Vec3::Z);
+        assert!((bend_x - 0.4).abs() < TOLERANCE, "X bend {bend_x}");
+        assert!((bend_z - 0.4).abs() < TOLERANCE, "Z bend {bend_z}");
+    }
+
+    /// A wide twist range does not limit bending.
+    #[test]
+    fn wide_twist_does_not_limit_bending() {
+        let bend = AngleRange {
+            min: -1.0,
+            max: 1.0,
+        };
         let loose = JointLimits {
-            x: AngleRange {
-                min: -1.0,
-                max: 1.0,
+            x: bend,
+            twist: AngleRange {
+                min: -1.5,
+                max: 1.5,
             },
-            twist: wide,
-            z: AngleRange {
-                min: -1.0,
-                max: 1.0,
-            },
+            z: bend,
         };
         let loose_bend = angle_about(spin_child(loose, Vec3::X * 0.05), Vec3::X);
         assert!(
-            (loose_bend - 1.0).abs() < tolerance,
+            (loose_bend - 1.0).abs() < TOLERANCE,
             "loose X bend {loose_bend}"
         );
     }
@@ -284,6 +314,7 @@ mod tests {
     /// Hinges stop at the signed X range.
     #[test]
     fn revolute_limit_sign_matches_the_profile_x_range() {
+        // A hinge with a signed X range and locked twist and Z.
         let limits = JointLimits {
             x: AngleRange {
                 min: -0.2,
@@ -292,6 +323,7 @@ mod tests {
             twist: LOCKED,
             z: LOCKED,
         };
+        // Push both ways about the hinge axis, then about a locked axis.
         let positive = angle_about(spin_child(limits, Vec3::X * 0.05), Vec3::X);
         let negative = angle_about(spin_child(limits, Vec3::X * -0.05), Vec3::X);
         assert!((positive - 0.6).abs() < 0.05, "+X hinge {positive}");
@@ -308,6 +340,7 @@ mod tests {
     fn free_joint_is_spherical_with_largest_bend_cone() {
         let mut world = World::new();
         let (parent, child) = (world.spawn_empty().id(), world.spawn_empty().id());
+        // Free all three ranges with different extents.
         let limits = JointLimits {
             x: AngleRange {
                 min: -0.3,
@@ -322,6 +355,7 @@ mod tests {
                 max: 0.1,
             },
         };
+        // Every range is free; the cone takes the 0.9 rad Z minimum.
         let AvianJoint::Spherical(spherical) =
             avian_joint(child, &joint(parent, limits), Quat::IDENTITY)
         else {
@@ -338,6 +372,7 @@ mod tests {
     fn joint_basis_rotates_both_frames() {
         let mut world = World::new();
         let (parent, child) = (world.spawn_empty().id(), world.spawn_empty().id());
+        // Rotate both the profile frame and the basis so neither is identity.
         let basis = Quat::from_rotation_z(0.7);
         let free = AngleRange {
             min: -0.5,
@@ -348,11 +383,13 @@ mod tests {
             twist: free,
             z: free,
         };
+        // Build a free joint so the spherical path carries both frames.
         let mut profile_joint = joint(parent, limits);
         profile_joint.frame.rotation = Quat::from_rotation_y(0.3);
         let AvianJoint::Spherical(spherical) = avian_joint(child, &profile_joint, basis) else {
             panic!("a free joint is spherical");
         };
+        // Avian stores both frames as local isometries.
         let frames = (
             spherical.frame1.get_local_isometry(),
             spherical.frame2.get_local_isometry(),
@@ -360,6 +397,7 @@ mod tests {
         let (Some(parent_frame), Some(child_frame)) = frames else {
             panic!("both frames are local");
         };
+        // Rotations match up to float error; anchors match exactly.
         assert!(
             parent_frame
                 .rotation

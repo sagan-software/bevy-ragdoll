@@ -125,10 +125,14 @@ pub(crate) fn create_avian_bodies(
     if bodies.is_empty() {
         return;
     }
+    // Measure one lift per owner and resolve the CCD policy once per step.
+    // Measure one lift per owner and resolve the CCD policy once per step.
     let max_spawn_lift = finite_nonnegative(settings.max_spawn_lift).unwrap_or(0.0);
     let lift_by_owner = lift_world.owner_lifts(&bodies, &poses.as_readonly(), max_spawn_lift);
     let is_swept_ccd_used = settings.is_ccd_enabled && avian_settings.is_swept_ccd_enabled;
     for (entity, owner, shape, mass, velocity, kind) in &bodies {
+        // Every new body has a pose; skip any entity that lost it this step.
+        // Every new body has a pose; skip any entity that lost it this step.
         let Ok((mut pose, mut transform)) = poses.get_mut(entity) else {
             continue;
         };
@@ -253,6 +257,8 @@ pub(crate) fn apply_body_kinds_and_sleeping(
         // Re-insert the immutable rigid body only when the shared kind changes.
         let target = kind_to_rigid_body(*kind);
         if *rigid_body != target {
+            // Avian forbids mutating `RigidBody`, so insert the new kind and stop the body.
+            // Avian forbids mutating `RigidBody`, so insert the new kind and stop the body.
             commands.entity(entity).insert(target);
             linear.0 = Vec3::ZERO;
             angular.0 = Vec3::ZERO;
@@ -400,6 +406,8 @@ mod tests {
     #[test]
     fn inertia_floor_raises_only_small_axes() {
         let frame = Quat::from_rotation_y(0.3);
+        // The X axis lies below the 0.02 floor; Y and Z lie above it.
+        // The X axis lies below the 0.02 floor; Y and Z lie above it.
         let inertia = AngularInertia::new_with_local_frame(Vec3::new(0.001, 1.0, 0.5), frame);
         let floored = floored_inertia(
             inertia,
@@ -432,6 +440,8 @@ mod tests {
             sleep_angular_threshold: 0.2,
             ..base
         };
+        // NaN becomes zero while the valid angular value passes through.
+        // NaN becomes zero while the valid angular value passes through.
         let threshold = sleep_threshold(&settings);
         assert_eq!(threshold.linear, 0.0);
         assert_eq!(threshold.angular, 0.2);

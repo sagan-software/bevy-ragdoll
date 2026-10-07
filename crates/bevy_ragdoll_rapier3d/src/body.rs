@@ -500,24 +500,10 @@ mod tests {
     /// System parameters used to test impulse message handling.
     type ImpulseUpdateState = SystemState<(ImpulseReader, ImpulseBodyQuery)>;
 
-    /// Missing roots and targets keep kinematic bodies at their current transforms.
-    #[test]
-    fn kinematic_updates_skip_missing_roots_and_target_poses() {
-        let mut world = World::new();
-        world.insert_resource(RagdollPhysicsSettings::default());
-        let owner = world
-            .spawn((
-                Ragdoll::new(bevy::asset::Handle::default()),
-                GlobalTransform::default(),
-                RagdollTargetPose::default(),
-            ))
-            .id();
-        if let Ok(mut owner_entity) = world.get_entity_mut(owner) {
-            owner_entity.insert(RagdollDrive::new(0.0, 0.0));
-        }
-        let index = BodyIndex::try_from(0).expect("profile body index zero is valid");
-        let missing_root = world.spawn(GlobalTransform::default()).id();
-        let body = world
+    /// Spawns a sleep-disabled kinematic Rapier body owned by `owner` at the
+    /// identity transform.
+    fn spawn_kinematic(world: &mut World, owner: Entity, index: BodyIndex) -> Entity {
+        world
             .spawn((
                 BodyKind::Kinematic,
                 RagdollBodyOf(owner),
@@ -527,27 +513,44 @@ mod tests {
                 Velocity::default(),
                 Sleeping::disabled(),
             ))
-            .id();
-        let orphan = world
+            .id()
+    }
+
+    /// Installs default settings, runs the kind, sleep, and kinematic target
+    /// systems once, and applies their deferred commands.
+    fn run_kinematic_systems(world: &mut World) {
+        world.insert_resource(RagdollPhysicsSettings::default());
+        let mut system: KinematicUpdateState = SystemState::new(world);
+        // The test world always holds the settings resource.
+        if let Ok((roots, bodies, targets, drivers, settings)) = system.get_mut(world) {
+            apply_body_kinds_and_sleeping(bodies, drivers, settings);
+            apply_kinematic_targets(roots, targets);
+        }
+        // Flush the deferred sleep and transform changes into the world.
+        system.apply(world);
+    }
+
+    /// Missing roots and targets keep kinematic bodies at their current transforms.
+    #[test]
+    fn kinematic_updates_skip_missing_roots_and_target_poses() {
+        // A limp owner with an empty target history, and a root that is not a ragdoll.
+        let mut world = World::new();
+        let owner = world
             .spawn((
-                BodyKind::Kinematic,
-                RagdollBodyOf(missing_root),
-                index,
-                RigidBody::KinematicPositionBased,
-                Transform::IDENTITY,
-                Velocity::default(),
-                Sleeping::disabled(),
+                Ragdoll::new(bevy::asset::Handle::default()),
+                GlobalTransform::default(),
+                RagdollTargetPose::default(),
+                RagdollDrive::new(0.0, 0.0),
             ))
             .id();
-        let mut system: KinematicUpdateState = SystemState::new(&mut world);
-        let (roots, bodies, targets, drivers, settings) = system
-            .get_mut(&mut world)
-            .expect("the settings resource remains available");
+        let index = BodyIndex::try_from(0).expect("profile body index zero is valid");
+        let missing_root = world.spawn(GlobalTransform::default()).id();
+        // One body has a valid owner and one names a root without targets.
+        let body = spawn_kinematic(&mut world, owner, index);
+        let orphan = spawn_kinematic(&mut world, missing_root, index);
+        run_kinematic_systems(&mut world);
 
-        apply_body_kinds_and_sleeping(bodies, drivers, settings);
-        apply_kinematic_targets(roots, targets);
-        system.apply(&mut world);
-
+        // Neither body moves, and the limp owner's body may sleep again.
         assert_eq!(world.get::<Transform>(body), Some(&Transform::IDENTITY));
         assert_eq!(world.get::<Transform>(orphan), Some(&Transform::IDENTITY));
         assert_ne!(world.get::<Sleeping>(body), Some(&Sleeping::disabled()));
@@ -565,6 +568,7 @@ mod tests {
                 ExternalImpulse::default(),
             ))
             .id();
+        // Queue a NaN impulse and an impulse for an entity that does not exist.
         let mut system: ImpulseUpdateState = SystemState::new(&mut world);
 
         world.write_message(RagdollImpulse {
@@ -577,6 +581,7 @@ mod tests {
             point: Vec3::ZERO,
             impulse: Vec3::ONE,
         });
+        // Neither message may reach the body's external impulse.
         let (messages, bodies) = system
             .get_mut(&mut world)
             .expect("the impulse message channel remains available");
@@ -594,6 +599,7 @@ mod tests {
     fn sphere_collider_preserves_offset_and_radius() {
         let center = Vec3::new(0.1, 0.2, 0.3);
         let radius = 0.4;
+        // Offset the sphere so the compound must carry its position.
         let collider = collider_for_shape(ShapeSpec::Sphere { center, radius });
         let compound = collider
             .as_compound()
@@ -601,13 +607,15 @@ mod tests {
         let mut shapes = compound.shapes();
         let (offset, rotation, child) = shapes.next().expect("sphere child exists");
 
-        assert_eq!(offset, center);
-        assert_eq!(rotation, Quat::IDENTITY);
+        // The single child keeps the offset with no rotation.
+        assert_eq!(
+            (offset, rotation, shapes.len()),
+            (center, Quat::IDENTITY, 0)
+        );
         match child {
             ColliderView::Ball(ball) => assert_eq!(ball.radius(), radius),
             _ => panic!("sphere profile maps to a Rapier ball"),
         }
-        assert_eq!(shapes.len(), 0);
     }
 
     /// Cuboid compounds retain their offset, rotation, and half-extents.
@@ -616,23 +624,27 @@ mod tests {
         let center = Vec3::new(0.1, 0.2, 0.3);
         let rotation = Quat::from_rotation_y(0.25);
         let half_extents = Vec3::new(0.4, 0.5, 0.6);
+        // Offset and rotate the cuboid so the compound must carry both.
         let collider = collider_for_shape(ShapeSpec::Cuboid {
             center,
             rotation,
             half_extents,
         });
+        // The compound holds exactly one cuboid child.
         let compound = collider
             .as_compound()
             .expect("profile cuboids use one-shape compounds");
         let mut shapes = compound.shapes();
         let (offset, child_rotation, child) = shapes.next().expect("cuboid child exists");
 
-        assert_eq!(offset, center);
-        assert_eq!(child_rotation, rotation);
+        // The single child keeps the offset and rotation.
+        assert_eq!(
+            (offset, child_rotation, shapes.len()),
+            (center, rotation, 0)
+        );
         match child {
             ColliderView::Cuboid(cuboid) => assert_eq!(cuboid.half_extents(), half_extents),
             _ => panic!("cuboid profile maps to a Rapier cuboid"),
         }
-        assert_eq!(shapes.len(), 0);
     }
 }

@@ -103,9 +103,8 @@ mod tests {
     /// Zero, invalid, and negative bounds disable the lift scan.
     #[test]
     fn invalid_or_zero_bound_has_no_steps() {
-        for bound in [0.0, -0.01, f32::NAN, f32::INFINITY] {
-            assert_eq!(lift_steps(bound), 0);
-        }
+        let steps = [0.0, -0.01, f32::NAN, f32::INFINITY].map(lift_steps);
+        assert_eq!(steps, [0; 4]);
     }
 
     /// A valid half-metre limit checks fifty centimetre positions.
@@ -116,7 +115,7 @@ mod tests {
 
     /// Bounds beyond the addressable step count saturate without a lossy cast.
     #[test]
-    fn oversized_bound_saturates_at_the_usize_limit() {
+    fn oversized_bound_saturates_at_the_u16_limit() {
         assert_eq!(lift_steps(f32::MAX), u16::MAX);
     }
 }

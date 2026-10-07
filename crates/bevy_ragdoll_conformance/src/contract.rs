@@ -640,7 +640,10 @@ pub fn despawning_the_character_removes_every_body(add_backend: AddBackend) {
     app.world_mut().despawn(character);
 
     // Check each captured entity after relationship cleanup has completed.
-    for (body, _) in &bodies {
-        assert!(app.world().get_entity(*body).is_err());
-    }
+    let world = app.world();
+    assert!(
+        bodies
+            .iter()
+            .all(|(body, _)| world.get_entity(*body).is_err())
+    );
 }

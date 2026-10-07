@@ -8,6 +8,21 @@ use bevy_ragdoll::profile::ShapeSpec;
 ///
 /// Avian cuboids take full side lengths, so profile half extents are doubled.
 /// Offset spheres and cuboids use one-shape compounds to keep their local pose.
+///
+/// # Examples
+///
+/// ```
+/// use bevy::math::Vec3;
+/// use bevy_ragdoll::profile::ShapeSpec;
+/// use bevy_ragdoll_avian3d::collider_for_shape;
+///
+/// let shape = ShapeSpec::Sphere {
+///     center: Vec3::ZERO,
+///     radius: 0.1,
+/// };
+/// let collider = collider_for_shape(shape);
+/// assert!(collider.shape().as_compound().is_some());
+/// ```
 #[must_use]
 pub fn collider_for_shape(shape: ShapeSpec) -> Collider {
     match shape {
@@ -44,7 +59,9 @@ mod tests {
     fn capsule_keeps_endpoints_and_radius() {
         let a = Vec3::new(0.0, 0.1, 0.0);
         let b = Vec3::new(0.0, 0.9, 0.0);
+        // Use a vertical capsule whose endpoints differ from the origin.
         let collider = collider_for_shape(ShapeSpec::Capsule { a, b, radius: 0.2 });
+        // Avian keeps capsules as segment capsules, so the endpoints are exact.
         let capsule = collider
             .shape()
             .as_capsule()
@@ -59,10 +76,12 @@ mod tests {
     #[test]
     fn sphere_keeps_offset_and_radius() {
         let center = Vec3::new(0.1, 0.2, 0.3);
+        // Offset the sphere so the compound must carry its pose.
         let collider = collider_for_shape(ShapeSpec::Sphere {
             center,
             radius: 0.4,
         });
+        // The compound holds exactly one ball child.
         let compound = collider
             .shape()
             .as_compound()
@@ -81,11 +100,13 @@ mod tests {
         let center = Vec3::new(0.1, 0.2, 0.3);
         let rotation = Quat::from_rotation_y(0.25);
         let half_extents = Vec3::new(0.4, 0.5, 0.6);
+        // Offset and rotate the cuboid so the compound must carry both.
         let collider = collider_for_shape(ShapeSpec::Cuboid {
             center,
             rotation,
             half_extents,
         });
+        // The compound holds exactly one cuboid child.
         let compound = collider
             .shape()
             .as_compound()
@@ -95,6 +116,7 @@ mod tests {
         };
         let cuboid = child.as_cuboid().expect("child is a cuboid");
 
+        // Avian stores half extents, so they match the profile values.
         assert_eq!(pose.translation, center);
         assert!(pose.rotation.angle_between(rotation) < 1.0e-6);
         assert!((cuboid.half_extents - half_extents).length() < 1.0e-6);
