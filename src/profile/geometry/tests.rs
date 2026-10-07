@@ -147,16 +147,13 @@ fn point_segment_distance_handles_degenerate_and_endpoints() {
     // A degenerate segment and points nearest each endpoint and the interior.
     assert_eq!(point_segment_distance(Vec3::X, Vec3::ZERO, Vec3::ZERO), 1.0);
     assert_eq!(
-        point_segment_distance(Vec3::new(-1.0, 1.0, 0.0), Vec3::ZERO, Vec3::X),
-        2.0_f32.sqrt()
-    );
-    assert_eq!(
-        point_segment_distance(Vec3::new(2.0, 1.0, 0.0), Vec3::ZERO, Vec3::X),
-        2.0_f32.sqrt()
-    );
-    assert_eq!(
-        point_segment_distance(Vec3::new(0.5, 1.0, 0.0), Vec3::ZERO, Vec3::X),
-        1.0
+        [
+            Vec3::new(-1.0, 1.0, 0.0),
+            Vec3::new(2.0, 1.0, 0.0),
+            Vec3::new(0.5, 1.0, 0.0),
+        ]
+        .map(|point| point_segment_distance(point, Vec3::ZERO, Vec3::X)),
+        [2.0_f32.sqrt(), 2.0_f32.sqrt(), 1.0]
     );
 }
 
@@ -165,9 +162,11 @@ fn point_segment_distance_handles_degenerate_and_endpoints() {
 fn point_box_distance_clamps_to_box_surface() {
     // Points inside, on the surface, and outside the box.
     let box_shape = obb(Vec3::ZERO, Vec3::ONE);
-    assert_eq!(point_obb_distance(Vec3::ZERO, box_shape), 0.0);
-    assert_eq!(point_obb_distance(Vec3::X, box_shape), 0.0);
-    assert_eq!(point_obb_distance(Vec3::new(2.0, 0.0, 0.0), box_shape), 1.0);
+    assert_eq!(
+        [Vec3::ZERO, Vec3::X, Vec3::new(2.0, 0.0, 0.0)]
+            .map(|point| point_obb_distance(point, box_shape)),
+        [0.0, 0.0, 1.0]
+    );
     // The squared AABB distance sums the per-axis excess.
     assert_eq!(
         point_aabb_distance_squared(Vec3::new(2.0, 3.0, 0.0), Vec3::ONE),

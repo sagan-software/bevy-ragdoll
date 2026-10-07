@@ -865,8 +865,7 @@ mod tests {
         // An empty relationship reports no bodies.
         let empty = RagdollBodies::default();
         assert!(empty.is_empty());
-        assert_eq!(empty.len(), 0);
-        assert_eq!(empty.iter().count(), 0);
+        assert_eq!([empty.len(), empty.iter().count()], [0, 0]);
 
         // One related body is reported through every accessor.
         let populated = RagdollBodies(vec![Entity::PLACEHOLDER]);
