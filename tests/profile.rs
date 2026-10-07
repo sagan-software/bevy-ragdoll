@@ -428,19 +428,27 @@ fn joint_angles_round_trip_each_axis() {
     let spec = valid_spec();
     let profile = RagdollProfile::new(spec).expect("the profile validates");
     let child = BodyIndex::try_from(1).expect("child index fits");
-    for angle in [-FRAC_PI_2, -0.1, 0.0, 0.1, FRAC_PI_2] {
-        for (axis, rotation) in [
-            (Vec3::X, Quat::from_rotation_x(angle)),
-            (Vec3::Y, Quat::from_rotation_y(angle)),
-            (Vec3::Z, Quat::from_rotation_z(angle)),
-        ] {
-            let poses = [Isometry3d::IDENTITY, Isometry3d::from_rotation(rotation)];
+    // Collect every angle and axis whose measured angle differs.
+    let mismatches = [-FRAC_PI_2, -0.1, 0.0, 0.1, FRAC_PI_2]
+        .into_iter()
+        .flat_map(|angle| {
+            [
+                (Vec3::X, Quat::from_rotation_x(angle)),
+                (Vec3::Y, Quat::from_rotation_y(angle)),
+                (Vec3::Z, Quat::from_rotation_z(angle)),
+            ]
+            .map(|(axis, rotation)| (angle, axis, rotation))
+        })
+        .filter(|(angle, axis, rotation)| {
+            let poses = [Isometry3d::IDENTITY, Isometry3d::from_rotation(*rotation)];
             let measured = profile
                 .joint_angles(child, &poses)
                 .expect("the child has a joint and a pose");
-            assert!((measured - axis * angle).length() < 1.0e-5);
-        }
-    }
+            (measured - *axis * *angle).length() >= 1.0e-5
+        })
+        .map(|(angle, axis, _)| (angle, axis))
+        .collect::<Vec<_>>();
+    assert_eq!(mismatches, []);
     // A body without a joint has no angles.
     assert!(
         profile

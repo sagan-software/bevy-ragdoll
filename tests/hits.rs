@@ -39,9 +39,11 @@ fn hit_profiles_use_the_documented_impulse_table() {
         (HitProfile::Explosion, 200.0),
     ];
 
-    for (profile, expected) in presets {
-        assert_eq!(settings.impulse_magnitude(profile), Some(expected));
-    }
+    let mismatches = presets
+        .into_iter()
+        .filter(|(profile, expected)| settings.impulse_magnitude(*profile) != Some(*expected))
+        .collect::<Vec<_>>();
+    assert_eq!(mismatches, []);
 
     // Custom magnitudes pass through only when finite and nonnegative.
     assert_eq!(
@@ -79,9 +81,11 @@ fn body_roles_follow_profile_bone_name_hints() {
         ("custom_bone", BodyRole::Other),
     ];
 
-    for (bone_name, expected) in cases {
-        assert_eq!(BodyRole::from(bone_name), expected);
-    }
+    let mismatches = cases
+        .into_iter()
+        .filter(|(bone_name, expected)| BodyRole::from(*bone_name) != *expected)
+        .collect::<Vec<_>>();
+    assert_eq!(mismatches, []);
 
     // Roles also carry the muscle floor and recovery delays the hit system uses.
     assert_eq!(BodyRole::Calf.muscle_floor(), 0.08);
@@ -402,16 +406,20 @@ fn strength_drop_follows_the_falloff_table() {
         "weights: {:?}",
         weights.as_ref()
     );
-    for (index, expected_muscle) in expected.into_iter().enumerate() {
-        let muscle = weights
-            .get(index)
-            .expect("every bound profile body has a weight")
-            .muscle();
-        assert!(
-            (muscle - expected_muscle).abs() < 1.0e-5,
-            "body {index} has muscle {muscle}, expected {expected_muscle}"
-        );
-    }
+    // Collect each body whose muscle differs from the expected weight.
+    let mismatches = expected
+        .into_iter()
+        .enumerate()
+        .map(|(index, expected_muscle)| {
+            let muscle = weights
+                .get(index)
+                .expect("every bound profile body has a weight")
+                .muscle();
+            (index, muscle, expected_muscle)
+        })
+        .filter(|(_, muscle, expected_muscle)| (muscle - expected_muscle).abs() >= 1.0e-5)
+        .collect::<Vec<_>>();
+    assert_eq!(mismatches, []);
 }
 
 #[test]
