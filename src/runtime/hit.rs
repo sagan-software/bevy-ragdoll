@@ -556,22 +556,46 @@ fn apply_strength_drop(
             .copied()
             .flatten()
             .unwrap_or_default();
-        let current = weights.get(position).unwrap_or_default();
-        let base = weights.base(position);
         let drop = MAXIMUM_STRENGTH_DROP * severity * drop_streak * falloff;
-        let muscle = role
-            .muscle_floor()
-            .max(current.muscle().min(base.muscle() * (1.0 - drop)));
-        // Reduce pin only at the directly addressed body position.
-        let pin = if *body_index == target {
-            current.pin() * (1.0 - PIN_DROP_PER_SEVERITY * severity)
+        let pin_drop = if *body_index == target {
+            PIN_DROP_PER_SEVERITY * severity
         } else {
-            current.pin()
+            0.0
         };
+        let dropped = dropped_weights(
+            weights.get(position).unwrap_or_default(),
+            weights.base(position),
+            role,
+            drop,
+            pin_drop,
+        );
 
         // Store current values while preserving the authored recovery baseline.
-        weights.set_current(*body_index, BodyWeights::new(muscle, pin));
+        weights.set_current(*body_index, dropped);
     }
+}
+
+/// Returns `current` after a muscle drop toward `base` and a pin drop.
+///
+/// Muscle never rises above `current` or falls below the role floor. A zero
+/// `pin_drop` leaves pin unchanged; only the directly hit body loses pin.
+fn dropped_weights(
+    current: BodyWeights,
+    base: BodyWeights,
+    role: BodyRole,
+    drop: f32,
+    pin_drop: f32,
+) -> BodyWeights {
+    let muscle = role
+        .muscle_floor()
+        .max(current.muscle().min(base.muscle() * (1.0 - drop)));
+    // Skip the multiply for untouched bodies so their pin stays bit-identical.
+    let pin = if pin_drop == 0.0 {
+        current.pin()
+    } else {
+        current.pin() * (1.0 - pin_drop)
+    };
+    BodyWeights::new(muscle, pin)
 }
 
 /// Remaining impulse and world-space application point while walking to the root.
