@@ -10,6 +10,7 @@ use super::support::{BENCH_SEED, PopulationMode, human_profile, rapier_app};
 /// Measures 60 fixed steps for limp, powered, and asleep human populations.
 fn rapier_step_benchmarks(criterion: &mut Criterion) {
     let profile = human_profile();
+    // One group compares each body mode at the same population.
     let mut group = criterion.benchmark_group("step_rapier3d");
     for mode in [
         PopulationMode::Limp,
@@ -51,6 +52,7 @@ fn rapier_step_benchmarks(criterion: &mut Criterion) {
             });
         }
     }
+    // Finishing the group writes its report before the next group starts.
     group.finish();
 }
 

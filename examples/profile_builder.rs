@@ -9,6 +9,7 @@ use bevy_ragdoll::{ProfileBuilder, RagdollProfile, ShapeSpec};
 
 /// Builds a profile from code and prints its total mass.
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // One sphere body is the smallest valid profile.
     let mut builder = ProfileBuilder::default();
     builder.add_body(
         "pelvis",
@@ -21,6 +22,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Isometry3d::IDENTITY,
     )?;
 
+    // Building validates the shape, mass, and tree before returning a profile.
     let profile: RagdollProfile = builder.build()?;
     let total_mass = profile.total_mass().kilograms();
     println!("{total_mass} kg");

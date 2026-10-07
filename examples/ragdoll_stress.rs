@@ -204,6 +204,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 /// Spawns the floor and the ragdolls for the selected scenario.
 fn spawn_ragdolls(mut commands: Commands<'_, '_>, run: Res<'_, Run>) {
+    // A wide static floor so neither scenario falls off the edge.
     commands.spawn((
         RigidBody::Fixed,
         Collider::cuboid(100.0, 0.1, 100.0),
@@ -214,6 +215,7 @@ fn spawn_ragdolls(mut commands: Commands<'_, '_>, run: Res<'_, Run>) {
     let columns = (1..=count)
         .find(|c| u32::from(*c).pow(2) >= u32::from(count))
         .unwrap_or(1);
+    // Ragdolls start limp so the run measures contacts and joints, not muscles.
     for index in 0..count {
         let position = match run.args.scenario {
             Scenario::Pile => Vec3::new(0.0, f32::from(index).mul_add(0.8, 0.3), 0.0),
@@ -279,9 +281,11 @@ fn finish_run(
     bodies: Query<'_, '_, (&BodyPhysicsPose, &BodyVelocity), With<RagdollBodyOf>>,
     mut exit: MessageWriter<'_, AppExit>,
 ) {
+    // Keep running until the warmup and the measured duration have both passed.
     if time.elapsed_secs_f64() < run.args.warmup + run.args.duration {
         return;
     }
+    // A NaN pose or an extreme speed means the solver blew up.
     let unstable_bodies = bodies
         .iter()
         .filter(|(pose, velocity)| {
@@ -296,11 +300,13 @@ fn finish_run(
         bodies: bodies.iter().count(),
         unstable_bodies,
     };
+    // Print a one-line summary for people watching the terminal.
     let (count, bodies, unstable) = (run.args.count, metrics.bodies, metrics.unstable_bodies);
     let (frame, step) = (metrics.frame_ms.p95, metrics.step_ms.p95);
     println!(
         "{count} ragdolls, {bodies} bodies: frame p95 {frame:.2} ms, step p95 {step:.2} ms, {unstable} unstable"
     );
+    // CI reads the JSON report, so a failed write must fail the run.
     let report = Report {
         config: &run.args,
         metrics,
@@ -342,6 +348,7 @@ fn add_body_meshes(
     mut materials: ResMut<'_, Assets<StandardMaterial>>,
     bodies: Query<'_, '_, (Entity, &BodyShape), Added<BodyShape>>,
 ) {
+    // One shared material keeps the windowed run cheap to render.
     let material = material
         .get_or_insert_with(|| materials.add(Color::srgb(0.9, 0.6, 0.35)))
         .clone();

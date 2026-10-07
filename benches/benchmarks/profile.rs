@@ -10,10 +10,12 @@ use super::support::{BENCH_SEED, chain_spec, human_profile};
 /// Measures human and chain profile validation plus human profile generation.
 fn profile_benchmarks(criterion: &mut Criterion) {
     let _human = human_profile();
+    // Build inputs outside the timed closures so only validation and generation are measured.
     let skeleton = bevy_ragdoll::Skeleton::humanoid();
     let human_spec = bevy_ragdoll::ProfileSpec::from(&skeleton);
     let chain_spec = chain_spec(64, BENCH_SEED);
 
+    // Validate a realistic humanoid and a worst-case 64-body chain.
     criterion.bench_function("profile/new/human_16", |bencher| {
         bencher.iter_batched(
             || human_spec.clone(),
