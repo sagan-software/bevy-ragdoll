@@ -103,6 +103,7 @@ const fn is_lower_body(body: &Body) -> bool {
 
 /// Drives and pins the lower body at full strength and leaves the upper body loose.
 fn ragdoll_controls(profile: &RagdollProfile) -> (RagdollBodyWeights, PinTargets) {
+    // Legs get full muscle and pins; everything above the pelvis stays loose.
     let mut weights = Vec::with_capacity(profile.bodies().len());
     let mut pins = PinTargets::none();
     for (position, body) in profile.bodies().iter().enumerate() {
@@ -113,6 +114,7 @@ fn ragdoll_controls(profile: &RagdollProfile) -> (RagdollBodyWeights, PinTargets
             weights.push(BodyWeights::new(0.1, 0.0));
         }
     }
+    // Pins apply only to the lower-body bodies chosen above.
     (RagdollBodyWeights::new(weights), pins)
 }
 
@@ -174,6 +176,7 @@ fn spawn_ragdoll(
     rig: Res<'_, Rig>,
 ) {
     let profile = &rig.0;
+    // Weights and pins decide which half of the body stays driven.
     let (weights, pins) = ragdoll_controls(profile);
     let character = commands
         .spawn((
@@ -187,7 +190,7 @@ fn spawn_ragdoll(
         ))
         .id();
 
-    // Each joint links a child body to its parent; bodies without a joint are roots.
+    // Bodies without a joint are roots and hang from the character entity.
     let bodies = profile.bodies();
 
     // Profiles list parents before children, so each parent bone already exists.
@@ -234,6 +237,7 @@ fn animate_idle_targets(
     time: Res<'_, Time>,
     mut bones: Query<'_, '_, (&IdleTarget, &mut Transform)>,
 ) {
+    // Every bone sways; the weak upper-body muscles follow it only loosely.
     for (bone, mut transform) in &mut bones {
         let phase = f32::from(u8::try_from(bone.index % 9).unwrap_or_default()) * 0.47;
         let amplitude = match bone.role {
@@ -269,6 +273,7 @@ fn launch_balls(
     mut meshes: ResMut<'_, Assets<Mesh>>,
     mut materials: ResMut<'_, Assets<StandardMaterial>>,
 ) {
+    // Launch one ball each time the repeating timer fires.
     if !timer.0.tick(time.delta()).just_finished() {
         return;
     }
@@ -276,6 +281,7 @@ fn launch_balls(
     let Some((_, chest)) = bodies.iter().find(|(index, _)| Some(index.get()) == chest) else {
         return;
     };
+    // Fire from in front of the chest, slightly upward, toward -Z.
     let direction = Vec3::new(0.0, 0.04, -1.0).normalize();
     commands.spawn((
         RigidBody::Dynamic,
