@@ -397,46 +397,7 @@ fn spawn_hud(mut commands: Commands<'_, '_>, rig: Res<'_, Rig>) {
     commands.spawn((label("", 13.0, Color::WHITE), Readout, ChildOf(panel)));
     // One labelled strength bar per profile body.
     for (index, body) in rig.0.bodies().iter().enumerate() {
-        let row = commands
-            .spawn((
-                Node {
-                    height: px(13),
-                    column_gap: px(7),
-                    align_items: AlignItems::Center,
-                    ..default()
-                },
-                ChildOf(panel),
-            ))
-            .id();
-        commands.spawn((
-            label(body.bone(), 10.0, Color::srgb(0.83, 0.89, 0.9)),
-            Node {
-                width: px(116),
-                ..default()
-            },
-            ChildOf(row),
-        ));
-        let track = commands
-            .spawn((
-                Node {
-                    width: px(142),
-                    height: px(7),
-                    ..default()
-                },
-                BackgroundColor(Color::srgb(0.12, 0.18, 0.21)),
-                ChildOf(row),
-            ))
-            .id();
-        commands.spawn((
-            Node {
-                width: percent(100.0),
-                height: percent(100.0),
-                ..default()
-            },
-            BackgroundColor(STRONG),
-            MuscleBar(index),
-            ChildOf(track),
-        ));
+        spawn_muscle_bar(commands.reborrow(), panel, index, body.bone());
     }
     // Key help sits at the bottom of the panel.
     commands.spawn((
@@ -446,6 +407,51 @@ fn spawn_hud(mut commands: Commands<'_, '_>, rig: Res<'_, Rig>) {
             Color::srgb(0.78, 0.85, 0.86),
         ),
         ChildOf(panel),
+    ));
+}
+
+/// Spawns one `bone [=====]` row in `panel` whose bar tracks body `index`'s muscle strength.
+fn spawn_muscle_bar(mut commands: Commands<'_, '_>, panel: Entity, index: usize, bone: &str) {
+    let row = commands
+        .spawn((
+            Node {
+                height: px(13),
+                column_gap: px(7),
+                align_items: AlignItems::Center,
+                ..default()
+            },
+            ChildOf(panel),
+        ))
+        .id();
+    commands.spawn((
+        label(bone, 10.0, Color::srgb(0.83, 0.89, 0.9)),
+        Node {
+            width: px(116),
+            ..default()
+        },
+        ChildOf(row),
+    ));
+    // A dark track with a full-width bar that update_hud shrinks as strength drops.
+    let track = commands
+        .spawn((
+            Node {
+                width: px(142),
+                height: px(7),
+                ..default()
+            },
+            BackgroundColor(Color::srgb(0.12, 0.18, 0.21)),
+            ChildOf(row),
+        ))
+        .id();
+    commands.spawn((
+        Node {
+            width: percent(100.0),
+            height: percent(100.0),
+            ..default()
+        },
+        BackgroundColor(STRONG),
+        MuscleBar(index),
+        ChildOf(track),
     ));
 }
 
