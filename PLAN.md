@@ -2,13 +2,13 @@
 
 | Complete | Phase | Evidence |
 | --- | --- | --- |
-| [x] | 1. Repository, toolchain and CI | Local workspace and gates complete. GitHub creation, authentication, push and CI are deferred at the owner's direction. |
+| [x] | 1. Repository, toolchain and CI | Local workspace and gates complete. The public GitHub repository exists, and `main` has been pushed. |
 | [x] | 2. Profile data model and import | Profile model, RON loader, Skein components and TGF GLB import implemented; all phase 2 gates pass. Coverage gaps are documented below and in the commit body. |
 | [x] | 3. Rapier powered-ragdoll spike | [Report](docs/spikes/rapier-powered.md); checks and coverage gap recorded below. |
 | [x] | 4. Core runtime | Runtime, mock backend, conformance tests and screenshots complete. Coverage gaps and reasons are recorded below. |
 | [x] | 5. Rapier 3D backend | Workspace gates, backend coverage, headless smoke run, and reviewed screenshots pass. Coverage gaps are recorded below. |
 | [x] | 6. Performance | The [stress baseline and Criterion results](benches/RESULTS.md) are committed; the default sweep, comparison boundaries, and benchmark gates pass. The all-features Clippy dependency error is recorded below. |
-| [ ] | 7. Active control | |
+| [ ] | 7. Active control | Implementation, workspace tests, strict Clippy, and formatting pass. Fresh coverage, stress and Criterion results, and Rapier-feature example tests remain. See Phase 7 evidence below. |
 | [ ] | 8. Human assets | |
 | [ ] | 9. Balance | |
 | [ ] | 10. Puppet showcase | |
@@ -428,3 +428,76 @@
   The ragdolls stand above the ground plane, with no body below the floor.
   At least 72 GiB remained free on the SD card during the sweep and benchmark
   runs.
+
+## Phase 7 evidence
+
+- The relationship-based hit-tree regression test was added before changing
+  collection. Its first focused build failed because `HitImpulseTree::collect`
+  still accepted only two arguments. After the collector switched to the
+  character's `RagdollBodies` relationship, the focused test passed.
+- `cargo test --locked -p bevy_ragdoll` passed 89 tests; one test was ignored.
+  `cargo test --locked --workspace` passed after the collector and recovery
+  changes, including the workspace doctests.
+- `cargo clippy --locked --workspace --all-targets -- -D warnings` and
+  `cargo clippy --locked -p bevy_ragdoll_examples --all-targets --features
+  rapier3d -- -D warnings` passed.
+- The final `cargo fmt --all -- --check` command passed after Nix's SD-card
+  read completed. `git diff --check` passed.
+- `cargo test --locked -p bevy_ragdoll_examples --features rapier3d` was
+  stopped with exit 130 at 41 GiB free while several example linkers were
+  active. The test suite did not finish. No files were deleted.
+- Before the relationship-based collector change, the hit benchmark measured
+  3.366 µs for one ragdoll and 529.642 µs for 64 ragdolls. Criterion reported
+  local comparisons of +10.7% and +59.2%, but those saved comparisons have no
+  source revision and are not a Phase 7 baseline. Rerun the benchmark against
+  the final source revision. The pre-optimization command was:
+
+  ```sh
+  nix develop --command env \
+    CARGO_HOME=/var/mnt/nixsd/Caches/cargo \
+    CARGO_TARGET_DIR=/var/mnt/nixsd/Build/bevy-ragdoll \
+    CARGO_BUILD_JOBS=4 \
+    'RUSTFLAGS=-C link-arg=-fuse-ld=lld' \
+    cargo bench --locked -p bevy_ragdoll_benches --bench math -- \
+      math/hit_processing --noplot --sample-size 10 --measurement-time 5
+  ```
+
+- The prior `llvm-cov` report predates the collector and recovery changes. Its
+  only reported core misses were derive-generated lines 222, 278, and 321;
+  Rapier conformance line 144 was failure-only panic formatting. This report
+  does not cover the latest code. Rerun coverage after space permits.
+- A four-character headless shooting smoke run passed before the collector
+  change with 64 bodies and zero unstable bodies. Its command was:
+
+  ```sh
+  nix develop --command env \
+    CARGO_HOME=/var/mnt/nixsd/Caches/cargo \
+    CARGO_TARGET_DIR=/var/mnt/nixsd/Build/bevy-ragdoll \
+    CARGO_BUILD_JOBS=4 \
+    cargo run --locked -p bevy_ragdoll_examples \
+      --example ragdoll_stress --features rapier3d -- \
+      --headless --scenario shooting --count 4 --trigger-at 0 \
+      --duration 0.5 --warmup 0 \
+      --report /var/mnt/nixsd/Build/bevy-ragdoll/stress/phase7-shooting-final-smoke.json
+  ```
+
+  Rerun it and the default sweep command below against the final source
+  revision:
+
+  ```sh
+  nix develop --command env \
+    CARGO_HOME=/var/mnt/nixsd/Caches/cargo \
+    CARGO_TARGET_DIR=/var/mnt/nixsd/Build/bevy-ragdoll \
+    CARGO_BUILD_JOBS=4 \
+    cargo run -p bevy_ragdoll_examples --example ragdoll_stress \
+      --profile stress-test --features rapier3d -- --headless --sweep default
+  ```
+
+- I reviewed the Phase 7
+  [hit-reactions screenshot](docs/screenshots/phase-07-hit-reactions.png) and
+  [partial-ragdoll screenshot](docs/screenshots/phase-07-partial-ragdoll.png).
+  The first shows the torso leaning after a rifle hit; the second shows the
+  upper body yielding while the legs remain controlled.
+- Dylints, Cargo Deny, Cargo documentation, Criterion, and LLVM coverage passed
+  or ran before the final collector change. Rerun applicable gates before
+  marking Phase 7 complete.
