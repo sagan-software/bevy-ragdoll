@@ -11,7 +11,7 @@
 use bevy::math::{Isometry3d, Quat};
 use bevy::prelude::{Component, Entity};
 
-use crate::profile::RagdollProfile;
+use crate::profile::{BodyIndex, RagdollProfile};
 
 /// A finite unit-range strength used for muscle, pin, and body weights.
 #[derive(Clone, Copy, Debug, Default, PartialEq, PartialOrd, bevy::prelude::Reflect)]
@@ -35,10 +35,17 @@ impl Strength {
 
 /// The profile assigned to a character that can become a ragdoll.
 ///
-/// Inserting this component also inserts the animated mode, full drive, and
-/// physics blend defaults when the character does not already have them.
+/// Inserting this component also inserts its mode, drive, blend, per-body
+/// strengths, and hit-history defaults when the character does not already
+/// have them.
 #[derive(Component, Clone, Debug, PartialEq, bevy::prelude::Reflect)]
-#[require(RagdollMode, RagdollDrive, RagdollBlend)]
+#[require(
+    RagdollMode,
+    RagdollDrive,
+    RagdollBlend,
+    RagdollBodyWeights,
+    super::hit::LastHit
+)]
 pub struct Ragdoll {
     /// Validated body and joint data shared by every ragdoll using the rig.
     profile: bevy::asset::Handle<RagdollProfile>,
@@ -300,8 +307,10 @@ impl BodyWeights {
 /// without allocating a default entry.
 #[derive(Component, Clone, Debug, Default, PartialEq, bevy::prelude::Reflect)]
 pub struct RagdollBodyWeights {
-    /// Multipliers in parent-first profile body order.
+    /// Current multipliers in parent-first profile body order.
     weights: Vec<BodyWeights>,
+    /// Authored multipliers restored by hit recovery in profile body order.
+    base_weights: Vec<BodyWeights>,
 }
 
 impl RagdollBodyWeights {
@@ -322,7 +331,59 @@ impl RagdollBodyWeights {
     /// assert_eq!(weights.get(0), Some(BodyWeights::default()));
     /// ```
     pub fn new(weights: Vec<BodyWeights>) -> Self {
-        Self { weights }
+        Self {
+            base_weights: weights.clone(),
+            weights,
+        }
+    }
+
+    /// Extends current and authored values to cover every validated profile body.
+    ///
+    /// Existing overrides remain unchanged. Missing body positions inherit the
+    /// full-strength default used by the whole-ragdoll drive.
+    pub(crate) fn initialize_profile_bodies(&mut self, body_count: usize) {
+        self.weights
+            .resize(body_count.max(self.weights.len()), BodyWeights::default());
+        self.base_weights.resize(
+            body_count.max(self.base_weights.len()),
+            BodyWeights::default(),
+        );
+    }
+
+    /// Replaces one body's authored baseline and its current multipliers.
+    ///
+    /// Hit recovery returns to this value. Missing earlier positions are filled
+    /// with full-strength defaults, and positions beyond the active profile
+    /// remain unused by runtime body indexes.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use bevy_ragdoll::{BodyIndex, runtime::components::{BodyWeights, RagdollBodyWeights}};
+    ///
+    /// let mut weights = RagdollBodyWeights::default();
+    /// let index = BodyIndex::try_from(1).expect("one is within the profile limit");
+    /// weights.set(index, BodyWeights::default());
+    /// assert_eq!(weights.get(1), Some(BodyWeights::default()));
+    /// ```
+    pub fn set(&mut self, index: BodyIndex, weights: BodyWeights) {
+        let position = index.get();
+        let required_len = position + 1;
+        // Extend both vectors before replacing the checked profile position.
+        if self.weights.len() < required_len {
+            self.weights.resize(required_len, BodyWeights::default());
+        }
+        if self.base_weights.len() < required_len {
+            self.base_weights
+                .resize(required_len, BodyWeights::default());
+        }
+        // Store the authored value as both the initial strength and recovery target.
+        if let Some(current) = self.weights.get_mut(position) {
+            *current = weights;
+        }
+        if let Some(base) = self.base_weights.get_mut(position) {
+            *base = weights;
+        }
     }
 
     /// Returns the optional multiplier stored for a zero-based profile body
@@ -343,6 +404,30 @@ impl RagdollBodyWeights {
     /// ```
     pub fn get(&self, index: usize) -> Option<BodyWeights> {
         self.weights.get(index).copied()
+    }
+
+    /// Returns one body's authored recovery target, defaulting to full strength.
+    pub(crate) fn base(&self, index: usize) -> BodyWeights {
+        self.base_weights.get(index).copied().unwrap_or_default()
+    }
+
+    /// Replaces current strengths for one checked profile body, filling omitted
+    /// earlier entries with full-strength defaults.
+    pub(crate) fn set_current(&mut self, index: BodyIndex, weights: BodyWeights) {
+        let position = index.get();
+        let required_len = position + 1;
+        // Keep current and authored vectors aligned for later hit recovery.
+        if self.weights.len() < required_len {
+            self.weights.resize(required_len, BodyWeights::default());
+        }
+        if self.base_weights.len() < required_len {
+            self.base_weights
+                .resize(required_len, BodyWeights::default());
+        }
+        // Replace current values without changing the authored recovery target.
+        if let Some(current) = self.weights.get_mut(position) {
+            *current = weights;
+        }
     }
 }
 
@@ -463,7 +548,7 @@ impl RagdollTargetPose {
     /// BodyIndex::try_from(0).expect("zero is a valid body index");
     /// assert_eq!(targets.current_pose(index), None);
     /// ```
-    pub fn current_pose(&self, index: crate::profile::BodyIndex) -> Option<Isometry3d> {
+    pub fn current_pose(&self, index: BodyIndex) -> Option<Isometry3d> {
         self.current.get(index.get()).copied()
     }
 
@@ -484,7 +569,7 @@ impl RagdollTargetPose {
     /// BodyIndex::try_from(0).expect("zero is a valid body index");
     /// assert_eq!(targets.previous_pose(index), None);
     /// ```
-    pub fn previous_pose(&self, index: crate::profile::BodyIndex) -> Option<Isometry3d> {
+    pub fn previous_pose(&self, index: BodyIndex) -> Option<Isometry3d> {
         self.previous.get(index.get()).copied()
     }
 
@@ -505,7 +590,7 @@ impl RagdollTargetPose {
     /// BodyIndex::try_from(0).expect("zero is a valid body index");
     /// assert_eq!(targets.velocity(index), None);
     /// ```
-    pub fn velocity(&self, index: crate::profile::BodyIndex) -> Option<super::body::BodyVelocity> {
+    pub fn velocity(&self, index: BodyIndex) -> Option<super::body::BodyVelocity> {
         self.velocities.get(index.get()).copied()
     }
 
@@ -669,13 +754,14 @@ impl RagdollBodies {
 
 #[cfg(test)]
 mod tests {
+    use bevy::asset::Handle;
     use bevy::math::{Isometry3d, Quat, Vec3};
-    use bevy::prelude::Entity;
+    use bevy::prelude::{Entity, World};
 
-    use crate::profile::BodyIndex;
+    use crate::profile::{BodyIndex, RagdollProfile};
 
     use super::{
-        BodyWeights, RagdollBlend, RagdollBodies, RagdollBodyWeights, RagdollDrive,
+        BodyWeights, Ragdoll, RagdollBlend, RagdollBodies, RagdollBodyWeights, RagdollDrive,
         RagdollTargetAdjust, RagdollTargetPose,
     };
 
@@ -719,6 +805,46 @@ mod tests {
         assert!(adjustments.additive.is_empty());
         assert_eq!(adjustments.root_offset, Isometry3d::IDENTITY);
         assert_eq!(Quat::IDENTITY, adjustments.root_offset.rotation);
+    }
+
+    /// Fills bound body positions without replacing authored or extra weights.
+    #[test]
+    fn profile_weight_initialization_preserves_authored_entries() {
+        let authored = BodyWeights::new(0.25, 0.5);
+        let mut weights = RagdollBodyWeights::new(vec![authored]);
+
+        weights.initialize_profile_bodies(3);
+
+        assert_eq!(
+            weights.as_ref(),
+            &[authored, BodyWeights::default(), BodyWeights::default()]
+        );
+        assert_eq!(weights.base(0), authored);
+        assert_eq!(weights.base(1), BodyWeights::default());
+        let third_index = BodyIndex::try_from(2).expect("the third body index is valid");
+        let extra = BodyWeights::new(0.75, 0.5);
+        weights.set(third_index, extra);
+        weights.initialize_profile_bodies(1);
+
+        assert_eq!(weights.as_ref(), &[authored, BodyWeights::default(), extra]);
+        assert_eq!(weights.base(2), extra);
+    }
+
+    /// Creates required control state before binding can spawn physics bodies.
+    #[test]
+    fn ragdoll_requires_weights_and_hit_history_at_spawn() {
+        let mut world = World::new();
+        let character = world
+            .spawn(Ragdoll::new(Handle::<RagdollProfile>::default()))
+            .id();
+
+        assert!(world.get::<RagdollBodyWeights>(character).is_some());
+        assert_eq!(
+            world
+                .get::<super::super::hit::LastHit>(character)
+                .and_then(|last_hit| last_hit.last_at()),
+            None
+        );
     }
 
     #[test]

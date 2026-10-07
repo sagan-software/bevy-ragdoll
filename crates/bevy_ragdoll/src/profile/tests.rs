@@ -19,6 +19,7 @@ fn spec() -> ProfileSpec {
                 },
                 mass: 2.0,
                 rest: Isometry3d::IDENTITY,
+                role: None,
             },
             BodySpec {
                 bone: "child".to_owned(),
@@ -29,6 +30,7 @@ fn spec() -> ProfileSpec {
                 },
                 mass: 3.0,
                 rest: Isometry3d::from_xyz(0.0, 1.0, 0.0),
+                role: None,
             },
         ],
         joints: vec![JointSpec {

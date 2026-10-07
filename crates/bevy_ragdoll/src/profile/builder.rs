@@ -55,6 +55,7 @@ impl ProfileBuilder {
             shape,
             mass,
             rest,
+            role: None,
         });
         Ok(body_index)
     }

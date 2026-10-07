@@ -100,6 +100,121 @@ pub struct BodyDriveOutput {
     /// joint motors. The runtime stores or reads this value through the shared
     /// backend contract during fixed simulation.
     pub joint_torque: Vec3,
+    /// Maximum world-space linear speed in metres per second while muscle drive
+    /// is active. `None` disables this limit for a fully limp character.
+    pub max_linear_speed: Option<f32>,
+    /// Maximum world-space angular speed in radians per second while muscle
+    /// drive is active. `None` disables this limit for a fully limp character.
+    pub max_angular_speed: Option<f32>,
+}
+
+impl BodyDriveOutput {
+    /// Clamps finite linear and angular velocities to the limits in this output.
+    ///
+    /// A missing or invalid limit is ignored. A non-finite velocity component
+    /// becomes zero before a backend uses it for integration.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use bevy::math::Vec3;
+    /// use bevy_ragdoll::runtime::body::{BodyDriveOutput, BodyVelocity};
+    ///
+    /// let output = BodyDriveOutput { max_linear_speed: Some(5.0), ..Default::default() };
+    /// let mut velocity = BodyVelocity { linear: Vec3::X * 8.0, ..Default::default() };
+    /// output.clamp_velocity(&mut velocity);
+    /// assert!((velocity.linear.length() - 5.0).abs() < 1.0e-5);
+    /// ```
+    pub fn clamp_velocity(&self, velocity: &mut BodyVelocity) {
+        clamp_speed(&mut velocity.linear, self.max_linear_speed);
+        clamp_speed(&mut velocity.angular, self.max_angular_speed);
+    }
+}
+
+/// Applies one optional finite nonnegative magnitude cap to a velocity vector.
+fn clamp_speed(vector: &mut Vec3, maximum: Option<f32>) {
+    // Clear invalid velocity values before evaluating any optional cap.
+    if !vector.is_finite() {
+        *vector = Vec3::ZERO;
+        return;
+    }
+    // Preserve uncapped or below-cap values without changing their direction.
+    let Some(maximum) = maximum.filter(|maximum| maximum.is_finite() && *maximum >= 0.0) else {
+        return;
+    };
+    let speed = vector.length();
+    if speed > maximum {
+        *vector *= maximum / speed;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    //! Boundary coverage for backend-neutral velocity limits.
+
+    use bevy::math::Vec3;
+
+    use super::{BodyDriveOutput, BodyVelocity};
+
+    /// Applies independent finite limits without changing values below either cap.
+    #[test]
+    fn velocity_limits_clamp_only_excess_speed() {
+        let output = BodyDriveOutput {
+            max_linear_speed: Some(10.0),
+            max_angular_speed: Some(20.0),
+            ..Default::default()
+        };
+        let mut velocity = BodyVelocity {
+            linear: Vec3::X * 12.0,
+            angular: Vec3::Y * 24.0,
+        };
+
+        output.clamp_velocity(&mut velocity);
+
+        assert!((velocity.linear.length() - 10.0).abs() < 1.0e-5);
+        assert!((velocity.angular.length() - 20.0).abs() < 1.0e-5);
+    }
+
+    /// Keeps velocity unchanged when limits are absent and clears malformed vectors.
+    #[test]
+    fn velocity_limits_ignore_absent_caps_and_clear_nonfinite_values() {
+        let output = BodyDriveOutput::default();
+        let mut velocity = BodyVelocity {
+            linear: Vec3::X * 12.0,
+            angular: Vec3::splat(f32::NAN),
+        };
+
+        output.clamp_velocity(&mut velocity);
+
+        assert_eq!(velocity.linear, Vec3::X * 12.0);
+        assert_eq!(velocity.angular, Vec3::ZERO);
+    }
+
+    /// Ignores a non-finite cap and clamps to a finite zero cap.
+    #[test]
+    fn velocity_limits_validate_public_caps() {
+        let output = BodyDriveOutput {
+            max_linear_speed: Some(f32::NAN),
+            max_angular_speed: Some(-1.0),
+            ..Default::default()
+        };
+        let mut velocity = BodyVelocity {
+            linear: Vec3::X,
+            angular: Vec3::Y,
+        };
+
+        output.clamp_velocity(&mut velocity);
+
+        assert_eq!(velocity.linear, Vec3::X);
+        assert_eq!(velocity.angular, Vec3::Y);
+
+        let zero_limit = BodyDriveOutput {
+            max_angular_speed: Some(0.0),
+            ..Default::default()
+        };
+        zero_limit.clamp_velocity(&mut velocity);
+        assert_eq!(velocity.angular, Vec3::ZERO);
+    }
 }
 
 /// Motion state that tells a backend how to integrate or constrain one body.

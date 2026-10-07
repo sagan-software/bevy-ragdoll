@@ -34,6 +34,8 @@ use bevy_rapier3d::plugin::{RapierPhysicsPlugin, TimestepMode};
 use bevy_rapier3d::prelude::{Collider, RigidBody};
 use clap::{Parser, ValueEnum};
 
+mod active;
+
 #[cfg(feature = "visual")]
 use bevy::math::Quat;
 #[cfg(feature = "visual")]
@@ -58,6 +60,10 @@ pub enum ExampleKind {
     FromRon,
     /// Imports the TGF GLB profile with its Skein annotations.
     FromGltfSkein,
+    /// Runs a hit-reactive human ragdoll with local muscle and pin controls.
+    HitReactions,
+    /// Leaves the upper body loose while the legs follow their target poses.
+    PartialRagdoll,
 }
 
 impl ExampleKind {
@@ -68,6 +74,8 @@ impl ExampleKind {
             Self::FromCode => "Profile built in Rust",
             Self::FromRon => "Profile loaded from RON",
             Self::FromGltfSkein => "Profile imported from glTF and Skein",
+            Self::HitReactions => "Hit reactions",
+            Self::PartialRagdoll => "Partial ragdoll",
         }
     }
 
@@ -79,6 +87,8 @@ impl ExampleKind {
             Self::FromCode => "Check: the pinned pelvis holds while the chain swings.",
             Self::FromRon => "Check: a validated human profile loads from RON.",
             Self::FromGltfSkein => "Check: GLB bones and Skein annotations form a rig.",
+            Self::HitReactions => "Click the rig to hit it; adjust local muscle and pin strengths.",
+            Self::PartialRagdoll => "Check: legs stay driven while the upper body yields.",
         }
     }
 }
@@ -97,6 +107,11 @@ pub fn load_profile(kind: ExampleKind) -> Result<RagdollProfile, Box<dyn Error>>
             load_ron_profile(include_str!("../../assets/profiles/human.ragdoll.ron"))
         }
         ExampleKind::FromGltfSkein => {
+            let spec =
+                ProfileSpec::from_glb(include_bytes!("../../assets/rigs/tgf_human/tgf_human.glb"))?;
+            Ok(RagdollProfile::new(spec)?)
+        }
+        ExampleKind::HitReactions | ExampleKind::PartialRagdoll => {
             let spec =
                 ProfileSpec::from_glb(include_bytes!("../../assets/rigs/tgf_human/tgf_human.glb"))?;
             Ok(RagdollProfile::new(spec)?)
@@ -336,6 +351,8 @@ pub fn run_example(kind: ExampleKind) -> Result<(), Box<dyn Error>> {
     app.add_systems(Update, exit_after);
     #[cfg(feature = "visual")]
     app.add_systems(Update, capture_screenshot);
+    #[cfg(feature = "visual")]
+    active::install(&mut app, kind);
     app.run();
 
     if let Some(path) = screenshot_path
@@ -382,6 +399,10 @@ fn spawn_example(
             RagdollDrive::new(0.0, 1.0),
             RagdollBodyWeights::new(weights),
         ));
+    } else if let Some((weights, pin_targets)) =
+        active::character_controls(scene.kind, &scene.profile)
+    {
+        character.insert((RagdollDrive::new(1.0, 1.0), weights, pin_targets));
     } else {
         character.insert(RagdollDrive::default());
     }
@@ -420,6 +441,8 @@ fn spawn_example(
                 )
             },
         );
+        #[cfg(feature = "visual")]
+        let target_bone = active::target_bone(scene.kind, index, body, transform.clone());
         let bone = commands
             .spawn((
                 Name::new(body.bone().to_owned()),
@@ -427,6 +450,10 @@ fn spawn_example(
                 ChildOf(parent),
             ))
             .id();
+        #[cfg(feature = "visual")]
+        if let Some(target_bone) = target_bone {
+            commands.entity(bone).insert(target_bone);
+        }
         bones.push(bone);
     }
 }
@@ -547,20 +574,29 @@ fn visual_shape(shape: &ShapeSpec) -> (Mesh, Transform) {
     }
 }
 
-/// Requests one screenshot after the ragdoll has landed for two seconds.
+/// Requests one screenshot after the example's visual capture delay.
 #[cfg(feature = "visual")]
 fn capture_screenshot(
     mut commands: Commands,
     options: Res<ExampleOptions>,
+    scene: Res<ExampleScene>,
     time: Res<Time>,
     bodies: Query<(), With<BodyShape>>,
     visuals: Query<(), With<BodyVisual>>,
     mut requested: bevy::prelude::Local<bool>,
 ) {
+    if scene.kind == ExampleKind::HitReactions {
+        return;
+    }
     let Some(path) = options.screenshot.as_ref() else {
         return;
     };
-    if *requested || time.elapsed_secs() < 2.0 || bodies.iter().count() < 3 {
+    let capture_after = if scene.kind == ExampleKind::PartialRagdoll {
+        1.5
+    } else {
+        2.0
+    };
+    if *requested || time.elapsed_secs() < capture_after || bodies.iter().count() < 3 {
         return;
     }
     if visuals.iter().count() < 3 {
@@ -621,6 +657,8 @@ mod tests {
             ExampleKind::FromCode,
             ExampleKind::FromRon,
             ExampleKind::FromGltfSkein,
+            ExampleKind::HitReactions,
+            ExampleKind::PartialRagdoll,
         ] {
             assert!(
                 !load_profile(kind)

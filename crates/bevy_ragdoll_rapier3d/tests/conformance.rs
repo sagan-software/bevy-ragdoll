@@ -241,3 +241,25 @@ fn body_shot_onto_stairs_stays_on_them() {
 fn bullet_moves_downed_body_a_little() {
     bevy_ragdoll_conformance::physics::a_bullet_moves_a_downed_body_a_little(rapier_backend());
 }
+
+/// Checks the standing chest-hit displacement, rotation, and muscle recovery bounds.
+#[test]
+fn pistol_to_the_chest_does_not_move_the_pelvis_far() {
+    bevy_ragdoll_conformance::physics::pistol_to_the_chest_does_not_move_the_pelvis_far(
+        rapier_backend(),
+    );
+}
+
+/// Checks that a headshot turns the neck and head within 150 milliseconds.
+#[test]
+fn headshot_turns_the_head() {
+    bevy_ragdoll_conformance::physics::headshot_turns_the_head(rapier_backend());
+}
+
+/// Checks that zero per-body muscle and pin strength lets the pelvis collapse.
+#[test]
+fn limp_weights_make_a_powered_ragdoll_collapse() {
+    bevy_ragdoll_conformance::physics::limp_weights_make_a_powered_ragdoll_collapse(
+        rapier_backend(),
+    );
+}

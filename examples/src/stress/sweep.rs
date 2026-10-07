@@ -7,7 +7,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::Deserialize;
 
-use super::cli::{CharacterCount, GridSize, StressCli, SweepSelection};
+use super::cli::{CharacterCount, ChildRun, GridSize, HeadlessMode, StressCli, SweepSelection};
 use super::compare::compare_reports;
 use super::config::{Backend, Scenario};
 use super::report::StressReport;
@@ -69,16 +69,16 @@ pub(super) fn run_sweep(cli: &StressCli, selection: &SweepSelection) -> Result<(
             return Err(format!("backend {backend} needs a later phase").into());
         }
         let report_path = parent.join(format!(".sweep-{run_id}-{index}.json"));
-        let arguments = cli.child_arguments(
+        let arguments = cli.child_arguments(ChildRun {
             backend,
-            row.scenario,
+            scenario: row.scenario,
             grid,
             count,
-            Some(&report_path),
-            None,
-            true,
-            false,
-        );
+            report: Some(&report_path),
+            screenshot: None,
+            headless: Some(HeadlessMode::Enabled),
+            deterministic: None,
+        });
         let run_index = index + 1;
         let total = rows.len();
         let scenario = row.scenario;
@@ -118,9 +118,9 @@ pub(super) fn run_sweep(cli: &StressCli, selection: &SweepSelection) -> Result<(
     Ok(())
 }
 
-/// Returns the Phase 6 configurations that can run before later scenarios land.
+/// Returns the default stress configurations implemented through Phase 7.
 fn default_rows() -> Vec<SweepRow> {
-    let mut rows = Vec::with_capacity(8);
+    let mut rows = Vec::with_capacity(9);
     for size in [8, 16, 24, 32] {
         rows.push(SweepRow {
             backend: None,
@@ -143,8 +143,13 @@ fn default_rows() -> Vec<SweepRow> {
         grid: Some([16, 16]),
         count: None,
     });
+    rows.push(SweepRow {
+        backend: None,
+        scenario: Scenario::Shooting,
+        grid: None,
+        count: Some(64),
+    });
     println!("skip balance 8x8: needs Phase 9");
-    println!("skip shooting 64: needs Phase 7");
     println!("skip mixed: needs Phase 11");
     rows
 }
@@ -234,5 +239,23 @@ fn print_summary(reports: &[StressReport]) {
         println!(
             "| {backend} | {scenario} | {characters} | {frame_p95:.3} | {step_p95:.3} | {core_p95:.3} | {trigger_spike:.3} | {bodies} | {unstable} |"
         );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Scenario, default_rows};
+
+    #[test]
+    fn phase7_default_sweep_includes_shooting_64() {
+        let rows = default_rows();
+        let shooting = rows
+            .iter()
+            .find(|row| row.scenario == Scenario::Shooting)
+            .expect("Phase 7 adds shooting to the default sweep");
+
+        assert_eq!(rows.len(), 9);
+        assert_eq!(shooting.count, Some(64));
+        assert_eq!(shooting.grid, None);
     }
 }

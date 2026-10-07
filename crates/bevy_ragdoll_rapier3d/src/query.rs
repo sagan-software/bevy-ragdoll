@@ -1,38 +1,58 @@
 //! Answer backend-neutral raycast and contact requests from Rapier contexts.
 
 use bevy::math::{Isometry3d, Vec3};
-use bevy::prelude::{Commands, Entity, MessageReader, MessageWriter, Query};
+use bevy::prelude::{Commands, Entity, MessageReader, MessageWriter, Query, With};
 use bevy_ragdoll::profile::BodyIndex;
 use bevy_ragdoll::runtime::backend::{BodyContact, BodyContacts, RayHit};
-use bevy_ragdoll::runtime::body::{BodyAtRest, BodyPhysicsPose, BodyVelocity};
+use bevy_ragdoll::runtime::body::{BodyAtRest, BodyDriveOutput, BodyPhysicsPose, BodyVelocity};
 use bevy_ragdoll::runtime::components::RagdollBodyOf;
 use bevy_ragdoll::runtime::messages::{RagdollRaycast, RagdollRaycastResponse};
 use bevy_rapier3d::pipeline::{QueryFilter, QueryFilterFlags};
 use bevy_rapier3d::plugin::{ContactPairView, ReadRapierContext};
 use bevy_rapier3d::prelude::{RigidBody, Sleeping, Velocity};
 
-/// Copies Rapier's completed transform, velocity, and sleep state into core components.
-pub(crate) fn read_body_state(
+/// Copies Rapier's completed transform into each ragdoll body's core pose.
+pub(crate) fn read_body_pose(
+    mut bodies: Query<
+        '_,
+        '_,
+        (&bevy::prelude::Transform, &mut BodyPhysicsPose),
+        With<RagdollBodyOf>,
+    >,
+) {
+    // Preserve the previous completed pose before recording Rapier's new writeback.
+    for (transform, mut pose) in &mut bodies {
+        pose.previous = pose.current;
+        pose.current = Isometry3d::new(transform.translation, transform.rotation);
+    }
+}
+
+/// Copies Rapier's completed velocity and sleep state into core body components.
+pub(crate) fn read_body_motion(
     mut commands: Commands<'_, '_>,
     mut bodies: Query<
         '_,
         '_,
         (
             Entity,
-            &bevy::prelude::Transform,
-            &Velocity,
+            &mut Velocity,
             &Sleeping,
-            &mut BodyPhysicsPose,
+            &BodyDriveOutput,
             &mut BodyVelocity,
         ),
+        With<RagdollBodyOf>,
     >,
 ) {
-    // Preserve the previous completed pose before recording Rapier's new writeback.
-    for (entity, transform, velocity, sleeping, mut pose, mut body_velocity) in &mut bodies {
-        pose.previous = pose.current;
-        pose.current = Isometry3d::new(transform.translation, transform.rotation);
+    // Mirror velocity readback and sleep markers only for tagged ragdoll bodies.
+    for (entity, mut velocity, sleeping, drive, mut body_velocity) in &mut bodies {
         body_velocity.linear = velocity.linear;
         body_velocity.angular = velocity.angular;
+        // Apply configured speed limits to Rapier and the backend-neutral velocity cache.
+        if drive.max_linear_speed.is_some() || drive.max_angular_speed.is_some() {
+            drive.clamp_velocity(&mut body_velocity);
+            velocity.linear = body_velocity.linear;
+            velocity.angular = body_velocity.angular;
+        }
         // Mirror Rapier sleep state into the backend-neutral runtime marker.
         if sleeping.sleeping {
             commands.entity(entity).insert(BodyAtRest);

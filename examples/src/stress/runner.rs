@@ -5,7 +5,9 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use bevy::app::{App, AppExit, First, FixedUpdate, Last, ScheduleRunnerPlugin, Startup, Update};
+use bevy::app::{
+    App, AppExit, First, FixedUpdate, Last, PostUpdate, ScheduleRunnerPlugin, Startup, Update,
+};
 use bevy::asset::{AssetPlugin, Assets};
 #[cfg(feature = "visual")]
 use bevy::diagnostic::DiagnosticsStore;
@@ -14,16 +16,18 @@ use bevy::ecs::schedule::IntoScheduleConfigs;
 use bevy::math::{Isometry3d, Vec3};
 use bevy::prelude::{
     ChildOf, Commands, Component, Entity, MessageWriter, MinimalPlugins, Name, PluginGroup, Query,
-    Res, ResMut, Resource, Time, Transform, World,
+    Res, ResMut, Resource, Time, Transform, With, World,
 };
 use bevy::time::{Fixed, TimeUpdateStrategy};
 use bevy::transform::TransformPlugin;
-use bevy_ragdoll::profile::RagdollProfile;
 #[cfg(feature = "visual")]
 use bevy_ragdoll::profile::ShapeSpec;
+use bevy_ragdoll::profile::{BodyIndex, RagdollProfile};
 use bevy_ragdoll::runtime::body::{BodyAtRest, BodyKind, BodyPhysicsPose, BodyShape, BodyVelocity};
 use bevy_ragdoll::runtime::budget::RagdollBudget;
-use bevy_ragdoll::runtime::components::{Ragdoll, RagdollDrive, RagdollMode};
+use bevy_ragdoll::runtime::components::{Ragdoll, RagdollBodyOf, RagdollDrive, RagdollMode};
+use bevy_ragdoll::runtime::hit::{HitProfile, HitSettings, LastHit};
+use bevy_ragdoll::runtime::messages::{HitKind, RagdollHit};
 use bevy_ragdoll::runtime::sets::{RagdollFixedSystems, RagdollSystems};
 use bevy_ragdoll::{RagdollPlugin, runtime::body::JointToParent};
 use bevy_ragdoll_rapier3d::{RapierRagdollHooks, RapierRagdollPlugin};
@@ -73,9 +77,12 @@ fn validate_options(cli: &StressCli, config: &RunConfig) -> Result<(), Box<dyn E
         Backend::Jolt => return Err("jolt needs Phase 13".into()),
     }
     match config.scenario {
-        Scenario::Pile | Scenario::Grid | Scenario::Wave | Scenario::Powered => {}
+        Scenario::Pile
+        | Scenario::Grid
+        | Scenario::Wave
+        | Scenario::Powered
+        | Scenario::Shooting => {}
         Scenario::Balance => return Err("balance needs Phase 9".into()),
-        Scenario::Shooting => return Err("shooting needs Phase 7".into()),
         Scenario::Mixed => return Err("mixed needs Phase 11".into()),
     }
     if config.mode == DriveMode::Balance {
@@ -126,6 +133,127 @@ struct RunScene {
 struct ScenarioCharacter {
     /// Zero-based grid row used to delay wave activation.
     row: u32,
+}
+
+/// Fixed simulation interval between deterministic shooting stress hits.
+const SHOOTING_INTERVAL: Duration = Duration::from_millis(50);
+
+/// Cached targets and deterministic clock state for the shooting scenario.
+#[derive(Debug, Resource)]
+struct ShootingState {
+    /// Seeded generator used to choose a character and one profile body.
+    random: SplitMix64,
+    /// Fixed-step time carried toward the next 50 ms firing interval.
+    elapsed: Duration,
+    /// Profile-ordered body entities grouped by stable character entity order.
+    targets: Option<Vec<Vec<Entity>>>,
+    /// Number of scheduled rifle hits since the run began.
+    scheduled_hits: usize,
+    /// Number of valid hit messages written to Bevy's message queue.
+    messages_written: usize,
+}
+
+impl ShootingState {
+    /// Starts a shooting scenario with a fixed seed and no cached body targets.
+    fn new(seed: u64) -> Self {
+        Self {
+            random: SplitMix64::new(seed),
+            elapsed: Duration::ZERO,
+            targets: None,
+            scheduled_hits: 0,
+            messages_written: 0,
+        }
+    }
+}
+
+/// Small deterministic pseudo-random generator for reproducible stress inputs.
+#[derive(Debug)]
+struct SplitMix64 {
+    /// Current state advanced by the generator's fixed arithmetic sequence.
+    state: u64,
+}
+
+impl SplitMix64 {
+    /// Initializes the generator without reserving a special seed value.
+    fn new(seed: u64) -> Self {
+        Self { state: seed }
+    }
+
+    /// Produces one deterministic 64-bit sample.
+    fn next_u64(&mut self) -> u64 {
+        self.state = self.state.wrapping_add(0x9e37_79b9_7f4a_7c15);
+        let mut value = self.state;
+        value = (value ^ (value >> 30)).wrapping_mul(0xbf58_476d_1ce4_e5b9);
+        value = (value ^ (value >> 27)).wrapping_mul(0x94d0_49bb_1331_11eb);
+        value ^ (value >> 31)
+    }
+
+    /// Chooses an index below `upper_bound`, returning `None` for an empty range.
+    fn index(&mut self, upper_bound: usize) -> Option<usize> {
+        let upper_bound = u64::try_from(upper_bound).ok()?;
+        if upper_bound == 0 {
+            return None;
+        }
+        usize::try_from(self.next_u64() % upper_bound).ok()
+    }
+}
+
+/// One profile-ordered body row copied while the shooting cache is built.
+#[derive(Clone, Copy, Debug)]
+struct ShootingBodyRecord {
+    /// Character root that owns the physics body.
+    character: Entity,
+    /// Validated profile index used to stabilize body selection order.
+    index: BodyIndex,
+    /// Physics entity that receives a selected hit.
+    body: Entity,
+}
+
+/// Groups a complete body snapshot by character and profile body index.
+fn group_shooting_targets(
+    mut characters: Vec<Entity>,
+    mut bodies: Vec<ShootingBodyRecord>,
+    body_count: usize,
+) -> Option<Vec<Vec<Entity>>> {
+    if characters.is_empty() || body_count == 0 {
+        return None;
+    }
+    let expected_body_count = characters.len().checked_mul(body_count)?;
+    if bodies.len() != expected_body_count {
+        return None;
+    }
+
+    // Sort both dimensions so seeded choices do not depend on ECS query order.
+    characters.sort_unstable_by_key(|character| character.to_bits());
+    bodies.sort_unstable_by_key(|record| (record.character.to_bits(), record.index.get()));
+
+    // Accept only complete profile-indexed rows for every expected character.
+    let mut targets = Vec::with_capacity(characters.len());
+    let mut body_offset = 0;
+    for character in characters {
+        let mut character_bodies = Vec::with_capacity(body_count);
+        for index in 0..body_count {
+            let record = bodies.get(body_offset)?;
+            if record.character != character || record.index.get() != index {
+                return None;
+            }
+            character_bodies.push(record.body);
+            body_offset += 1;
+        }
+        targets.push(character_bodies);
+    }
+    Some(targets)
+}
+
+/// Carries fixed-step fractions and returns the number of due shooting hits.
+fn take_due_shots(elapsed: &mut Duration, delta: Duration) -> usize {
+    *elapsed = elapsed.saturating_add(delta);
+    let mut due = 0;
+    while *elapsed >= SHOOTING_INTERVAL {
+        *elapsed = elapsed.saturating_sub(SHOOTING_INTERVAL);
+        due += 1;
+    }
+    due
 }
 
 /// Associates each named profile bone with its owning character root.
@@ -263,6 +391,17 @@ fn run_app(
     app.add_plugins(RagdollPlugin::default());
     app.add_plugins(RapierPhysicsPlugin::<RapierRagdollHooks>::default().in_fixed_schedule());
     app.add_plugins(RapierRagdollPlugin);
+    if config.scenario == Scenario::Shooting {
+        app.insert_resource(ShootingState::new(config.seed));
+        app.add_systems(
+            PostUpdate,
+            cache_shooting_targets.after(RagdollSystems::Writeback),
+        );
+        app.add_systems(
+            FixedUpdate,
+            shoot_ragdolls.before(RagdollFixedSystems::Behaviour),
+        );
+    }
     app.add_systems(Startup, (spawn_ground, spawn_population));
     app.add_plugins(FrameTimeDiagnosticsPlugin::new(4096));
     app.add_systems(First, start_frame_timer);
@@ -410,7 +549,107 @@ fn spawn_population(
     }
 }
 
-/// Computes the character root position for the selected pile or grid scenario.
+/// Builds the shooting target cache after each character has all profile bodies.
+fn cache_shooting_targets(
+    scene: Res<'_, RunScene>,
+    mut shooting: ResMut<'_, ShootingState>,
+    characters: Query<'_, '_, Entity, (With<Ragdoll>, With<ScenarioCharacter>)>,
+    bodies: Query<'_, '_, (Entity, &'static RagdollBodyOf, &'static BodyIndex), With<BodyShape>>,
+) {
+    if scene.config.scenario != Scenario::Shooting || shooting.targets.is_some() {
+        return;
+    }
+    let characters: Vec<Entity> = characters.iter().collect();
+    if characters.len() != scene.config.count {
+        return;
+    }
+
+    // Copy one bounded body snapshot and sort it once before the stress loop.
+    let body_records = bodies
+        .iter()
+        .map(|(body, owner, index)| ShootingBodyRecord {
+            character: owner.0,
+            index: *index,
+            body,
+        })
+        .collect();
+    shooting.targets =
+        group_shooting_targets(characters, body_records, scene.profile.bodies().len());
+}
+
+/// Writes one deterministic random rifle hit for each due 50 ms interval.
+fn shoot_ragdolls(
+    scene: Res<'_, RunScene>,
+    control: Res<'_, RunControl>,
+    time: Res<'_, Time<Fixed>>,
+    settings: Res<'_, HitSettings>,
+    mut shooting: ResMut<'_, ShootingState>,
+    bodies: Query<'_, '_, &'static BodyPhysicsPose, With<BodyShape>>,
+    mut hits: MessageWriter<'_, RagdollHit>,
+) {
+    if scene.config.scenario != Scenario::Shooting
+        || control.triggered_at.is_none()
+        || control.finished
+    {
+        return;
+    }
+    let Some(magnitude) = settings.impulse_magnitude(HitProfile::Rifle) else {
+        return;
+    };
+    let ShootingState {
+        random,
+        elapsed,
+        targets,
+        scheduled_hits,
+        messages_written,
+    } = &mut *shooting;
+    let Some(targets) = targets.as_ref() else {
+        return;
+    };
+    if targets.is_empty() {
+        return;
+    }
+
+    // Preserve fractional fixed-step time and emit every interval after stalls.
+    let due = take_due_shots(elapsed, time.delta());
+    *scheduled_hits = scheduled_hits.saturating_add(due);
+    for _ in 0..due {
+        let Some(character_index) = random.index(targets.len()) else {
+            return;
+        };
+        let Some(character_bodies) = targets.get(character_index) else {
+            continue;
+        };
+        let Some(body_index) = random.index(character_bodies.len()) else {
+            continue;
+        };
+        let Some(body) = character_bodies.get(body_index).copied() else {
+            continue;
+        };
+        let Ok(pose) = bodies.get(body) else {
+            continue;
+        };
+        let point = pose.current.translation.into();
+        hits.write(RagdollHit {
+            body,
+            point,
+            impulse: bevy::math::Vec3::NEG_Z * magnitude,
+            kind: HitKind::Impact,
+        });
+        *messages_written = messages_written.saturating_add(1);
+    }
+}
+
+/// Counts characters whose fixed-step hit processing accepted a shooting event.
+fn accepted_shooting_hit_count(world: &mut World) -> usize {
+    let mut last_hits = world.query_filtered::<&LastHit, With<Ragdoll>>();
+    last_hits
+        .iter(world)
+        .filter(|last_hit| last_hit.last_at().is_some())
+        .count()
+}
+
+/// Computes the character root position for the selected pile, grid, or shooting scenario.
 fn character_position(config: &RunConfig, index: usize, column: u32, row: u32) -> Vec3 {
     match config.scenario {
         Scenario::Pile => Vec3::new(0.0, 1.5 + index as f32 * 0.8, 0.0),
@@ -425,7 +664,12 @@ fn character_position(config: &RunConfig, index: usize, column: u32, row: u32) -
             let z = (row as f32 - (rows - 1.0) * 0.5) * config.spacing_m;
             Vec3::new(x, 0.0, z)
         }
-        Scenario::Shooting => Vec3::ZERO,
+        Scenario::Shooting => {
+            let count = config.count as f32;
+            let angle = std::f32::consts::TAU * index as f32 / count;
+            let radius = config.spacing_m * count / std::f32::consts::TAU;
+            Vec3::new(radius * angle.cos(), 0.0, radius * angle.sin())
+        }
     }
 }
 
@@ -682,6 +926,20 @@ fn finalize_report(world: &mut World) {
         )
     };
     if !should_write {
+        return;
+    }
+    if config.scenario == Scenario::Shooting && accepted_shooting_hit_count(world) == 0 {
+        let shooting = world.resource::<ShootingState>();
+        let cached_characters = shooting.targets.as_ref().map_or(0, Vec::len);
+        let scheduled_hits = shooting.scheduled_hits;
+        let messages_written = shooting.messages_written;
+        bevy::log::error!(
+            cached_characters,
+            scheduled_hits,
+            messages_written,
+            "shooting completed without an accepted rifle hit"
+        );
+        world.resource_mut::<RunControl>().report_failed = true;
         return;
     }
     let gpu = render_adapter_name(world);
@@ -1311,4 +1569,153 @@ fn install_visual_systems(app: &mut App) {
             .after(RagdollSystems::Bind)
             .before(TransformSystems::Propagate),
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        Scenario, ShootingBodyRecord, SplitMix64, StressCli, character_position,
+        group_shooting_targets, take_due_shots, validate_run,
+    };
+    use bevy::prelude::Entity;
+    use bevy_ragdoll::profile::BodyIndex;
+    use clap::Parser;
+    use std::time::Duration;
+
+    #[test]
+    fn phase7_shooting_scenario_is_available() {
+        let cli =
+            StressCli::try_parse_from(["ragdoll_stress", "--scenario", "shooting", "--headless"])
+                .expect("the shooting stress arguments are valid");
+
+        let config = validate_run(&cli).expect("Phase 7 enables shooting stress runs");
+
+        assert_eq!(config.scenario, Scenario::Shooting);
+    }
+
+    #[test]
+    fn shooting_targets_are_sorted_by_character_and_profile_index() {
+        let first_character = Entity::from_bits(1);
+        let second_character = Entity::from_bits(2);
+        let first_body = Entity::from_bits(10);
+        let second_body = Entity::from_bits(11);
+        let third_body = Entity::from_bits(20);
+        let fourth_body = Entity::from_bits(21);
+        let bodies = vec![
+            ShootingBodyRecord {
+                character: second_character,
+                index: BodyIndex::try_from(1).expect("profile index one is valid"),
+                body: fourth_body,
+            },
+            ShootingBodyRecord {
+                character: first_character,
+                index: BodyIndex::try_from(1).expect("profile index one is valid"),
+                body: second_body,
+            },
+            ShootingBodyRecord {
+                character: second_character,
+                index: BodyIndex::try_from(0).expect("profile index zero is valid"),
+                body: third_body,
+            },
+            ShootingBodyRecord {
+                character: first_character,
+                index: BodyIndex::try_from(0).expect("profile index zero is valid"),
+                body: first_body,
+            },
+        ];
+
+        let targets = group_shooting_targets(vec![second_character, first_character], bodies, 2)
+            .expect("complete character body trees are accepted");
+
+        assert_eq!(
+            targets,
+            [vec![first_body, second_body], vec![third_body, fourth_body]]
+        );
+    }
+
+    #[test]
+    fn shooting_target_cache_waits_for_a_complete_profile() {
+        let character = Entity::from_bits(1);
+        let body = Entity::from_bits(10);
+        let incomplete = vec![ShootingBodyRecord {
+            character,
+            index: BodyIndex::try_from(1).expect("profile index one is valid"),
+            body,
+        }];
+
+        assert!(group_shooting_targets(vec![character], incomplete, 2).is_none());
+        assert!(group_shooting_targets(vec![character], Vec::new(), 0).is_none());
+        assert!(group_shooting_targets(Vec::new(), Vec::new(), 1).is_none());
+    }
+
+    #[test]
+    fn shooting_target_cache_rejects_duplicate_profile_indexes() {
+        let character = Entity::from_bits(1);
+        let bodies = vec![
+            ShootingBodyRecord {
+                character,
+                index: BodyIndex::try_from(0).expect("profile index zero is valid"),
+                body: Entity::from_bits(10),
+            },
+            ShootingBodyRecord {
+                character,
+                index: BodyIndex::try_from(0).expect("profile index zero is valid"),
+                body: Entity::from_bits(11),
+            },
+        ];
+
+        assert!(group_shooting_targets(vec![character], bodies, 2).is_none());
+    }
+
+    #[test]
+    fn shooting_clock_carries_fixed_step_fractions_and_catches_up() {
+        let mut elapsed = Duration::ZERO;
+
+        assert_eq!(take_due_shots(&mut elapsed, Duration::from_millis(49)), 0);
+        assert_eq!(elapsed, Duration::from_millis(49));
+        assert_eq!(take_due_shots(&mut elapsed, Duration::from_millis(1)), 1);
+        assert_eq!(elapsed, Duration::ZERO);
+        assert_eq!(take_due_shots(&mut elapsed, Duration::from_millis(120)), 2);
+        assert_eq!(elapsed, Duration::from_millis(20));
+    }
+
+    #[test]
+    fn shooting_random_indexes_are_repeatable_and_bounded() {
+        let mut first = SplitMix64::new(42);
+        let mut second = SplitMix64::new(42);
+
+        assert_eq!(first.index(0), None);
+        assert_eq!(second.index(0), None);
+        assert_eq!(SplitMix64::new(42).index(1), Some(0));
+        for _ in 0..256 {
+            let first_index = first.index(17);
+            let second_index = second.index(17);
+            assert_eq!(first_index, second_index);
+            assert!(first_index.is_some_and(|index| index < 17));
+        }
+    }
+
+    #[test]
+    fn shooting_characters_are_placed_on_a_spacing_scaled_ring() {
+        let cli = StressCli::try_parse_from([
+            "ragdoll_stress",
+            "--scenario",
+            "shooting",
+            "--count",
+            "4",
+            "--spacing",
+            "2",
+            "--headless",
+        ])
+        .expect("the shooting stress arguments are valid");
+        let config = cli
+            .run_config()
+            .expect("the shooting configuration is valid");
+        let radius = config.spacing_m * config.count as f32 / std::f32::consts::TAU;
+
+        for index in 0..config.count {
+            let position = character_position(&config, index, 0, 0);
+            assert!((position.length() - radius).abs() < 1.0e-5);
+        }
+    }
 }

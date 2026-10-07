@@ -68,7 +68,8 @@ impl Plugin for RapierRagdollPlugin {
         app.add_systems(
             fixed_schedule,
             (
-                query::read_body_state,
+                query::read_body_pose,
+                query::read_body_motion,
                 query::read_ragdoll_queries,
                 force_sleep_limp_ragdolls,
             )

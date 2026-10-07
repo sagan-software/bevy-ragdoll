@@ -113,9 +113,34 @@ category = "Basics"
 wasm = true
 
 [[example]]
+name = "hit_reactions"
+path = "hit_reactions.rs"
+doc-scrape-examples = true
+required-features = ["visual"]
+
+[package.metadata.example.hit_reactions]
+name = "Hit Reactions"
+description = "Select hit profiles, click the rig, and edit local muscle and pin strengths."
+category = "Active Control"
+wasm = true
+
+[[example]]
+name = "partial_ragdoll"
+path = "partial_ragdoll.rs"
+doc-scrape-examples = true
+required-features = ["visual"]
+
+[package.metadata.example.partial_ragdoll]
+name = "Partial Ragdoll"
+description = "Keep the legs driven while periodic impacts move the loose upper body."
+category = "Active Control"
+wasm = true
+
+[[example]]
 name = "ragdoll_stress"
 path = "ragdoll_stress.rs"
 required-features = ["rapier3d"]
+test = true
 
 [[test]]
 name = "stress_reports"

@@ -944,6 +944,7 @@ fn read_body(
             shape,
             mass: body.mass_kg,
             rest: bone.rest,
+            role: None,
         },
         joint,
     }))

@@ -542,6 +542,7 @@ fn private_index_and_capsule_axis_boundaries_are_checked() {
             },
             mass: 1.0,
             rest: Isometry3d::IDENTITY,
+            role: None,
         },
         joint: Some(RagdollJoint::default()),
     };

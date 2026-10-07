@@ -158,7 +158,7 @@ fn matching_reports_collect_each_failed_metric() {
 fn comparison_rejects_invalid_timings_and_missing_configurations() {
     let baseline = comparison_report(Scenario::Grid, 42, 100.0, 40.0, 0);
     let invalid = comparison_report(Scenario::Grid, 42, f64::NAN, -1.0, 0);
-    let invalid_issues = compare_reports(&[invalid], &[baseline.clone()]);
+    let invalid_issues = compare_reports(&[invalid], std::slice::from_ref(&baseline));
     assert_eq!(invalid_issues.len(), 2);
     assert!(
         invalid_issues

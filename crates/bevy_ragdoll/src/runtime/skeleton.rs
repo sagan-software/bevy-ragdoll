@@ -209,13 +209,13 @@ fn bind_character(world: &mut World, character: Entity, profile: &RagdollProfile
         return None;
     }
     // Install capture defaults only after the complete parent-first map is attached.
-    initialize_target_components(world, character);
+    initialize_target_components(world, character, profile.bodies().len());
     Some(())
 }
 
 /// Initializes target history and body overrides after skeleton mapping
 /// succeeds.
-fn initialize_target_components(world: &mut World, character: Entity) {
+fn initialize_target_components(world: &mut World, character: Entity, body_count: usize) {
     // Capture an initial pose so a first fixed step never reads an empty target history.
     if world.get::<RagdollTargetPose>(character).is_none() {
         let Some(map) = world.get::<SkeletonMap>(character).cloned() else {
@@ -237,13 +237,9 @@ fn initialize_target_components(world: &mut World, character: Entity) {
         entity.insert(super::capture::AutoCapture);
     }
 
-    // Keep user-supplied overrides while supplying an empty default for new characters.
-    if world
-        .get::<super::components::RagdollBodyWeights>(character)
-        .is_none()
-        && let Ok(mut entity) = world.get_entity_mut(character)
-    {
-        entity.insert(super::components::RagdollBodyWeights::default());
+    // Extend the required component in place without moving the character to another table.
+    if let Some(mut weights) = world.get_mut::<super::components::RagdollBodyWeights>(character) {
+        weights.initialize_profile_bodies(body_count);
     }
 }
 
@@ -655,6 +651,7 @@ fn body_spawn_bundle(
     };
     (
         body.index(),
+        body.role(),
         super::components::RagdollBodyOf(context.character),
         BodyShape(*body.shape()),
         BodyMass {
@@ -801,7 +798,7 @@ mod tests {
         let mut world = World::new();
         let character = world.spawn_empty().id();
 
-        initialize_target_components(&mut world, character);
+        initialize_target_components(&mut world, character, 1);
 
         assert!(world.get::<RagdollTargetPose>(character).is_none());
     }
@@ -813,18 +810,21 @@ mod tests {
         let bone_pose = Transform::from_xyz(1.0, 2.0, 3.0);
         let bone = world.spawn(bone_pose).id();
         let character = world
-            .spawn(SkeletonMap {
-                bones: vec![SkeletonBone {
-                    entity: bone,
-                    parent: None,
-                    body: Some(0),
-                    rest_local: Transform::IDENTITY,
-                }],
-                body_to_bone: vec![0],
-            })
+            .spawn((
+                SkeletonMap {
+                    bones: vec![SkeletonBone {
+                        entity: bone,
+                        parent: None,
+                        body: Some(0),
+                        rest_local: Transform::IDENTITY,
+                    }],
+                    body_to_bone: vec![0],
+                },
+                RagdollBodyWeights::default(),
+            ))
             .id();
 
-        initialize_target_components(&mut world, character);
+        initialize_target_components(&mut world, character, 1);
 
         let body_index = crate::profile::BodyIndex::try_from(0)
             .expect("zero is a valid index for the mapped skeleton body");
@@ -858,10 +858,11 @@ mod tests {
                     body_to_bone: vec![0],
                 },
                 targets,
+                RagdollBodyWeights::default(),
             ))
             .id();
 
-        initialize_target_components(&mut world, character);
+        initialize_target_components(&mut world, character, 1);
 
         let body_index = crate::profile::BodyIndex::try_from(0)
             .expect("zero is a valid index for the mapped skeleton body");

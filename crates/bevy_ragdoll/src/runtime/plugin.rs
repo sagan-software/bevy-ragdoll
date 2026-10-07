@@ -26,9 +26,11 @@ use super::components::{
     RagdollDrive, RagdollId, RagdollMode, RagdollTargetAdjust, RagdollTargetPose,
 };
 use super::events::{RagdollActivated, RagdollBudgetEvicted, RagdollFrozen, RagdollSettled};
+use super::hit::{HitProfile, HitSettings};
 use super::messages::{
     HitKind, RagdollHit, RagdollImpulse, RagdollRaycast, RagdollRaycastResponse, RagdollRequestId,
 };
+use super::pin::{PinSettings, PinTargets};
 use super::sets::{RagdollFixedSystems, RagdollSystems};
 use super::settings::RagdollPhysicsSettings;
 use super::skeleton::{self, RagdollError, RagdollIdCounter};
@@ -91,6 +93,7 @@ fn initialize_resources(app: &mut App, fixed_schedule: InternedScheduleLabel) {
     });
     app.init_asset::<RagdollProfile>()
         .init_resource::<RagdollPhysicsSettings>()
+        .init_resource::<HitSettings>()
         .init_resource::<RagdollBudget>()
         .init_resource::<RagdollIdCounter>();
     #[cfg(feature = "serialize")]
@@ -128,6 +131,7 @@ fn register_profile_types(app: &mut App) {
         .register_type::<crate::profile::ShapeSpec>()
         .register_type::<crate::profile::JointLimits>()
         .register_type::<crate::profile::Mass>()
+        .register_type::<crate::profile::BodyRole>()
         .register_type::<crate::profile::BodyIndex>()
         .register_type::<crate::skein::RagdollBody>()
         .register_type::<crate::skein::AngleRange>()
@@ -186,6 +190,10 @@ fn register_runtime_types(app: &mut App) {
 fn register_interaction_types(app: &mut App) {
     // Keep message and event reflection available to inspectors and observer tooling.
     app.register_type::<RagdollPhysicsSettings>()
+        .register_type::<PinTargets>()
+        .register_type::<PinSettings>()
+        .register_type::<HitProfile>()
+        .register_type::<HitSettings>()
         .register_type::<HitKind>()
         .register_type::<RagdollImpulse>()
         .register_type::<RagdollHit>()
@@ -230,6 +238,7 @@ fn configure_system_sets(app: &mut App, fixed_schedule: InternedScheduleLabel) {
 /// Installs core systems in the schedules selected by the runtime contract.
 fn install_runtime_systems(app: &mut App, fixed_schedule: InternedScheduleLabel) {
     // Binding builds body entities before target capture and writeback can query them.
+    // Fixed behaviour completes before drive and backend stages consume the captured state.
     app.add_systems(
         PostUpdate,
         skeleton::bind_and_sync.in_set(RagdollSystems::Bind),
@@ -241,6 +250,12 @@ fn install_runtime_systems(app: &mut App, fixed_schedule: InternedScheduleLabel)
     app.add_systems(
         PostUpdate,
         super::writeback::writeback.in_set(RagdollSystems::Writeback),
+    );
+    app.add_systems(
+        fixed_schedule,
+        (super::hit::process_hits, super::hit::recover_strengths)
+            .chain()
+            .in_set(RagdollFixedSystems::Behaviour),
     );
     app.add_systems(
         fixed_schedule,

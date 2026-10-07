@@ -79,6 +79,27 @@ pub(super) struct StressCli {
     pub(super) compare: Option<PathBuf>,
 }
 
+/// Typed values passed from a parent stress run to one child process.
+#[derive(Clone, Copy, Debug)]
+pub(super) struct ChildRun<'a> {
+    /// Physics backend selected for the child.
+    pub(super) backend: Backend,
+    /// Scenario selected for the child.
+    pub(super) scenario: Scenario,
+    /// Grid dimensions retained for grid scenarios.
+    pub(super) grid: GridSize,
+    /// Positive population count selected for the child.
+    pub(super) count: CharacterCount,
+    /// Optional JSON report destination for the child.
+    pub(super) report: Option<&'a Path>,
+    /// Optional screenshot destination for a visible child.
+    pub(super) screenshot: Option<&'a Path>,
+    /// Presence marker selecting a headless child process.
+    pub(super) headless: Option<HeadlessMode>,
+    /// Presence marker selecting the reserved deterministic mode.
+    pub(super) deterministic: Option<DeterministicMode>,
+}
+
 impl Default for StressCli {
     /// Creates browser-safe stress options matching the documented defaults.
     fn default() -> Self {
@@ -158,30 +179,30 @@ impl StressCli {
     /// Builds child-process arguments from typed values for keyboard restarts.
     #[cfg(feature = "visual")]
     pub(super) fn restart_arguments(&self, backend: Backend, scenario: Scenario) -> Vec<String> {
-        self.child_arguments(
+        self.child_arguments(ChildRun {
             backend,
             scenario,
-            self.grid,
-            self.count,
-            self.report.as_deref(),
-            self.screenshot.as_deref(),
-            self.headless.is_some(),
-            self.deterministic.is_some(),
-        )
+            grid: self.grid,
+            count: self.count,
+            report: self.report.as_deref(),
+            screenshot: self.screenshot.as_deref(),
+            headless: self.headless,
+            deterministic: self.deterministic,
+        })
     }
 
     /// Builds child arguments from validated values without reparsing raw process arguments.
-    pub(super) fn child_arguments(
-        &self,
-        backend: Backend,
-        scenario: Scenario,
-        grid: GridSize,
-        count: CharacterCount,
-        report: Option<&Path>,
-        screenshot: Option<&Path>,
-        headless: bool,
-        deterministic: bool,
-    ) -> Vec<String> {
+    pub(super) fn child_arguments(&self, child: ChildRun<'_>) -> Vec<String> {
+        let ChildRun {
+            backend,
+            scenario,
+            grid,
+            count,
+            report,
+            screenshot,
+            headless,
+            deterministic,
+        } = child;
         let mut arguments = vec![
             "--backend".to_owned(),
             backend.to_string(),
@@ -214,10 +235,10 @@ impl StressCli {
         if let Some(budget) = self.budget {
             arguments.extend(["--budget".to_owned(), budget.to_string()]);
         }
-        if headless {
+        if headless.is_some() {
             arguments.push("--headless".to_owned());
         }
-        if deterministic {
+        if deterministic.is_some() {
             arguments.push("--deterministic".to_owned());
         }
         if let Some(path) = report {
@@ -665,7 +686,10 @@ mod tests {
 
     use clap::Parser;
 
-    use super::StressCli;
+    use super::{
+        Backend, CharacterCount, ChildRun, DeterministicMode, HeadlessMode, Scenario, StressCli,
+    };
+    use std::path::Path;
 
     /// Documented defaults construct a 16 by 16 headless grid configuration.
     #[test]
@@ -706,5 +730,52 @@ mod tests {
 
         assert_eq!(cli.budget.map(super::Budget::get), Some(0));
         assert!(cli.headless.is_some());
+    }
+
+    /// Child arguments preserve validated values and optional mode markers.
+    #[test]
+    fn child_arguments_keep_values_and_omit_absent_options() {
+        let cli = StressCli::try_parse_from(["ragdoll_stress", "--headless"])
+            .expect("headless parent options parse");
+        let arguments = cli.child_arguments(ChildRun {
+            backend: Backend::Rapier3d,
+            scenario: Scenario::Shooting,
+            grid: cli.grid,
+            count: CharacterCount::try_new(64).expect("64 characters is a valid population"),
+            report: Some(Path::new("sweep.json")),
+            screenshot: Some(Path::new("screen.png")),
+            headless: Some(HeadlessMode::Enabled),
+            deterministic: Some(DeterministicMode::Enabled),
+        });
+        let has_argument = |value: &str| arguments.iter().any(|argument| argument == value);
+        let has_pair = |flag: &str, value: &str| {
+            arguments
+                .windows(2)
+                .any(|pair| pair[0] == flag && pair[1] == value)
+        };
+
+        assert!(has_pair("--scenario", "shooting"));
+        assert!(has_pair("--count", "64"));
+        assert!(has_pair("--report", "sweep.json"));
+        assert!(has_pair("--screenshot", "screen.png"));
+        assert!(has_argument("--headless"));
+        assert!(has_argument("--deterministic"));
+
+        let without_options = cli.child_arguments(ChildRun {
+            backend: Backend::Rapier3d,
+            scenario: Scenario::Grid,
+            grid: cli.grid,
+            count: cli.count,
+            report: None,
+            screenshot: None,
+            headless: None,
+            deterministic: None,
+        });
+        let has_optional_argument =
+            |flag: &str| without_options.iter().any(|argument| argument == flag);
+        assert!(!has_optional_argument("--report"));
+        assert!(!has_optional_argument("--screenshot"));
+        assert!(!has_optional_argument("--headless"));
+        assert!(!has_optional_argument("--deterministic"));
     }
 }

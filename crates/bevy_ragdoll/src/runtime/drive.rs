@@ -21,6 +21,7 @@ use super::body::{
 use super::components::{
     Ragdoll, RagdollBodies, RagdollBodyWeights, RagdollDrive, RagdollMode, RagdollTargetPose,
 };
+use super::pin::{PinSettings, PinTargets};
 use super::settings::RagdollPhysicsSettings;
 
 /// Acceleration-based motor gains and torque limit for one profile joint.
@@ -310,6 +311,24 @@ struct BodyDriveState {
     output: BodyDriveOutput,
 }
 
+/// Character-wide inputs shared while each body drive state is gathered.
+struct BodyDriveContext<'a> {
+    /// Character pose applied to every captured local target.
+    character_pose: Isometry3d,
+    /// Whole-character motor and pin strengths.
+    drive: RagdollDrive,
+    /// Profile-ordered per-body muscle and pin strengths.
+    weights: &'a RagdollBodyWeights,
+    /// Captured local poses and velocities for the character.
+    targets: &'a RagdollTargetPose,
+    /// Body indexes that receive world-space pin output.
+    pin_targets: PinTargets,
+    /// Character-specific pin-controller settings after overrides.
+    settings: RagdollPhysicsSettings,
+    /// Whether any non-limp body enables the shared velocity limits.
+    has_velocity_limits: bool,
+}
+
 /// Shared controls for calculating every joint on one dynamic character.
 struct JointDriveConfig<'a> {
     /// Whole-character drive strengths applied before per-body multipliers.
@@ -410,22 +429,38 @@ fn gather_body_drive_states(
         .get::<RagdollTargetPose>(character)
         .cloned()
         .unwrap_or_default();
+    let pin_targets = world
+        .get::<PinTargets>(character)
+        .copied()
+        .unwrap_or_default();
+    // Apply character overrides before computing any body pin outputs.
+    let mut pin_controller_settings = settings;
+    if let Some(pin_settings) = world.get::<PinSettings>(character).copied() {
+        pin_settings.override_shared(&mut pin_controller_settings);
+    }
+    let has_velocity_limits = drive.muscle() > 0.0
+        && entities.iter().any(|entity| {
+            world
+                .get::<BodyIndex>(*entity)
+                .and_then(|index| weights.get(index.get()))
+                .map_or(1.0, |body_weights| body_weights.muscle())
+                > 0.0
+        });
 
     // Resolve each body's target, velocity, mass, and pin output once per fixed step.
+    let context = BodyDriveContext {
+        character_pose,
+        drive,
+        weights: &weights,
+        targets: &targets,
+        pin_targets,
+        settings: pin_controller_settings,
+        has_velocity_limits,
+    };
     let states = entities
         .iter()
         .copied()
-        .map(|entity| {
-            body_drive_state(
-                world,
-                entity,
-                character_pose,
-                drive,
-                &weights,
-                &targets,
-                settings,
-            )
-        })
+        .map(|entity| body_drive_state(world, entity, &context))
         .collect();
     (drive, weights, states)
 }
@@ -496,22 +531,18 @@ fn ordered_body_entities(world: &World, character: Entity) -> Option<Vec<Entity>
 fn body_drive_state(
     world: &World,
     entity: Entity,
-    character_pose: Isometry3d,
-    drive: RagdollDrive,
-    weights: &RagdollBodyWeights,
-    targets: &RagdollTargetPose,
-    settings: RagdollPhysicsSettings,
+    context: &BodyDriveContext<'_>,
 ) -> BodyDriveState {
     // Convert captured target pose and velocity into world coordinates when the body index exists.
     let body_index = world.get::<BodyIndex>(entity).copied();
     let target_pose = body_index
-        .and_then(|index| targets.current_pose(index))
-        .map(|target| character_pose * target);
+        .and_then(|index| context.targets.current_pose(index))
+        .map(|target| context.character_pose * target);
     let target_velocity = body_index
-        .and_then(|index| targets.velocity(index))
+        .and_then(|index| context.targets.velocity(index))
         .map(|velocity| BodyVelocity {
-            linear: character_pose.rotation * velocity.linear,
-            angular: character_pose.rotation * velocity.angular,
+            linear: context.character_pose.rotation * velocity.linear,
+            angular: context.character_pose.rotation * velocity.angular,
         })
         .unwrap_or_default();
 
@@ -538,7 +569,15 @@ fn body_drive_state(
         inertia,
         output: BodyDriveOutput::default(),
     };
-    state.output = body_pin_output(state, body_index, drive, weights, settings);
+    state.output = body_pin_output(
+        state,
+        body_index,
+        context.drive,
+        context.weights,
+        context.pin_targets,
+        context.settings,
+        context.has_velocity_limits,
+    );
     state
 }
 
@@ -549,17 +588,31 @@ fn body_pin_output(
     body_index: Option<BodyIndex>,
     drive: RagdollDrive,
     weights: &RagdollBodyWeights,
+    pin_targets: PinTargets,
     settings: RagdollPhysicsSettings,
+    has_velocity_limits: bool,
 ) -> BodyDriveOutput {
+    // Speed limits apply to every body until the whole character is limp.
+    let mut output = BodyDriveOutput {
+        pin_force: Vec3::ZERO,
+        pin_torque: Vec3::ZERO,
+        joint_torque: Vec3::ZERO,
+        max_linear_speed: has_velocity_limits.then_some(10.0),
+        max_angular_speed: has_velocity_limits.then_some(20.0),
+    };
     // A missing target keeps the body output at zero until capture provides its indexed pose.
     let Some(target_pose) = state.target_pose else {
-        return BodyDriveOutput::default();
+        return output;
+    };
+    if !body_index.is_some_and(|index| pin_targets.is_targeted(index)) {
+        return output;
     };
     // Scale pin strength independently for this checked profile body position.
     let pin_strength = drive.pin()
         * body_index
             .and_then(|index| weights.get(index.get()))
             .map_or(1.0, |body_weights| body_weights.pin());
+    // Apply the resolved per-body strength with the checked controller settings.
     let pin = pin_drive(
         PinDriveInput {
             current_pose: state.current_pose,
@@ -572,11 +625,9 @@ fn body_pin_output(
         },
         &settings,
     );
-    BodyDriveOutput {
-        pin_force: pin.force,
-        pin_torque: pin.torque,
-        joint_torque: Vec3::ZERO,
-    }
+    output.pin_force = pin.force;
+    output.pin_torque = pin.torque;
+    output
 }
 
 /// Computes motor targets and fallback torques for every available parent-child
@@ -832,10 +883,11 @@ mod tests {
         Ragdoll, RagdollBodies, RagdollBodyOf, RagdollBodyWeights, RagdollDrive, RagdollMode,
         RagdollTargetPose,
     };
+    use crate::runtime::pin::{PinSettings, PinTargets};
     use crate::runtime::settings::RagdollPhysicsSettings;
 
     use super::{
-        BodyDriveState, JointDriveConfig, PinDriveInput, StablePdInput,
+        BodyDriveState, JointDriveConfig, PinDriveInput, StablePdInput, body_pin_output,
         calculate_child_joint_target, clamp_unit, drive, finite_nonnegative, joint_motor_values,
         limit_vector, pin_drive, rotation_error, soft_limit_torque, stable_pd_torque,
     };
@@ -864,6 +916,81 @@ mod tests {
         let mut no_settings = World::new();
         no_settings.insert_resource(Time::<Fixed>::from_hz(60.0));
         drive(&mut no_settings);
+    }
+
+    /// Applies pin masks and per-character controller values to body outputs.
+    #[test]
+    fn body_pin_output_respects_targets_and_settings() {
+        let state = BodyDriveState {
+            entity: Entity::PLACEHOLDER,
+            target_pose: Some(Isometry3d::from_translation(Vec3::X * 10.0)),
+            target_velocity: BodyVelocity::default(),
+            current_pose: Isometry3d::IDENTITY,
+            current_velocity: BodyVelocity::default(),
+            mass: 1.0,
+            inertia: 1.0,
+            output: BodyDriveOutput::default(),
+        };
+        let index = BodyIndex::try_from(0).expect("zero is a valid body index");
+        let drive = RagdollDrive::default();
+        let weights = RagdollBodyWeights::default();
+        let settings = RagdollPhysicsSettings::default();
+
+        let unpinned = body_pin_output(
+            state,
+            Some(index),
+            drive,
+            &weights,
+            PinTargets::none(),
+            settings,
+            true,
+        );
+        assert_eq!(unpinned.pin_force, Vec3::ZERO);
+        assert_eq!(unpinned.max_linear_speed, Some(10.0));
+
+        let defaults = PinSettings::default();
+        let limited_settings = PinSettings::new(
+            defaults.frequency_hz(),
+            defaults.damping_ratio(),
+            0.5,
+            defaults.max_torque(),
+            0.0,
+        );
+        let mut physics_settings = settings;
+        limited_settings.override_shared(&mut physics_settings);
+        let pinned = body_pin_output(
+            state,
+            Some(index),
+            drive,
+            &weights,
+            PinTargets::all(),
+            physics_settings,
+            true,
+        );
+        assert!((pinned.pin_force.length() - 0.5).abs() < 1.0e-5);
+        assert_eq!(pinned.max_angular_speed, Some(20.0));
+    }
+
+    /// Reads a character's pin settings before computing every body output.
+    #[test]
+    fn drive_applies_per_character_pin_settings() {
+        let (mut world, character) = drive_world();
+        let mut targets = RagdollTargetPose::default();
+        targets.record(
+            vec![Isometry3d::from_translation(Vec3::X * 10.0)],
+            vec![BodyVelocity::default()],
+        );
+        world
+            .entity_mut(character)
+            .insert((PinSettings::new(1.5, 1.0, 0.0, 400.0, 2.0), targets));
+        let body = world.spawn((RagdollBodyOf(character), body_index(0))).id();
+
+        drive(&mut world);
+
+        let output = world
+            .get::<BodyDriveOutput>(body)
+            .expect("dynamic bodies receive a drive output");
+        assert_eq!(output.pin_force, Vec3::ZERO);
     }
 
     /// A joint index that does not match the gathered state vector is skipped.
@@ -1097,14 +1224,16 @@ mod tests {
 
         drive(&mut world);
 
-        assert_eq!(
-            world.get::<BodyDriveOutput>(missing_index),
-            Some(&BodyDriveOutput::default())
-        );
-        assert_eq!(
-            world.get::<BodyDriveOutput>(missing_target),
-            Some(&BodyDriveOutput::default())
-        );
+        let missing_index_output = world
+            .get::<BodyDriveOutput>(missing_index)
+            .expect("an invalid extra body still receives its active character limit");
+        assert_eq!(missing_index_output.pin_force, Vec3::ZERO);
+        assert_eq!(missing_index_output.max_linear_speed, Some(10.0));
+        let missing_target_output = world
+            .get::<BodyDriveOutput>(missing_target)
+            .expect("a body without a target still receives its active character limit");
+        assert_eq!(missing_target_output.pin_force, Vec3::ZERO);
+        assert_eq!(missing_target_output.max_angular_speed, Some(20.0));
     }
 
     /// Joint drive skips missing parents and targets without writing motor

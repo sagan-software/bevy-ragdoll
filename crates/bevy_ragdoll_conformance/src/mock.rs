@@ -242,6 +242,7 @@ fn integrate_dynamic_bodies(
         // Apply exponential damping after acceleration and before pose integration.
         velocity.linear *= (-settings.linear_damping * delta_seconds).exp();
         velocity.angular *= (-settings.angular_damping * delta_seconds).exp();
+        drive.clamp_velocity(&mut velocity);
 
         transform.translation += velocity.linear * delta_seconds;
         // The mock ground plane prevents penetration and removes downward velocity.

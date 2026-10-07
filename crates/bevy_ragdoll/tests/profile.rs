@@ -38,12 +38,14 @@ fn valid_spec() -> ProfileSpec {
                 shape: capsule(Vec3::ZERO, Vec3::Y, 0.1),
                 mass: 1.0,
                 rest: root_rest,
+                role: None,
             },
             BodySpec {
                 bone: "child".to_owned(),
                 shape: capsule(Vec3::ZERO, Vec3::Y, 0.1),
                 mass: 1.0,
                 rest: child_rest,
+                role: None,
             },
         ],
         joints: vec![JointSpec {
@@ -290,24 +292,28 @@ fn no_contact_holds_neighbours_and_touching_capsules() {
             shape: capsule(Vec3::ZERO, Vec3::Y, 0.05),
             mass: 1.0,
             rest: Isometry3d::IDENTITY,
+            role: None,
         },
         BodySpec {
             bone: "left".to_owned(),
             shape: capsule(Vec3::ZERO, Vec3::Y, 0.05),
             mass: 1.0,
             rest: Isometry3d::from_xyz(0.1, 0.0, 0.0),
+            role: None,
         },
         BodySpec {
             bone: "right".to_owned(),
             shape: capsule(Vec3::ZERO, Vec3::Y, 0.05),
             mass: 1.0,
             rest: Isometry3d::from_xyz(0.2, 0.0, 0.0),
+            role: None,
         },
         BodySpec {
             bone: "far".to_owned(),
             shape: capsule(Vec3::ZERO, Vec3::Y, 0.05),
             mass: 1.0,
             rest: far_rest,
+            role: None,
         },
     ];
     spec.joints = [1, 2, 3]
@@ -396,12 +402,14 @@ fn builder_matches_spec() {
         shape: capsule(Vec3::ZERO, Vec3::Y, 0.1),
         mass: 3.0,
         rest: Isometry3d::IDENTITY,
+        role: None,
     };
     let middle = BodySpec {
         bone: "middle".to_owned(),
         shape: capsule(Vec3::ZERO, Vec3::Y, 0.08),
         mass: 2.0,
         rest: Isometry3d::from_xyz(0.0, 1.0, 0.0),
+        role: None,
     };
     let end = BodySpec {
         bone: "end".to_owned(),
@@ -411,6 +419,7 @@ fn builder_matches_spec() {
         },
         mass: 1.0,
         rest: Isometry3d::from_xyz(0.0, 2.0, 0.0),
+        role: None,
     };
     let limits = JointLimits {
         x: AngleRange {

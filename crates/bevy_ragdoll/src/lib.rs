@@ -24,9 +24,10 @@ pub mod runtime;
 pub mod skein;
 
 pub use self::profile::{
-    AngleRange, Body, BodyIndex, BodySpec, Joint, JointAxis, JointLimits, JointSpec, MAX_BODIES,
-    Mass, MassError, ProfileBuilder, ProfileError, ProfileSpec, RagdollProfile, ShapeSpec,
+    AngleRange, Body, BodyIndex, BodyRole, BodySpec, Joint, JointAxis, JointLimits, JointSpec,
+    MAX_BODIES, Mass, MassError, ProfileBuilder, ProfileError, ProfileSpec, RagdollProfile,
+    ShapeSpec,
 };
 #[cfg(feature = "serialize")]
 pub use self::profile::{RagdollProfileLoader, RagdollProfileLoaderError};
-pub use self::runtime::{RagdollError, RagdollFixedSchedule, RagdollPlugin};
+pub use self::runtime::{RagdollError, RagdollPlugin};

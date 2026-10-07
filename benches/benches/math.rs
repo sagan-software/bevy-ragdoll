@@ -1,18 +1,25 @@
 //! Criterion targets for joint angles, motor values, torque, and pin math.
 
 use std::hint::black_box;
+use std::time::Duration;
 
+use bevy::app::FixedUpdate;
 use bevy::math::{Isometry3d, Quat, Vec3};
-use bevy_ragdoll::runtime::body::BodyVelocity;
+use bevy::prelude::{Entity, With, World};
+use bevy_ragdoll::runtime::body::{BodyShape, BodyVelocity};
+use bevy_ragdoll::runtime::components::RagdollBodyOf;
 use bevy_ragdoll::runtime::drive::{
     PinDriveInput, StablePdInput, joint_motor_values, pin_drive, stable_pd_torque,
 };
+use bevy_ragdoll::runtime::messages::{HitKind, RagdollHit};
 use bevy_ragdoll::runtime::settings::RagdollPhysicsSettings;
 use criterion::{Criterion, criterion_group, criterion_main};
 use rand_chacha::ChaCha8Rng;
 use rand_core::{RngCore, SeedableRng};
 
-use bevy_ragdoll_benches::support::{BENCH_SEED, chain_profile};
+use bevy_ragdoll_benches::support::{
+    BENCH_SEED, PopulationMode, chain_profile, core_app, human_profile,
+};
 
 /// Measures deterministic loops of joint-angle, motor, torque, and pin math.
 fn math_benchmarks(criterion: &mut Criterion) {
@@ -98,6 +105,49 @@ fn math_benchmarks(criterion: &mut Criterion) {
             });
         });
     }
+
+    let human = human_profile();
+    let mut group = criterion.benchmark_group("math/hit_processing");
+    group.measurement_time(Duration::from_secs(5));
+    for character_count in [1, 64] {
+        let mut app = core_app(
+            human.clone(),
+            character_count,
+            PopulationMode::Capture,
+            BENCH_SEED,
+        )
+        .expect("hit benchmark setup must bind the complete character population");
+        let targets = first_body_per_character(app.world_mut());
+        assert_eq!(targets.len(), character_count);
+        let benchmark_name = format!("{character_count}_ragdolls");
+        group.bench_function(&benchmark_name, |bencher| {
+            bencher.iter(|| {
+                for body in &targets {
+                    app.world_mut().write_message(RagdollHit {
+                        body: *body,
+                        point: Vec3::new(0.0, 1.0, 0.0),
+                        impulse: Vec3::X * 40.0,
+                        kind: HitKind::Impact,
+                    });
+                }
+                app.world_mut().run_schedule(FixedUpdate);
+                black_box(targets.len());
+            });
+        });
+    }
+}
+
+/// Collects one stable root-body entity for each bound character.
+fn first_body_per_character(world: &mut World) -> Vec<Entity> {
+    let mut query = world
+        .query_filtered::<(Entity, &RagdollBodyOf, &bevy_ragdoll::BodyIndex), With<BodyShape>>();
+    let mut targets = query
+        .iter(world)
+        .filter(|(_, _, index)| index.get() == 0)
+        .map(|(body, owner, _)| (owner.0, body))
+        .collect::<Vec<_>>();
+    targets.sort_unstable_by_key(|(character, _)| character.to_bits());
+    targets.into_iter().map(|(_, body)| body).collect()
 }
 
 /// Derives one deterministic angle in the inclusive half-radian range.

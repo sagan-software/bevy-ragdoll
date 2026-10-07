@@ -22,11 +22,16 @@ use bevy_ragdoll::{RagdollPlugin, RagdollProfile, ShapeSpec};
 use std::time::Duration;
 
 mod fall;
+mod hits;
 mod look;
 
 pub use self::fall::{
     a_dropped_ragdoll_lands_and_settles, a_hard_throw_keeps_the_joints_together,
     the_same_input_gives_the_same_output,
+};
+pub use self::hits::{
+    headshot_turns_the_head, limp_weights_make_a_powered_ragdoll_collapse,
+    pistol_to_the_chest_does_not_move_the_pelvis_far,
 };
 pub use self::look::{
     a_body_shot_onto_stairs_stays_on_them, a_bullet_moves_a_downed_body_a_little,

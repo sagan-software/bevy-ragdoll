@@ -2,6 +2,8 @@
 
 use bevy::math::{Isometry3d, Quat, Vec3};
 
+use super::BodyRole;
+
 /// The serializable, unvalidated data used to construct a profile.
 ///
 /// Bodies use parent-first order, and joints describe every non-root body's
@@ -40,6 +42,14 @@ pub struct BodySpec {
     /// Rigid transform from the bone's local rest frame into skeleton space;
     /// translation must be finite and rotation must be finite and unit length.
     pub rest: Isometry3d,
+    /// Optional anatomical role override used by recovery delays and hit muscle
+    /// floors. When absent, profile construction infers the role once from
+    /// `bone` and stores the resolved value.
+    #[cfg_attr(
+        feature = "serialize",
+        serde(default, skip_serializing_if = "Option::is_none")
+    )]
+    pub role: Option<BodyRole>,
 }
 
 /// A collision shape expressed in its body's local frame.

@@ -22,6 +22,7 @@ mod limits;
 #[cfg(feature = "serialize")]
 mod loader;
 mod mass;
+mod role;
 mod spec;
 
 pub use self::body::Body;
@@ -32,6 +33,7 @@ pub use self::limits::{AngleRange, JointLimits};
 #[cfg(feature = "serialize")]
 pub use self::loader::{RagdollProfileLoader, RagdollProfileLoaderError};
 pub use self::mass::{Mass, MassError};
+pub use self::role::BodyRole;
 pub use self::spec::{BodySpec, JointSpec, ProfileSpec, ShapeSpec};
 
 /// Maximum accepted body count because relationship masks reserve one bit per
@@ -141,7 +143,7 @@ impl RagdollProfile {
     ///
     /// let spec = ProfileSpec { bodies: vec![BodySpec { bone:
     /// "pelvis".to_owned(), shape: ShapeSpec::Sphere { center: Vec3::ZERO,
-    /// radius: 0.2 }, mass: 8.0, rest: Isometry3d::IDENTITY, }], joints:
+    /// radius: 0.2 }, mass: 8.0, rest: Isometry3d::IDENTITY, role: None, }], joints:
     /// Vec::new(), }; let profile = RagdollProfile::new(spec)?;
     /// assert_eq!(profile.total_mass().kilograms(), 8.0);
     /// # Ok::<(), bevy_ragdoll::ProfileError>(())
@@ -383,12 +385,17 @@ impl TryFrom<ProfileSpec> for ValidatedProfile {
             .zip(prerequisites.masses)
             .enumerate()
             .map(|(index, (body, mass))| {
+                // Resolve optional authoring roles once before moving profile data into storage.
+                let role = body
+                    .role
+                    .unwrap_or_else(|| BodyRole::from(body.bone.as_str()));
                 Body::new(
                     BodyIndex(index as u8),
                     body.bone,
                     body.shape,
                     mass,
                     body.rest,
+                    role,
                 )
             })
             .collect();

@@ -2,7 +2,7 @@
 
 use bevy::math::Isometry3d;
 
-use super::{BodyIndex, Mass, ShapeSpec};
+use super::{BodyIndex, BodyRole, Mass, ShapeSpec};
 
 /// A profile body whose mass, shape, rest frame, and index passed validation.
 ///
@@ -21,6 +21,8 @@ pub struct Body {
     mass: Mass,
     /// The bone's rest transform in skeleton space.
     rest: Isometry3d,
+    /// Resolved anatomical role used by hit and balance behavior.
+    role: BodyRole,
 }
 
 impl Body {
@@ -31,6 +33,7 @@ impl Body {
         shape: ShapeSpec,
         mass: Mass,
         rest: Isometry3d,
+        role: BodyRole,
     ) -> Self {
         Self {
             index,
@@ -38,6 +41,7 @@ impl Body {
             shape,
             mass,
             rest,
+            role,
         }
     }
 
@@ -125,5 +129,33 @@ impl Body {
     /// ```
     pub const fn rest(&self) -> Isometry3d {
         self.rest
+    }
+
+    /// Returns the resolved anatomical role used by hit recovery and muscle
+    /// floors after profile construction applies an override or bone-name
+    /// inference.
+    ///
+    /// The role is resolved during profile construction and stays fixed for
+    /// every runtime body created from this profile.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use bevy_ragdoll::{BodyRole, ProfileBuilder, ShapeSpec};
+    /// use bevy::math::{Isometry3d, Vec3};
+    ///
+    /// let mut builder = ProfileBuilder::default();
+    /// builder.add_body(
+    ///     "pelvis",
+    ///     ShapeSpec::Sphere { center: Vec3::ZERO, radius: 0.2 },
+    ///     2.0,
+    ///     Isometry3d::IDENTITY,
+    /// )?;
+    /// let body = builder.build()?.bodies()[0].clone();
+    /// assert_eq!(body.role(), BodyRole::Pelvis);
+    /// # Ok::<(), Box<dyn std::error::Error>>(())
+    /// ```
+    pub const fn role(&self) -> BodyRole {
+        self.role
     }
 }
