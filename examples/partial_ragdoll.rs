@@ -24,6 +24,42 @@ use bevy_rapier3d::plugin::{RapierPhysicsPlugin, TimestepMode};
 use bevy_rapier3d::prelude::{Collider, Damping, Restitution, RigidBody, Velocity};
 
 /// Loads the rig profile and runs the windowed example.
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let profile = RagdollProfile::from_skeleton(&bevy_ragdoll::Skeleton::humanoid())?;
+    let mut app = App::new();
+    app.add_plugins(DefaultPlugins.set(WindowPlugin {
+        primary_window: Some(Window {
+            title: "Partial ragdoll".into(),
+            resolution: (1280, 720).into(),
+            ..default()
+        }),
+        ..default()
+    }));
+    add_ragdoll_physics(&mut app);
+    app.insert_resource(ClearColor(Color::srgb(0.055, 0.075, 0.095)))
+        .insert_resource(Rig(profile))
+        .insert_resource(LaunchTimer(Timer::from_seconds(2.0, TimerMode::Repeating)));
+    add_example_systems(&mut app);
+    app.run();
+    Ok(())
+}
+
+/// Adds the ragdoll runtime and Rapier, both stepping in `FixedUpdate` at 60 Hz.
+fn add_ragdoll_physics(app: &mut App) {
+    app.add_plugins((
+        RagdollPlugin::default(),
+        RapierPhysicsPlugin::<RapierRagdollHooks<'_, '_>>::default().in_fixed_schedule(),
+        RapierRagdollPlugin,
+        RagdollDebugPlugin,
+    ));
+    app.insert_resource(Time::<Fixed>::from_hz(60.0))
+        .insert_resource(TimestepMode::Fixed {
+            dt: 1.0 / 60.0,
+            substeps: 1,
+        });
+}
+
+/// Registers reflected state and adds the scene, idle animation, and input systems.
 #[cfg_attr(
     dylint_lib = "sagan_lints",
     expect(
@@ -31,36 +67,12 @@ use bevy_rapier3d::prelude::{Collider, Damping, Restitution, RigidBody, Velocity
         reason = "input handling and UI react once per rendered frame, which is what Update is for"
     )
 )]
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let profile = RagdollProfile::from_skeleton(&bevy_ragdoll::Skeleton::humanoid())?;
-    App::new()
-        .add_plugins(DefaultPlugins.set(WindowPlugin {
-            primary_window: Some(Window {
-                title: "Partial ragdoll".into(),
-                resolution: (1280, 720).into(),
-                ..default()
-            }),
-            ..default()
-        }))
-        .add_plugins((
-            RagdollPlugin::default(),
-            RapierPhysicsPlugin::<RapierRagdollHooks<'_, '_>>::default().in_fixed_schedule(),
-            RapierRagdollPlugin,
-        ))
-        .insert_resource(Time::<Fixed>::from_hz(60.0))
-        .insert_resource(TimestepMode::Fixed {
-            dt: 1.0 / 60.0,
-            substeps: 1,
-        })
-        .insert_resource(ClearColor(Color::srgb(0.055, 0.075, 0.095)))
-        .insert_resource(Rig(profile))
-        .insert_resource(LaunchTimer(Timer::from_seconds(2.0, TimerMode::Repeating)))
-        .register_type::<Rig>()
+fn add_example_systems(app: &mut App) {
+    app.register_type::<Rig>()
         .register_type::<IdleTarget>()
         .register_type::<LaunchTimer>()
-        .register_type::<Ball>()
-        .add_systems(Startup, (setup_scene, spawn_ragdoll))
-        .add_plugins(RagdollDebugPlugin)
+        .register_type::<Ball>();
+    app.add_systems(Startup, (setup_scene, spawn_ragdoll))
         .add_systems(
             PostUpdate,
             animate_idle_targets
@@ -70,9 +82,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .add_systems(
             Update,
             (toggle_launcher, launch_balls, despawn_old_balls).chain(),
-        )
-        .run();
-    Ok(())
+        );
 }
 
 /// The validated profile shared by the ragdoll and the ball launcher.

@@ -51,6 +51,42 @@ const STRONG: Color = Color::srgb(0.24, 0.79, 0.71);
 const WEAK: Color = Color::srgb(0.93, 0.57, 0.3);
 
 /// Loads the rig profile and runs the windowed example.
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let profile = RagdollProfile::from_skeleton(&bevy_ragdoll::Skeleton::humanoid())?;
+    let mut app = App::new();
+    app.add_plugins(DefaultPlugins.set(WindowPlugin {
+        primary_window: Some(Window {
+            title: "Hit reactions".into(),
+            resolution: (1280, 720).into(),
+            ..default()
+        }),
+        ..default()
+    }));
+    add_ragdoll_physics(&mut app);
+    app.insert_resource(ClearColor(Color::srgb(0.055, 0.075, 0.095)))
+        .insert_resource(Rig(profile))
+        .init_resource::<Controls>();
+    add_example_systems(&mut app);
+    app.run();
+    Ok(())
+}
+
+/// Adds the ragdoll runtime and Rapier, both stepping in `FixedUpdate` at 60 Hz.
+fn add_ragdoll_physics(app: &mut App) {
+    app.add_plugins((
+        RagdollPlugin::default(),
+        RapierPhysicsPlugin::<RapierRagdollHooks<'_, '_>>::default().in_fixed_schedule(),
+        RapierRagdollPlugin,
+        RagdollDebugPlugin,
+    ));
+    app.insert_resource(Time::<Fixed>::from_hz(60.0))
+        .insert_resource(TimestepMode::Fixed {
+            dt: 1.0 / 60.0,
+            substeps: 1,
+        });
+}
+
+/// Registers reflected state and adds the scene, idle animation, and input systems.
 #[cfg_attr(
     dylint_lib = "sagan_lints",
     expect(
@@ -58,37 +94,13 @@ const WEAK: Color = Color::srgb(0.93, 0.57, 0.3);
         reason = "input handling and UI react once per rendered frame, which is what Update is for"
     )
 )]
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let profile = RagdollProfile::from_skeleton(&bevy_ragdoll::Skeleton::humanoid())?;
-    App::new()
-        .add_plugins(DefaultPlugins.set(WindowPlugin {
-            primary_window: Some(Window {
-                title: "Hit reactions".into(),
-                resolution: (1280, 720).into(),
-                ..default()
-            }),
-            ..default()
-        }))
-        .add_plugins((
-            RagdollPlugin::default(),
-            RapierPhysicsPlugin::<RapierRagdollHooks<'_, '_>>::default().in_fixed_schedule(),
-            RapierRagdollPlugin,
-        ))
-        .insert_resource(Time::<Fixed>::from_hz(60.0))
-        .insert_resource(TimestepMode::Fixed {
-            dt: 1.0 / 60.0,
-            substeps: 1,
-        })
-        .insert_resource(ClearColor(Color::srgb(0.055, 0.075, 0.095)))
-        .insert_resource(Rig(profile))
-        .init_resource::<Controls>()
-        .register_type::<Rig>()
+fn add_example_systems(app: &mut App) {
+    app.register_type::<Rig>()
         .register_type::<IdleTarget>()
         .register_type::<Controls>()
         .register_type::<MuscleBar>()
-        .register_type::<Readout>()
-        .add_systems(Startup, (setup_scene, spawn_ragdoll, spawn_hud))
-        .add_plugins(RagdollDebugPlugin)
+        .register_type::<Readout>();
+    app.add_systems(Startup, (setup_scene, spawn_ragdoll, spawn_hud))
         .add_systems(
             PostUpdate,
             animate_idle_targets
@@ -105,9 +117,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 update_hud,
             )
                 .chain(),
-        )
-        .run();
-    Ok(())
+        );
 }
 
 /// The validated profile shared by the ragdoll, HUD, and hit systems.
