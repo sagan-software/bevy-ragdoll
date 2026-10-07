@@ -22,7 +22,10 @@ use bevy_ragdoll_conformance::physics::PhysicsBackend;
 /// `App::run`, so this finishes plugin setup here: Avian creates some
 /// resources, such as its collider-tree diagnostics, in `Plugin::finish`.
 fn add_avian(app: &mut App) {
-    app.add_plugins(PhysicsPlugins::new(FixedUpdate).with_collision_hooks::<AvianRagdollHooks>());
+    app.add_plugins(
+        PhysicsPlugins::new(FixedUpdate)
+            .with_collision_hooks::<AvianRagdollHooks<'static, 'static>>(),
+    );
     app.add_plugins(AvianRagdollPlugin);
     app.finish();
     app.cleanup();
@@ -59,9 +62,14 @@ fn measure_energy(app: &mut App, character: Entity, gravity: Vec3) -> f32 {
             // The computed tensor is local; rotate the world angular velocity into it.
             let local_angular = pose.current.rotation.inverse() * velocity.angular;
             let local_inertia = inertia.tensor() * local_angular;
-            0.5 * mass.value() * velocity.linear.length_squared()
-                + 0.5 * local_angular.dot(local_inertia)
-                - mass.value() * gravity.dot(world_center)
+            f32::mul_add(
+                mass.value(),
+                -gravity.dot(world_center),
+                0.5f32.mul_add(
+                    local_angular.dot(local_inertia),
+                    0.5 * mass.value() * velocity.linear.length_squared(),
+                ),
+            )
         })
         .sum()
 }

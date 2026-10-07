@@ -193,12 +193,142 @@ serde_json = "1.0.151"
 thiserror = "2.0.21"
 web-sys = "0.3.106"
 
+[workspace.metadata.dylint]
+libraries = [
+    { git = "https://github.com/sagan-software/dylints", rev = "0ed03375bd1190a44720a68f189fd9ca5fdf6710", pattern = ["lints"] },
+]
+
 [workspace.lints.rust]
-missing_docs = "warn"
-unsafe_code = "forbid"
+# Warnings and enforced checks.
+absolute_paths_not_starting_with_crate = "warn"
+ambiguous_negative_literals = "warn"
+closure_returning_async_block = "warn"
+deprecated_safe_2024 = "warn"
+deref_into_dyn_supertrait = "warn"
+edition_2024_expr_fragment_specifier = "warn"
+elided_lifetimes_in_paths = "warn"
+explicit_outlives_requirements = "warn"
+ffi_unwind_calls = "warn"
+if_let_rescope = "warn"
+impl_trait_overcaptures = "warn"
+impl_trait_redundant_captures = "warn"
+keyword_idents_2018 = "warn"
+keyword_idents_2024 = "warn"
+let_underscore_drop = "warn"
+macro_use_extern_crate = "warn"
+meta_variable_misuse = "warn"
+missing_copy_implementations = "warn"
+missing_debug_implementations = "warn"
+missing_docs = { level = "forbid", priority = 1 }
+missing_unsafe_on_extern = "warn"
+non_ascii_idents = "warn"
+redundant_imports = "warn"
+redundant_lifetimes = "warn"
+rust_2021_incompatible_closure_captures = "warn"
+rust_2021_incompatible_or_patterns = "warn"
+rust_2021_prefixes_incompatible_syntax = "warn"
+rust_2021_prelude_collisions = "warn"
+rust_2024_guarded_string_incompatible_syntax = "warn"
+rust_2024_incompatible_pat = "warn"
+rust_2024_prelude_collisions = "warn"
+single_use_lifetimes = "warn"
+tail_expr_drop_order = "warn"
+trivial_casts = "warn"
+trivial_numeric_casts = "warn"
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(coverage)"] }
+unit_bindings = "warn"
+unknown_lints = "deny"
+unnameable_types = "warn"
+unreachable_pub = { level = "warn", priority = 1 }
+unsafe_attr_outside_unsafe = "warn"
+unsafe_code = "deny"
+unsafe_op_in_unsafe_fn = "warn"
+unstable_features = "warn"
+unused_extern_crates = "warn"
+unused_import_braces = "warn"
+unused_lifetimes = "warn"
+unused_macro_rules = "warn"
+unused_qualifications = "warn"
+variant_size_differences = "warn"
+
+# Justified allowances.
+# macOS linkers emit duplicate-library and SDK notices outside project control.
+linker_messages = "allow"
+# Feature-selected dependencies may be used only by a binary, test or benchmark.
+unused_crate_dependencies = "allow"
+# Bevy builder calls return chainable values that do not require consumption.
+unused_results = "allow"
+
+# Nightly-only checks are unavailable on the pinned stable compiler.
+# multiple_supertrait_upcastable, unqualified_local_imports,
+# must-not-suspend, non-exhaustive-omitted-patterns,
+# supertrait-item-shadowing-definition, supertrait-item-shadowing-usage.
+# These checks remain excluded until stable Rust supports them.
+
+[workspace.lints.rustdoc]
+# Warnings and enforced checks.
+bare_urls = "warn"
+broken_intra_doc_links = "warn"
+invalid_codeblock_attributes = "warn"
+invalid_html_tags = "warn"
+invalid_rust_codeblocks = "warn"
+private_intra_doc_links = "warn"
+redundant_explicit_links = "warn"
+unescaped_backticks = "warn"
 
 [workspace.lints.clippy]
-missing_docs_in_private_items = "warn"
+# Warnings and enforced checks.
+all = { level = "warn", priority = -1 }
+allow_attributes = { level = "warn", priority = 2 }
+allow_attributes_without_reason = { level = "warn", priority = 2 }
+cargo = { level = "warn", priority = -1 }
+cast_precision_loss = { level = "warn", priority = 1 }
+collapsible_if = { level = "warn", priority = 1 }
+complexity = { level = "warn", priority = -1 }
+correctness = { level = "warn", priority = -1 }
+doc_markdown = "warn"
+if_not_else = { level = "warn", priority = 1 }
+indexing_slicing = { level = "warn", priority = 2 }
+let_and_return = { level = "warn", priority = 1 }
+match_same_arms = { level = "warn", priority = 1 }
+missing_const_for_fn = { level = "warn", priority = 1 }
+# Clap derives permit generated private items; authored private items remain denied.
+missing_docs_in_private_items = { level = "deny", priority = 2 }
+missing_errors_doc = "warn"
+missing_fields_in_debug = { level = "warn", priority = 1 }
+missing_panics_doc = "warn"
+must_use_candidate = "warn"
+nursery = { level = "warn", priority = -1 }
+option_if_let_else = "warn"
+pedantic = { level = "warn", priority = -1 }
+perf = { level = "warn", priority = -1 }
+redundant_closure_for_method_calls = { level = "warn", priority = 1 }
+struct_excessive_bools = { level = "warn", priority = 1 }
+struct_field_names = { level = "warn", priority = 1 }
+style = { level = "warn", priority = -1 }
+suspicious = { level = "warn", priority = -1 }
+unnecessary_wraps = { level = "warn", priority = 1 }
+unused_self = { level = "warn", priority = 1 }
+use_self = { level = "warn", priority = 1 }
+# Groups use priority -1; individual rules override groups at priority 1 or 2.
+
+# Justified allowances.
+# Bevy permits local futures that borrow thread-local ECS state.
+future_not_send = { level = "allow", priority = 1 }
+# Third-party plugins select different transitive dependency versions.
+multiple_crate_versions = { level = "allow", priority = 1 }
+# Bevy system parameters and plugin APIs consume values by framework contract.
+needless_pass_by_value = "allow"
+# Explicit crate visibility documents internal domain boundaries.
+redundant_pub_crate = { level = "allow", priority = 1 }
+# Enable individual restriction checks; the full group contains mutually exclusive policies.
+restriction = { level = "allow", priority = -1 }
+# Bevy resource and query guards often require the enclosing system scope.
+significant_drop_tightening = { level = "allow", priority = 1 }
+# Bevy systems declare independent ECS parameters.
+too_many_arguments = "allow"
+# Bevy queries express component access and filters in their type.
+type_complexity = "allow"
 
 # Bevy optimization profiles: https://bevy.org/learn/quick-start/getting-started/setup/
 [profile.dev]

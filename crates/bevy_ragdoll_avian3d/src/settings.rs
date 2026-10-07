@@ -1,12 +1,12 @@
 //! Store Avian-only solver and body setup options.
 
-use bevy::prelude::Resource;
+use bevy::prelude::{Reflect, Resource};
 
 /// Avian-only tuning values that do not belong to the shared physics settings.
 ///
 /// The defaults are the values that passed the most physics-tier conformance
 /// cases on Avian 0.7 (see `docs/plan/phases/12-avian3d.md`).
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Resource)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Resource, Reflect)]
 pub struct AvianRagdollSettings {
     /// Avian `SubstepCount` written every fixed step. Values below one are
     /// raised to one. More substeps stiffen joints and contacts at a roughly
@@ -17,14 +17,14 @@ pub struct AvianRagdollSettings {
     /// is set. Off by default: Avian moves each swept body back to its own time
     /// of impact after the solve, which separated joints by up to 17 cm on
     /// landing. Speculative contacts still prevent most tunneling.
-    pub use_swept_ccd: bool,
+    pub is_swept_ccd_enabled: bool,
 }
 
 impl Default for AvianRagdollSettings {
     fn default() -> Self {
         Self {
             substep_count: 20,
-            use_swept_ccd: false,
+            is_swept_ccd_enabled: false,
         }
     }
 }
@@ -40,6 +40,6 @@ mod tests {
     fn default_settings_match_the_measured_profile() {
         let settings = AvianRagdollSettings::default();
         assert_eq!(settings.substep_count, 20);
-        assert!(!settings.use_swept_ccd);
+        assert!(!settings.is_swept_ccd_enabled);
     }
 }

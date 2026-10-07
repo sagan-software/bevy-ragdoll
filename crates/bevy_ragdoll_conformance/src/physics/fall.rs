@@ -191,6 +191,11 @@ fn assert_drop_bounds(measurements: &DropMeasurements, bounds: Bounds) {
 /// within the limits for sink, transient and final joint error, gap, and
 /// final-frame motion.
 ///
+/// # Panics
+///
+/// Panics with a descriptive assertion message when the backend under test
+/// violates this check, or when the headless scene cannot be built.
+///
 /// # Examples
 ///
 /// ```
@@ -244,6 +249,11 @@ pub fn a_hard_throw_keeps_the_joints_together(backend: PhysicsBackend) {
 ///
 /// Rapier runs serially unless its optional `parallel` feature is enabled; two
 /// equal one-second drops must then produce equal profile-ordered pose frames.
+///
+/// # Panics
+///
+/// Panics with a descriptive assertion message when the backend under test
+/// violates this check, or when the headless scene cannot be built.
 ///
 /// # Examples
 ///

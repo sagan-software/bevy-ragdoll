@@ -182,7 +182,7 @@ fn move_nested_kinematic_target(app: &mut App, character: Entity, root: Entity) 
         .x = 0.5;
 }
 
-/// Applies a mode change across PostUpdate publication and the next fixed step.
+/// Applies a mode change across `PostUpdate` publication and the next fixed step.
 fn publish_frozen_mode(app: &mut App, character: Entity) {
     // Publish the root mode before the fixed backend consumes the body-kind change.
     app.world_mut()
@@ -218,6 +218,11 @@ fn filtered_ray_requests(character: Entity, body: Entity) -> [RagdollRaycast; 4]
 /// bodies. It also counts child constraints, so a backend cannot pass by
 /// creating only the visible body entities.
 ///
+/// # Panics
+///
+/// Panics with a descriptive assertion message when the backend under test
+/// violates this check, or when the headless scene cannot be built.
+///
 /// # Examples
 ///
 /// ```
@@ -251,6 +256,11 @@ pub fn bodies_and_joints_exist_for_each_profile_entry(add_backend: AddBackend) {
 /// The test measures the X component so gravity does not affect the result, and
 /// it compares mass times velocity change with the requested `10 N·s` impulse
 /// to within `0.1 N·s`.
+///
+/// # Panics
+///
+/// Panics with a descriptive assertion message when the backend under test
+/// violates this check, or when the headless scene cannot be built.
 ///
 /// # Examples
 ///
@@ -317,6 +327,11 @@ pub fn an_impulse_changes_momentum_by_its_size(add_backend: AddBackend) {
 /// downward velocity while retaining its validated profile index for later
 /// drive and query lookups.
 ///
+/// # Panics
+///
+/// Panics with a descriptive assertion message when the backend under test
+/// violates this check, or when the headless scene cannot be built.
+///
 /// # Examples
 ///
 /// ```
@@ -363,6 +378,11 @@ pub fn pose_and_velocity_are_read_back_every_step(add_backend: AddBackend) {
 /// and allows two fixed updates for capture and following. The resulting body
 /// translation must remain within one millimetre of the composed target.
 ///
+/// # Panics
+///
+/// Panics with a descriptive assertion message when the backend under test
+/// violates this check, or when the headless scene cannot be built.
+///
 /// # Examples
 ///
 /// ```
@@ -397,6 +417,11 @@ pub fn kinematic_bodies_follow_targets_exactly(add_backend: AddBackend) {
 ///
 /// The backend must ignore dynamic integration for `Fixed` body kinds even when
 /// the message names a live body and carries nonzero momentum.
+///
+/// # Panics
+///
+/// Panics with a descriptive assertion message when the backend under test
+/// violates this check, or when the headless scene cannot be built.
 ///
 /// # Examples
 ///
@@ -436,6 +461,11 @@ pub fn frozen_bodies_do_not_move_under_impulses(add_backend: AddBackend) {
 ///
 /// The test first applies momentum through the public impulse message, then
 /// changes the character mode and checks the backend's next readback.
+///
+/// # Panics
+///
+/// Panics with a descriptive assertion message when the backend under test
+/// violates this check, or when the headless scene cannot be built.
 ///
 /// # Examples
 ///
@@ -486,6 +516,11 @@ pub fn freezing_a_dynamic_ragdoll_clears_velocity(add_backend: AddBackend) {
 /// and response messages; the assertion matches the returned ragdoll body
 /// rather than backend query state.
 ///
+/// # Panics
+///
+/// Panics with a descriptive assertion message when the backend under test
+/// violates this check, or when the headless scene cannot be built.
+///
 /// # Examples
 ///
 /// ```
@@ -530,6 +565,11 @@ pub fn raycast_reports_the_body_hit(add_backend: AddBackend) {
 ///
 /// The character filter excludes all of its owned bodies, and the body filter
 /// excludes the selected body entity.
+///
+/// # Panics
+///
+/// Panics with a descriptive assertion message when the backend under test
+/// violates this check, or when the headless scene cannot be built.
 ///
 /// # Examples
 ///
@@ -577,6 +617,11 @@ pub fn invalid_and_filtered_raycasts_return_misses(add_backend: AddBackend) {
 /// removes the owner and verifies every captured body entity is gone from the
 /// world.
 ///
+/// # Panics
+///
+/// Panics with a descriptive assertion message when the backend under test
+/// violates this check, or when the headless scene cannot be built.
+///
 /// # Examples
 ///
 /// ```
@@ -595,7 +640,7 @@ pub fn despawning_the_character_removes_every_body(add_backend: AddBackend) {
     app.world_mut().despawn(character);
 
     // Check each captured entity after relationship cleanup has completed.
-    bodies.iter().for_each(|(body, _)| {
+    for (body, _) in &bodies {
         assert!(app.world().get_entity(*body).is_err());
-    });
+    }
 }

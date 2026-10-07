@@ -101,16 +101,19 @@ pub(crate) fn read_ragdoll_queries(
     }
 }
 
-/// Appends the touching points of one pair with normals pointing away from the other collider.
+/// Appends the touching points of one pair, with normals pointing away from
+/// the other collider.
 fn append_pair_contacts(
     entity: Entity,
     pair: &ContactPair,
     rigid_bodies: &Query<'_, '_, &RigidBody>,
     contacts: &mut Vec<BodyContact>,
 ) {
+    // Broad-phase pairs without touching manifolds are not contacts.
     if !pair.is_touching() {
         return;
     }
+    // Identify the partner collider and whether this body is the first shape.
     let (other, other_body, body_is_first) = if pair.collider1 == entity {
         (pair.collider2, pair.body2, true)
     } else {
@@ -119,6 +122,7 @@ fn append_pair_contacts(
     let other_is_static = other_body
         .and_then(|body| rigid_bodies.get(body).ok())
         .is_none_or(RigidBody::is_static);
+    // Every point of a manifold shares the manifold normal.
     for manifold in &pair.manifolds {
         let normal = contact_normal(manifold.normal, body_is_first);
         contacts.extend(manifold.points.iter().map(|point| BodyContact {

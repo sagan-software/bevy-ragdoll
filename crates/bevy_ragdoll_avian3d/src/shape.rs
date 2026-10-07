@@ -8,6 +8,7 @@ use bevy_ragdoll::profile::ShapeSpec;
 ///
 /// Avian cuboids take full side lengths, so profile half extents are doubled.
 /// Offset spheres and cuboids use one-shape compounds to keep their local pose.
+#[must_use]
 pub fn collider_for_shape(shape: ShapeSpec) -> Collider {
     match shape {
         ShapeSpec::Capsule { a, b, radius } => Collider::capsule_endpoints(radius, a, b),
