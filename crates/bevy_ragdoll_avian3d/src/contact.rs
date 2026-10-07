@@ -8,6 +8,10 @@ use bevy_ragdoll::runtime::body::NoContactWith;
 use bevy_ragdoll::runtime::components::RagdollBodyOf;
 
 /// Ragdoll body owner, profile index, and exclusion mask read by the hooks.
+///
+/// Custom hook types hold this query and pass it to
+/// [`should_ragdoll_pair_collide`], so they apply the same same-owner mask
+/// policy as [`AvianRagdollHooks`].
 pub type RagdollPairQuery<'w, 's> = Query<
     'w,
     's,
@@ -24,18 +28,18 @@ pub type RagdollPairQuery<'w, 's> = Query<
 /// Register them with
 /// `PhysicsPlugins::new(FixedUpdate).with_collision_hooks::<AvianRagdollHooks>()`
 /// when the application has no hooks of its own. Call
-/// [`ragdoll_filter_pairs`] from a custom `CollisionHooks::filter_pairs`
+/// [`should_ragdoll_pair_collide`] from a custom `CollisionHooks::filter_pairs`
 /// otherwise. The adapter inserts `ActiveCollisionHooks::FILTER_PAIRS` on every
 /// ragdoll collider.
-#[derive(SystemParam)]
+#[derive(Debug, SystemParam)]
 pub struct AvianRagdollHooks<'w, 's> {
     /// Body owner, profile index, and symmetric no-contact mask for each body.
     ragdoll_bodies: RagdollPairQuery<'w, 's>,
 }
 
 impl CollisionHooks for AvianRagdollHooks<'_, '_> {
-    fn filter_pairs(&self, collider1: Entity, collider2: Entity, _: &mut Commands) -> bool {
-        ragdoll_filter_pairs(collider1, collider2, &self.ragdoll_bodies)
+    fn filter_pairs(&self, collider1: Entity, collider2: Entity, _: &mut Commands<'_, '_>) -> bool {
+        should_ragdoll_pair_collide(collider1, collider2, &self.ragdoll_bodies)
     }
 }
 
@@ -51,7 +55,7 @@ impl CollisionHooks for AvianRagdollHooks<'_, '_> {
 /// use avian3d::prelude::CollisionHooks;
 /// use bevy::ecs::system::SystemParam;
 /// use bevy::prelude::{Commands, Entity};
-/// use bevy_ragdoll_avian3d::{RagdollPairQuery, ragdoll_filter_pairs};
+/// use bevy_ragdoll_avian3d::{RagdollPairQuery, should_ragdoll_pair_collide};
 ///
 /// #[derive(SystemParam)]
 /// struct MyHooks<'w, 's> {
@@ -59,12 +63,13 @@ impl CollisionHooks for AvianRagdollHooks<'_, '_> {
 /// }
 ///
 /// impl CollisionHooks for MyHooks<'_, '_> {
-///     fn filter_pairs(&self, a: Entity, b: Entity, _: &mut Commands) -> bool {
-///         ragdoll_filter_pairs(a, b, &self.bodies)
+///     fn filter_pairs(&self, a: Entity, b: Entity, _: &mut Commands<'_, '_>) -> bool {
+///         should_ragdoll_pair_collide(a, b, &self.bodies)
 ///     }
 /// }
 /// ```
-pub fn ragdoll_filter_pairs(
+#[must_use]
+pub fn should_ragdoll_pair_collide(
     collider1: Entity,
     collider2: Entity,
     ragdoll_bodies: &RagdollPairQuery<'_, '_>,
@@ -79,7 +84,7 @@ pub fn ragdoll_filter_pairs(
 }
 
 /// Checks symmetric profile exclusion masks for two bodies in one ragdoll.
-fn pair_is_excluded(
+const fn pair_is_excluded(
     first_index: BodyIndex,
     first_mask: u64,
     second_index: BodyIndex,
@@ -100,7 +105,7 @@ mod tests {
     use bevy_ragdoll::runtime::body::NoContactWith;
     use bevy_ragdoll::runtime::components::RagdollBodyOf;
 
-    use super::{RagdollPairQuery, ragdoll_filter_pairs};
+    use super::{RagdollPairQuery, should_ragdoll_pair_collide};
 
     /// Spawns one tagged body with a profile index and exclusion mask.
     fn body(world: &mut World, owner: Entity, index: usize, mask: u64) -> Entity {
@@ -110,9 +115,25 @@ mod tests {
             .id()
     }
 
-    /// Only a masked pair with one owner is rejected.
-    #[test]
-    fn filter_rejects_only_masked_same_owner_pairs() {
+    /// Bodies of one test world: two owners and one non-ragdoll collider.
+    struct PairWorld {
+        /// World holding every test entity.
+        world: World,
+        /// Pelvis whose mask excludes the spine.
+        pelvis: Entity,
+        /// Spine excluded by the pelvis mask.
+        spine: Entity,
+        /// Head that no mask excludes.
+        head: Entity,
+        /// Spine of a second character.
+        foreign_spine: Entity,
+        /// Collider without ragdoll components.
+        floor: Entity,
+    }
+
+    /// Builds one character with a masked pelvis-spine pair, a second
+    /// character's spine, and a plain floor entity.
+    fn pair_world() -> PairWorld {
         let mut world = World::new();
         let owner = world.spawn_empty().id();
         let other_owner = world.spawn_empty().id();
@@ -121,14 +142,49 @@ mod tests {
         let head = body(&mut world, owner, 2, 0);
         let foreign_spine = body(&mut world, other_owner, 1, 0);
         let floor = world.spawn_empty().id();
-        let mut state: SystemState<RagdollPairQuery> = SystemState::new(&mut world);
-        let bodies = state.get(&world).expect("the query is valid");
+        PairWorld {
+            world,
+            pelvis,
+            spine,
+            head,
+            foreign_spine,
+            floor,
+        }
+    }
 
-        assert!(!ragdoll_filter_pairs(pelvis, spine, &bodies));
-        assert!(!ragdoll_filter_pairs(spine, pelvis, &bodies));
-        assert!(ragdoll_filter_pairs(pelvis, head, &bodies));
-        assert!(ragdoll_filter_pairs(pelvis, foreign_spine, &bodies));
-        assert!(ragdoll_filter_pairs(pelvis, floor, &bodies));
-        assert!(ragdoll_filter_pairs(floor, pelvis, &bodies));
+    /// Evaluates the pair filter for two entities of a test world.
+    fn collide(pairs: &mut PairWorld, first: Entity, second: Entity) -> bool {
+        let mut state: SystemState<RagdollPairQuery<'static, 'static>> =
+            SystemState::new(&mut pairs.world);
+        state
+            .get(&pairs.world)
+            .is_ok_and(|bodies| should_ragdoll_pair_collide(first, second, &bodies))
+    }
+
+    /// A masked pair with one owner is rejected in either order.
+    #[test]
+    fn masked_same_owner_pair_does_not_collide() {
+        let mut pairs = pair_world();
+        let (pelvis, spine) = (pairs.pelvis, pairs.spine);
+        assert!(!collide(&mut pairs, pelvis, spine));
+        assert!(!collide(&mut pairs, spine, pelvis));
+    }
+
+    /// Unmasked bodies and bodies of another character still collide.
+    #[test]
+    fn unmasked_or_foreign_pairs_collide() {
+        let mut pairs = pair_world();
+        let (pelvis, head, foreign) = (pairs.pelvis, pairs.head, pairs.foreign_spine);
+        assert!(collide(&mut pairs, pelvis, head));
+        assert!(collide(&mut pairs, pelvis, foreign));
+    }
+
+    /// A non-ragdoll collider collides with ragdoll bodies in either order.
+    #[test]
+    fn non_ragdoll_pairs_collide() {
+        let mut pairs = pair_world();
+        let (pelvis, floor) = (pairs.pelvis, pairs.floor);
+        assert!(collide(&mut pairs, pelvis, floor));
+        assert!(collide(&mut pairs, floor, pelvis));
     }
 }

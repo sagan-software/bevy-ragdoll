@@ -27,7 +27,7 @@ use crate::settings::AvianRagdollSettings;
 use crate::shape::collider_for_shape;
 use crate::spawn::spawn_lift;
 
-/// Body state read and lifted while new bodies receive Avian components.
+/// New body entities and the shared state that builds their Avian body.
 type NewBodyQuery<'w, 's> = Query<
     'w,
     's,
@@ -38,12 +38,12 @@ type NewBodyQuery<'w, 's> = Query<
         &'static BodyMass,
         &'static BodyVelocity,
         &'static BodyKind,
-        &'static mut BodyPhysicsPose,
-        &'static mut Transform,
-        &'static mut GlobalTransform,
     ),
     Added<BodyShape>,
 >;
+
+/// Pose state that spawn lift moves before Avian copies it.
+type BodyPoseQuery<'w, 's> = Query<'w, 's, (&'static mut BodyPhysicsPose, &'static mut Transform)>;
 
 /// World colliders that spawn lift may push ragdolls out of.
 #[derive(SystemParam)]
@@ -70,6 +70,42 @@ impl SpawnLiftWorld<'_, '_> {
             .and_then(|link| self.rigid_bodies.get(link.body).ok())
             .is_none_or(RigidBody::is_static)
     }
+
+    /// Measures one shared upward lift per owner of the new bodies.
+    ///
+    /// Owners are visited in entity order so the result does not depend on
+    /// query order.
+    fn owner_lifts(
+        &self,
+        bodies: &NewBodyQuery<'_, '_>,
+        poses: &BodyPoseQuery<'_, '_>,
+        max_spawn_lift: f32,
+    ) -> BTreeMap<Entity, f32> {
+        // Group each owner's new shapes at their captured world poses.
+        let mut shapes_by_owner = BTreeMap::<Entity, Vec<(ShapeSpec, Isometry3d)>>::new();
+        for (entity, owner, shape, ..) in bodies {
+            if let Ok((pose, _)) = poses.get(entity) {
+                shapes_by_owner
+                    .entry(owner.0)
+                    .or_default()
+                    .push((shape.0, pose.current));
+            }
+        }
+        // Search each owner's clear offset against static world geometry only.
+        let is_world_collider = |collider| self.is_world_collider(collider);
+        shapes_by_owner
+            .into_iter()
+            .map(|(owner, shapes)| {
+                let lift = spawn_lift(
+                    &self.spatial_query,
+                    &shapes,
+                    max_spawn_lift,
+                    &is_world_collider,
+                );
+                (owner, lift)
+            })
+            .collect()
+    }
 }
 
 /// Creates Avian components for new backend-neutral body entities.
@@ -82,45 +118,28 @@ pub(crate) fn create_avian_bodies(
     avian_settings: Res<'_, AvianRagdollSettings>,
     drivers: Query<'_, '_, &RagdollDrive>,
     lift_world: SpawnLiftWorld<'_, '_>,
-    mut bodies: NewBodyQuery<'_, '_>,
+    bodies: NewBodyQuery<'_, '_>,
+    mut poses: BodyPoseQuery<'_, '_>,
 ) {
+    // Most fixed steps add no bodies; skip the lift search entirely.
     if bodies.is_empty() {
         return;
     }
-    // Group new body shapes by owner in entity order for deterministic lifts.
-    let mut shapes_by_owner = BTreeMap::<Entity, Vec<(ShapeSpec, Isometry3d)>>::new();
-    for (_, owner, shape, .., pose, _, _) in &bodies {
-        shapes_by_owner
-            .entry(owner.0)
-            .or_default()
-            .push((shape.0, pose.current));
-    }
     let max_spawn_lift = finite_nonnegative(settings.max_spawn_lift).unwrap_or(0.0);
-    let is_world_collider = |collider| lift_world.is_world_collider(collider);
-    let lift_by_owner = shapes_by_owner
-        .into_iter()
-        .map(|(owner, shapes)| {
-            let lift = spawn_lift(
-                &lift_world.spatial_query,
-                &shapes,
-                max_spawn_lift,
-                &is_world_collider,
-            );
-            (owner, lift)
-        })
-        .collect::<BTreeMap<_, _>>();
-
-    for (entity, owner, shape, mass, velocity, kind, mut pose, mut transform, mut global) in
-        &mut bodies
-    {
-        // Translate all three pose states before Avian copies the transform.
+    let lift_by_owner = lift_world.owner_lifts(&bodies, &poses, max_spawn_lift);
+    let is_swept_ccd_used = settings.is_ccd_enabled && avian_settings.is_swept_ccd_enabled;
+    for (entity, owner, shape, mass, velocity, kind) in &bodies {
+        let Ok((mut pose, mut transform)) = poses.get_mut(entity) else {
+            continue;
+        };
+        // Lift the core pose and the transform together before Avian reads them.
         let lift = lift_by_owner.get(&owner.0).copied().unwrap_or(0.0);
         if lift > 0.0 {
             transform.translation.y += lift;
-            *global = GlobalTransform::from(*transform);
             pose.previous.translation.y += lift;
             pose.current.translation.y += lift;
         }
+        // Attach the body, then the optional sleep and CCD markers.
         let drive = drivers.get(owner.0).copied().unwrap_or_default();
         let mut body = commands.entity(entity);
         body.insert(body_components(
@@ -129,13 +148,13 @@ pub(crate) fn create_avian_bodies(
         if is_driven(drive) {
             body.insert(SleepingDisabled);
         }
-        if let Some(swept_ccd) = ccd(settings.is_ccd_enabled && avian_settings.use_swept_ccd) {
+        if let Some(swept_ccd) = ccd(is_swept_ccd_used) {
             body.insert(swept_ccd);
         }
     }
 }
 
-/// Builds the rigid body, collider, mass, material, and readback components.
+/// Builds the rigid body, collider, mass, pose, and readback components.
 fn body_components(
     shape: ShapeSpec,
     mass: BodyMass,
@@ -148,18 +167,6 @@ fn body_components(
     // Explicit mass components on the body override Avian's collider-derived values.
     let inertia = floored_inertia(AngularInertia::from_shape(&collider, mass.mass), mass);
     let center_of_mass = CenterOfMass::from_shape(&collider);
-    let material = (
-        Friction::new(finite_nonnegative(settings.friction).unwrap_or(0.0)),
-        Restitution::new(
-            finite_nonnegative(settings.restitution)
-                .unwrap_or(0.0)
-                .clamp(0.0, 1.0),
-        ),
-        LinearDamping(finite_nonnegative(settings.linear_damping).unwrap_or(0.0)),
-        AngularDamping(finite_nonnegative(settings.angular_damping).unwrap_or(0.0)),
-        SpeculativeMargin(finite_nonnegative(settings.soft_ccd_prediction).unwrap_or(0.0)),
-        sleep_threshold(settings),
-    );
     (
         kind_to_rigid_body(kind),
         collider,
@@ -170,9 +177,23 @@ fn body_components(
         Rotation(transform.rotation),
         LinearVelocity(velocity.linear),
         AngularVelocity(velocity.angular),
-        material,
+        body_material(settings),
         ActiveCollisionHooks::FILTER_PAIRS,
         BodyContacts::default(),
+    )
+}
+
+/// Builds friction, restitution, damping, speculative margin, and sleep
+/// threshold from the shared settings, replacing invalid values with zero.
+fn body_material(settings: &RagdollPhysicsSettings) -> impl bevy::ecs::bundle::Bundle {
+    let restitution = finite_nonnegative(settings.restitution).unwrap_or(0.0);
+    (
+        Friction::new(finite_nonnegative(settings.friction).unwrap_or(0.0)),
+        Restitution::new(restitution.clamp(0.0, 1.0)),
+        LinearDamping(finite_nonnegative(settings.linear_damping).unwrap_or(0.0)),
+        AngularDamping(finite_nonnegative(settings.angular_damping).unwrap_or(0.0)),
+        SpeculativeMargin(finite_nonnegative(settings.soft_ccd_prediction).unwrap_or(0.0)),
+        sleep_threshold(settings),
     )
 }
 
@@ -229,6 +250,7 @@ pub(crate) fn apply_body_kinds_and_sleeping(
     drivers: Query<'_, '_, &RagdollDrive>,
 ) {
     for (entity, kind, owner, rigid_body, mut linear, mut angular, sleep_disabled) in &mut bodies {
+        // Re-insert the immutable rigid body only when the shared kind changes.
         let target = kind_to_rigid_body(*kind);
         if *rigid_body != target {
             commands.entity(entity).insert(target);
@@ -237,10 +259,10 @@ pub(crate) fn apply_body_kinds_and_sleeping(
             commands.queue(TryWakeBody(entity));
         }
         // Muscle or pin output disables sleeping; limp bodies may sleep again.
-        let driven = is_driven(drivers.get(owner.0).copied().unwrap_or_default());
-        if driven && !sleep_disabled {
+        let is_owner_driven = is_driven(drivers.get(owner.0).copied().unwrap_or_default());
+        if is_owner_driven && !sleep_disabled {
             commands.entity(entity).insert(SleepingDisabled);
-        } else if !driven && sleep_disabled {
+        } else if !is_owner_driven && sleep_disabled {
             commands.entity(entity).remove::<SleepingDisabled>();
         }
     }
@@ -278,12 +300,14 @@ pub(crate) fn apply_kinematic_targets(
     >,
 ) {
     for (kind, owner, index, mut transform) in &mut bodies {
+        // Only kinematic bodies follow animation; Avian moves the rest.
         if *kind != BodyKind::Kinematic {
             continue;
         }
         let Ok((root_global, targets)) = roots.get(owner.0) else {
             continue;
         };
+        // A missing captured pose leaves the body where it is.
         let Some(target) = targets.current_pose(*index) else {
             continue;
         };
@@ -301,6 +325,7 @@ pub(crate) fn apply_kinematic_targets(
 /// stale force behind.
 pub(crate) fn apply_body_forces(mut bodies: Query<'_, '_, (&BodyDriveOutput, &RigidBody, Forces)>) {
     for (output, rigid_body, mut forces) in &mut bodies {
+        // Kinematic and frozen bodies ignore drive output.
         if !rigid_body.is_dynamic() {
             continue;
         }
@@ -315,6 +340,7 @@ pub(crate) fn apply_impulses(
     mut bodies: Query<'_, '_, (&RigidBody, Forces)>,
 ) {
     for message in messages.read() {
+        // Drop malformed messages and messages for despawned bodies.
         if !message.point.is_finite() || !message.impulse.is_finite() {
             continue;
         }
@@ -331,11 +357,10 @@ pub(crate) fn apply_impulses(
 /// Maps the shared motion state to its Avian rigid-body kind.
 const fn kind_to_rigid_body(kind: BodyKind) -> RigidBody {
     match kind {
-        BodyKind::Kinematic => RigidBody::Kinematic,
         BodyKind::Dynamic => RigidBody::Dynamic,
         // Avian 0.7 panics when a joint links two static bodies, because static
-        // bodies have no island. A kinematic body with zero velocity stays put.
-        BodyKind::Fixed => RigidBody::Kinematic,
+        // bodies have no island. A frozen kinematic body with zero velocity stays put.
+        BodyKind::Kinematic | BodyKind::Fixed => RigidBody::Kinematic,
     }
 }
 
@@ -385,23 +410,27 @@ mod tests {
         );
         assert!((floored.principal - Vec3::new(0.02, 1.0, 0.5)).length() < 1.0e-6);
         assert_eq!(floored.local_frame, frame);
-        let invalid = floored_inertia(
-            inertia,
-            BodyMass {
-                mass: 2.0,
-                min_inertia_radius: f32::NAN,
-            },
-        );
-        assert_eq!(invalid.principal, inertia.principal);
+    }
+
+    /// A non-finite inertia radius applies no floor.
+    #[test]
+    fn invalid_inertia_radius_applies_no_floor() {
+        let inertia = AngularInertia::new(Vec3::new(0.001, 1.0, 0.5));
+        let mass = BodyMass {
+            mass: 2.0,
+            min_inertia_radius: f32::NAN,
+        };
+        assert_eq!(floored_inertia(inertia, mass).principal, inertia.principal);
     }
 
     /// Invalid sleep thresholds become zero.
     #[test]
     fn sleep_threshold_sanitizes_invalid_values() {
+        let base = RagdollPhysicsSettings::default();
         let settings = RagdollPhysicsSettings {
             sleep_linear_threshold: f32::NAN,
             sleep_angular_threshold: 0.2,
-            ..Default::default()
+            ..base
         };
         let threshold = sleep_threshold(&settings);
         assert_eq!(threshold.linear, 0.0);

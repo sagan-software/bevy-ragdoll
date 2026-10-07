@@ -102,6 +102,14 @@ impl PhysicsBackend {
     }
 }
 
+/// Converts a step or sample count to `f32` without a lossy cast.
+///
+/// Scenario counts stay far below `u16::MAX`; larger counts saturate there,
+/// which keeps the result finite.
+pub(super) fn count_to_f32(count: usize) -> f32 {
+    f32::from(u16::try_from(count).unwrap_or(u16::MAX))
+}
+
 /// Builds the complete physics baseline with scenario-specific boundary values.
 pub(super) const fn scenario_settings(
     gravity: Vec3,
@@ -282,7 +290,11 @@ fn scene(
     mode: RagdollMode,
 ) -> PhysicsScene {
     let profile = human_profile();
-    let bone_poses = profile.bodies().iter().map(|body| body.rest()).collect();
+    let bone_poses = profile
+        .bodies()
+        .iter()
+        .map(bevy_ragdoll::Body::rest)
+        .collect();
     scenario(
         backend,
         settings,
@@ -610,7 +622,7 @@ fn worst_joint_gap(profile: &RagdollProfile, poses: &[Isometry3d]) -> (f32, Stri
         let gap = anchor.translation.distance(child.translation);
         if gap > worst_gap {
             worst_gap = gap;
-            worst_gap_bone = child_body.bone().to_owned();
+            child_body.bone().clone_into(&mut worst_gap_bone);
         }
     }
     (worst_gap, worst_gap_bone)
@@ -664,6 +676,11 @@ fn com_and_momentum(world: &mut World, character: Entity) -> (Vec3, Vec3, f32) {
 /// The profile's mass-weighted centre of mass must fall one metre in the
 /// analytic free-fall time, within five percent, at 9.81 and 20 m/s².
 ///
+/// # Panics
+///
+/// Panics with a descriptive assertion message when the backend under test
+/// violates this check, or when the headless scene cannot be built.
+///
 /// # Examples
 ///
 /// ```
@@ -708,6 +725,11 @@ pub fn a_ragdoll_falls_as_gravity_says(backend: PhysicsBackend) {
 ///
 /// The impulse is 20 N·s along +Z in zero gravity. After thirty fixed steps,
 /// total momentum must remain within 1 N·s on Z and 0.5 N·s on X and Y.
+///
+/// # Panics
+///
+/// Panics with a descriptive assertion message when the backend under test
+/// violates this check, or when the headless scene cannot be built.
 ///
 /// # Examples
 ///
@@ -757,6 +779,11 @@ pub fn an_impulse_gives_its_momentum(backend: PhysicsBackend) {
 /// The pelvis target moves 0.1 m and rotates 0.05 rad over 0.01 s. Captured
 /// velocity must report 10 m/s on X and 5 rad/s around Y within the source test's
 /// tolerances.
+///
+/// # Panics
+///
+/// Panics with a descriptive assertion message when the backend under test
+/// violates this check, or when the headless scene cannot be built.
 ///
 /// # Examples
 ///
@@ -845,6 +872,11 @@ fn named_bone_entity(world: &mut World, bone_name: &str) -> Entity {
 ///
 /// The frozen state holds the pelvis at its authored pose while Rapier
 /// advances the fixed schedule.
+///
+/// # Panics
+///
+/// Panics with a descriptive assertion message when the backend under test
+/// violates this check, or when the headless scene cannot be built.
 ///
 /// # Examples
 ///
@@ -965,7 +997,7 @@ fn configure_knee_targets(scene: &mut PhysicsScene, has_native_joint_motors: boo
             .world_mut()
             .get_mut::<Transform>(entity)
             .expect("the calf skeleton bone has a transform");
-        target.rotation *= Quat::from_rotation_x(-60.0_f32.to_radians());
+        target.rotation *= Quat::from_rotation_x((-60.0_f32).to_radians());
         *scene
             .bone_targets
             .get_mut(index)
@@ -996,6 +1028,11 @@ fn assert_knee_targets(scene: &mut PhysicsScene) {
 /// A zero or invalid bound leaves the authored surface below -14 cm. With a
 /// 50 cm lift, the first physics result lies between -1 mm and 11 mm, and the
 /// pelvis remains above the floor after two seconds.
+///
+/// # Panics
+///
+/// Panics with a descriptive assertion message when the backend under test
+/// violates this check, or when the headless scene cannot be built.
 ///
 /// # Examples
 ///
@@ -1028,7 +1065,11 @@ fn spawn_overlap_sample(backend: PhysicsBackend, max_spawn_lift: f32) -> (f32, f
     // Vary only the spawn correction bound for each boundary case.
     let settings = scenario_settings(Vec3::new(0.0, -9.81, 0.0), true, max_spawn_lift);
     let profile = human_profile();
-    let bone_poses = profile.bodies().iter().map(|body| body.rest()).collect();
+    let bone_poses = profile
+        .bodies()
+        .iter()
+        .map(bevy_ragdoll::Body::rest)
+        .collect();
     let floor = floor_shape(Vec3::new(51.2, 0.1, 51.2));
     // The floor exists before the first backend update measures the authored overlap.
     let mut scene = scenario(
@@ -1078,6 +1119,11 @@ fn pelvis_height_after_steps(scene: &mut PhysicsScene, steps: usize) -> f32 {
 /// Muscle and pin strength are one. Pelvis drift stays below five centimetres,
 /// and mean absolute joint angle remains below five degrees.
 ///
+/// # Panics
+///
+/// Panics with a descriptive assertion message when the backend under test
+/// violates this check, or when the headless scene cannot be built.
+///
 /// # Examples
 ///
 /// ```
@@ -1123,7 +1169,7 @@ pub fn pinned_pelvis_stands_for_ten_seconds(backend: PhysicsBackend) {
             joint_count += 1;
         }
     }
-    let mean_joint_error = (joint_error / joint_count as f32).to_degrees();
+    let mean_joint_error = (joint_error / count_to_f32(joint_count)).to_degrees();
     assert!(
         mean_joint_error < 5.0,
         "mean joint error {mean_joint_error} degrees"

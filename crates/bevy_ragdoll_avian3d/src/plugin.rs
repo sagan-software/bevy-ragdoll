@@ -7,7 +7,8 @@ use bevy::app::{App, Plugin};
 use bevy::ecs::change_detection::DetectChangesMut;
 use bevy::math::Vec3;
 use bevy::prelude::{
-    Command, Commands, Entity, IntoScheduleConfigs, Query, Res, ResMut, Resource, With, World,
+    Command, Commands, Entity, IntoScheduleConfigs, Query, Reflect, Res, ResMut, Resource, With,
+    World,
 };
 use bevy::time::{Fixed, Time};
 use bevy_ragdoll::RagdollPlugin;
@@ -48,7 +49,7 @@ pub const AVIAN_CAPABILITIES: BackendCapabilities = BackendCapabilities {
 ///
 /// App::new().add_plugins((
 ///     RagdollPlugin::default(),
-///     PhysicsPlugins::new(FixedUpdate).with_collision_hooks::<AvianRagdollHooks>(),
+///     PhysicsPlugins::new(FixedUpdate).with_collision_hooks::<AvianRagdollHooks<'static, 'static>>(),
 ///     AvianRagdollPlugin,
 /// ));
 /// ```
@@ -65,6 +66,8 @@ impl Plugin for AvianRagdollPlugin {
         let fixed_schedule = validate_plugin_order(app);
         app.init_resource::<AvianSleepTimers>()
             .init_resource::<AvianRagdollSettings>()
+            .register_type::<AvianSleepTimers>()
+            .register_type::<AvianRagdollSettings>()
             .insert_resource(AVIAN_CAPABILITIES);
         app.add_systems(
             fixed_schedule,
@@ -96,8 +99,8 @@ impl Plugin for AvianRagdollPlugin {
     }
 }
 
-/// Elapsed fixed-step age per character for TGF's delayed limp-body sleep.
-#[derive(Resource, Default)]
+/// Elapsed fixed-step age per character for delayed limp-body sleep.
+#[derive(Resource, Default, Reflect)]
 struct AvianSleepTimers {
     /// Active ragdoll age in seconds, keyed by the owning character entity.
     timers: HashMap<Entity, f32>,
@@ -118,14 +121,14 @@ fn validate_plugin_order(
         .expect("RagdollPlugin installs its fixed schedule resource")
         .label;
     // Avian steps with the delta of the schedule it runs in, so no timestep check is needed.
-    let avian_in_schedule = app.get_schedule(fixed_schedule).is_some_and(|schedule| {
+    let is_avian_in_schedule = app.get_schedule(fixed_schedule).is_some_and(|schedule| {
         schedule
             .graph()
             .system_sets
             .contains(PhysicsSystems::StepSimulation)
     });
     assert!(
-        avian_in_schedule,
+        is_avian_in_schedule,
         "AvianRagdollPlugin requires PhysicsPlugins::new(<RagdollPlugin fixed schedule>) to be added first"
     );
     fixed_schedule
@@ -138,6 +141,7 @@ fn apply_avian_settings(
     mut gravity: ResMut<'_, Gravity>,
     mut substeps: ResMut<'_, SubstepCount>,
 ) {
+    // Non-finite gravity would poison every body, so it falls back to zero.
     let target_gravity = if settings.gravity.is_finite() {
         settings.gravity
     } else {
@@ -171,10 +175,12 @@ fn force_sleep_limp_ragdolls(
     characters: Query<'_, '_, (Entity, &RagdollDrive), With<Ragdoll>>,
     bodies: Query<'_, '_, (Entity, &BodyVelocity, &RagdollBodyOf)>,
 ) {
+    // Forget characters that lost their ragdoll component.
     timers
         .timers
         .retain(|character, _| characters.contains(*character));
     for (character, drive) in &characters {
+        // A character without bodies has no age to track.
         let mut owned = bodies
             .iter()
             .filter(|(_, _, owner)| owner.0 == character)
@@ -183,6 +189,7 @@ fn force_sleep_limp_ragdolls(
             timers.timers.remove(&character);
             continue;
         }
+        // Age every live ragdoll, then test the limp, slow and elapsed gate.
         let every_body_is_slow = owned
             .clone()
             .all(|(_, velocity, _)| velocity.linear.length() < settings.settle_speed);
@@ -221,7 +228,8 @@ mod tests {
     use bevy::asset::{AssetPlugin, Handle};
     use bevy::ecs::schedule::Schedule;
     use bevy::prelude::{
-        AnimationPlugin, App, Command, FixedPostUpdate, MinimalPlugins, TransformPlugin, World,
+        AnimationPlugin, App, Command, Entity, FixedPostUpdate, MinimalPlugins, TransformPlugin,
+        Vec3, World,
     };
     use bevy::time::{Fixed, Time};
     use bevy_ragdoll::runtime::body::BodyVelocity;
@@ -263,37 +271,64 @@ mod tests {
         app.add_plugins(AvianRagdollPlugin);
     }
 
-    /// Non-finite gravity becomes zero and a zero substep count becomes one.
-    #[test]
-    fn settings_sanitize_gravity_and_map_substeps() {
+    /// Builds settings whose limp-sleep delay is one second.
+    fn one_second_sleep_settings() -> RagdollPhysicsSettings {
+        let base = RagdollPhysicsSettings::default();
+        RagdollPhysicsSettings {
+            force_sleep_after: 1.0,
+            ..base
+        }
+    }
+
+    /// Runs the settings system once on a world with the given inputs.
+    fn applied_settings(gravity: Vec3, substep_count: u32) -> World {
         let mut world = World::new();
-        world.insert_resource(RagdollPhysicsSettings {
-            gravity: bevy::math::Vec3::splat(f32::NAN),
-            ..Default::default()
-        });
+        let base = RagdollPhysicsSettings::default();
+        world.insert_resource(RagdollPhysicsSettings { gravity, ..base });
         world.insert_resource(AvianRagdollSettings {
-            substep_count: 0,
-            ..Default::default()
+            substep_count,
+            is_swept_ccd_enabled: false,
         });
         world.insert_resource(Gravity::default());
         world.insert_resource(SubstepCount(6));
         let mut schedule = Schedule::default();
         schedule.add_systems(apply_avian_settings);
         schedule.run(&mut world);
-
-        assert_eq!(world.resource::<Gravity>().0, bevy::math::Vec3::ZERO);
-        assert_eq!(world.resource::<SubstepCount>().0, 1);
+        world
     }
 
-    /// Limp slow owners pass the sleep gate; driven, moving, young or disabled ones do not.
+    /// Non-finite gravity becomes zero.
     #[test]
-    fn sleep_gate_requires_limp_slow_and_old_enough() {
-        let settings = RagdollPhysicsSettings {
-            force_sleep_after: 1.0,
-            ..Default::default()
-        };
+    fn settings_replace_non_finite_gravity_with_zero() {
+        let world = applied_settings(Vec3::splat(f32::NAN), 20);
+        let gravity = world.get_resource::<Gravity>().map(|gravity| gravity.0);
+        assert_eq!(gravity, Some(Vec3::ZERO));
+    }
+
+    /// A zero substep count becomes one.
+    #[test]
+    fn settings_raise_zero_substeps_to_one() {
+        let world = applied_settings(Vec3::NEG_Y, 0);
+        let substeps = world.get_resource::<SubstepCount>().map(|count| count.0);
+        assert_eq!(substeps, Some(1));
+    }
+
+    /// A limp, slow, old enough owner passes the sleep gate.
+    #[test]
+    fn sleep_gate_accepts_a_limp_slow_old_owner() {
         let limp = RagdollDrive::new(0.0, 0.0);
-        assert!(should_force_sleep(limp, true, 1.0, &settings));
+        assert!(should_force_sleep(
+            limp,
+            true,
+            1.0,
+            &one_second_sleep_settings()
+        ));
+    }
+
+    /// Muscle or pin output keeps an owner awake.
+    #[test]
+    fn sleep_gate_rejects_driven_owners() {
+        let settings = one_second_sleep_settings();
         assert!(!should_force_sleep(
             RagdollDrive::new(1.0, 0.0),
             true,
@@ -306,39 +341,55 @@ mod tests {
             1.0,
             &settings
         ));
+    }
+
+    /// A moving or young owner stays awake.
+    #[test]
+    fn sleep_gate_rejects_moving_or_young_owners() {
+        let settings = one_second_sleep_settings();
+        let limp = RagdollDrive::new(0.0, 0.0);
         assert!(!should_force_sleep(limp, false, 1.0, &settings));
         assert!(!should_force_sleep(limp, true, 0.5, &settings));
-        let disabled = RagdollPhysicsSettings {
+    }
+
+    /// A zero delay disables forced sleep.
+    #[test]
+    fn sleep_gate_is_off_for_a_zero_delay() {
+        let settings = RagdollPhysicsSettings {
             force_sleep_after: 0.0,
-            ..settings
+            ..one_second_sleep_settings()
         };
-        assert!(!should_force_sleep(limp, true, 1.0, &disabled));
+        let limp = RagdollDrive::new(0.0, 0.0);
+        assert!(!should_force_sleep(limp, true, 1.0, &settings));
+    }
+
+    /// Spawns a limp ragdoll owner with a default profile handle.
+    fn spawn_limp_owner(world: &mut World) -> Entity {
+        world
+            .spawn((
+                Ragdoll::new(Handle::<RagdollProfile>::default()),
+                RagdollDrive::new(0.0, 0.0),
+            ))
+            .id()
     }
 
     /// Timers age live owners with bodies and drop owners without bodies or ragdolls.
     #[test]
     fn sleep_timers_track_only_live_owners_with_bodies() {
+        // Advance fixed time by one step and use a short sleep delay.
         let mut world = World::new();
         let mut fixed_time = Time::<Fixed>::from_hz(60.0);
         fixed_time.advance_by(Duration::from_millis(20));
         world.insert_resource(fixed_time);
+        let base = RagdollPhysicsSettings::default();
         world.insert_resource(RagdollPhysicsSettings {
             settle_speed: 0.1,
             force_sleep_after: 0.01,
-            ..Default::default()
+            ..base
         });
-        let with_bodies = world
-            .spawn((
-                Ragdoll::new(Handle::<RagdollProfile>::default()),
-                RagdollDrive::new(0.0, 0.0),
-            ))
-            .id();
-        let without_bodies = world
-            .spawn((
-                Ragdoll::new(Handle::<RagdollProfile>::default()),
-                RagdollDrive::new(0.0, 0.0),
-            ))
-            .id();
+        // One owner has a body, one has none, and one stale timer has no owner.
+        let with_bodies = spawn_limp_owner(&mut world);
+        let without_bodies = spawn_limp_owner(&mut world);
         let removed = world.spawn_empty().id();
         let mut timers = AvianSleepTimers::default();
         timers.timers.insert(without_bodies, 5.0);
@@ -350,10 +401,15 @@ mod tests {
 
         schedule.run(&mut world);
 
-        let timers = &world.resource::<AvianSleepTimers>().timers;
-        assert!(timers.contains_key(&with_bodies));
-        assert!(!timers.contains_key(&without_bodies));
-        assert!(!timers.contains_key(&removed));
+        let tracked = world
+            .get_resource::<AvianSleepTimers>()
+            .map(|timers| {
+                let mut owners = timers.timers.keys().copied().collect::<Vec<_>>();
+                owners.sort_unstable();
+                owners
+            })
+            .unwrap_or_default();
+        assert_eq!(tracked, vec![with_bodies]);
     }
 
     /// Sleeping an entity that is not a body does nothing and does not panic.

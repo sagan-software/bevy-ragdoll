@@ -7,6 +7,9 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 publish = true
+readme = "README.md"
+keywords = ["bevy", "ragdoll", "physics", "testing", "gamedev"]
+categories = ["game-development", "simulation", "development-tools::testing"]
 
 [dependencies]
 bevy = { workspace = true, features = ["std", "bevy_asset", "bevy_animation", "bevy_log"] }

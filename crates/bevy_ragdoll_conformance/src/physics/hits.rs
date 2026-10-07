@@ -153,6 +153,11 @@ fn assert_pistol_chest_result(response: PistolChestResponse) {
 /// The rig uses `spine_04` as the head parent because its profile has no
 /// separate neck body.
 ///
+/// # Panics
+///
+/// Panics with a descriptive assertion message when the backend under test
+/// violates this check, or when the headless scene cannot be built.
+///
 /// # Examples
 ///
 /// ```no_run
@@ -184,6 +189,11 @@ pub fn headshot_turns_the_head(backend: PhysicsBackend) {
 
 /// Removes all per-body muscle and pin strength, then checks that the pelvis
 /// falls below 0.4 metres within 1.5 seconds of simulated physics.
+///
+/// # Panics
+///
+/// Panics with a descriptive assertion message when the backend under test
+/// violates this check, or when the headless scene cannot be built.
 ///
 /// # Examples
 ///
@@ -325,7 +335,7 @@ fn standing_scene(backend: PhysicsBackend) -> PhysicsScene {
     let bone_poses = profile
         .bodies()
         .iter()
-        .map(|body| body.rest())
+        .map(bevy_ragdoll::Body::rest)
         .collect::<Vec<_>>();
     let lowest = profile
         .bodies()

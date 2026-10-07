@@ -39,11 +39,11 @@ pub(super) fn stairs() -> Vec<(ShapeSpec, Isometry3d)> {
     // The landing reaches the first tread at the source stair origin.
     let mut shapes = vec![et_box([-2048.0, -2048.0, -400.0], [2048.0, 4.0, 0.0])];
     // Preserve the source riser and tread sizes for all twenty steps.
-    for index in 0..20 {
-        let y = 4.0 + 12.0 * index as f32;
+    for index in 0_u8..20 {
+        let y = 12.0f32.mul_add(f32::from(index), 4.0);
         shapes.push(et_box(
             [-2048.0, y, -400.0],
-            [2048.0, y + 12.0, -8.0 * (index + 1) as f32],
+            [2048.0, y + 12.0, -8.0 * f32::from(index + 1)],
         ));
     }
     shapes
@@ -62,7 +62,7 @@ pub(super) fn stairs_height(z: f32) -> f32 {
 }
 
 /// Gives flat terrain height in metres.
-fn flat_height(_: f32) -> f32 {
+const fn flat_height(_: f32) -> f32 {
     0.0
 }
 
@@ -91,7 +91,7 @@ fn bend(profile: &RagdollProfile, poses: &mut [Isometry3d], bone: &str, degrees:
                 );
                 break;
             }
-            ancestor = profile.joint_of(candidate).map(|joint| joint.parent());
+            ancestor = profile.joint_of(candidate).map(bevy_ragdoll::Joint::parent);
         }
     }
 }
@@ -105,7 +105,7 @@ fn look_scene(backend: PhysicsBackend, velocity: Vec3, is_on_stairs: bool) -> Ph
     let mut bone_poses = profile
         .bodies()
         .iter()
-        .map(|body| body.rest())
+        .map(bevy_ragdoll::Body::rest)
         .collect::<Vec<_>>();
     // Bend both legs before finding the stance's lowest contact point.
     for side in ["l", "r"] {
@@ -244,7 +244,7 @@ fn record_measurement_step(
     current: &[Isometry3d],
 ) {
     // Convert the step number once so every timed measurement shares one clock.
-    let time = step as f32 / 60.0;
+    let time = super::count_to_f32(step) / 60.0;
     let lowest = |index: BodyIndex| {
         let body = bodies
             .get(index.get())
@@ -460,6 +460,11 @@ fn assert_joints(result: &Run) {
 /// The torso reaches the floor in 0.3–0.8 s, the head whips at least 15° after
 /// 0.15 s, post-hit speed stays below 3 m/s, and joints return within 2°.
 ///
+/// # Panics
+///
+/// Panics with a descriptive assertion message when the backend under test
+/// violates this check, or when the headless scene cannot be built.
+///
 /// # Examples
 ///
 /// ```
@@ -494,6 +499,11 @@ pub fn a_headshot_drops_the_body_like_the_references(backend: PhysicsBackend) {
 ///
 /// The rig reaches the floor within 0.3–0.8 s, bends one knee at least 45°,
 /// slides at most 0.5 m, bounces at most 5 cm, and rests within 1.7 s.
+///
+/// # Panics
+///
+/// Panics with a descriptive assertion message when the backend under test
+/// violates this check, or when the headless scene cannot be built.
 ///
 /// # Examples
 ///
@@ -539,6 +549,11 @@ pub fn a_chest_hit_buckles_the_knees_and_stops(backend: PhysicsBackend) {
 /// The rig runs forward at 5 m/s, reaches the floor, slides at most 1.5 m, and
 /// rests within 2 s after landing with at most 5 mm of final one-second creep.
 ///
+/// # Panics
+///
+/// Panics with a descriptive assertion message when the backend under test
+/// violates this check, or when the headless scene cannot be built.
+///
 /// # Examples
 ///
 /// ```
@@ -575,6 +590,11 @@ pub fn a_running_death_stops_within_a_body_length(backend: PhysicsBackend) {
 ///
 /// This remains ignored because the source settings slide 1.1 m and creep
 /// 4 cm/s; raising friction to 0.1 made the determinism drop tear joints.
+///
+/// # Panics
+///
+/// Panics with a descriptive assertion message when the backend under test
+/// violates this check, or when the headless scene cannot be built.
 ///
 /// # Examples
 ///
@@ -682,6 +702,11 @@ fn track_shot_motion(
 ///
 /// A 12 N·s hit moves the head 1.5–20 cm and the lower arm 2–50 cm. Pelvis travel
 /// after either hit stays within 5 cm.
+///
+/// # Panics
+///
+/// Panics with a descriptive assertion message when the backend under test
+/// violates this check, or when the headless scene cannot be built.
 ///
 /// # Examples
 ///

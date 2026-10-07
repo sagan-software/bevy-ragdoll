@@ -2,9 +2,9 @@
 //! runtime body, joint, contact, raycast, and fixed-step state into a
 //! user-owned Avian simulation.
 //!
-//! Applications add `RagdollPlugin`, then
-//! `PhysicsPlugins::new(FixedUpdate).with_collision_hooks::<AvianRagdollHooks>()`,
-//! then [`AvianRagdollPlugin`]. Avian must run in the same schedule as
+//! Applications add `RagdollPlugin`, then Avian's `PhysicsPlugins` in
+//! `FixedUpdate` with [`AvianRagdollHooks`] as collision hooks, then
+//! [`AvianRagdollPlugin`]. Avian must run in the same schedule as
 //! `RagdollPlugin`'s fixed schedule.
 //!
 //! # Joint mapping
@@ -37,7 +37,7 @@ mod settings;
 mod shape;
 mod spawn;
 
-pub use self::contact::{AvianRagdollHooks, RagdollPairQuery, ragdoll_filter_pairs};
+pub use self::contact::{AvianRagdollHooks, RagdollPairQuery, should_ragdoll_pair_collide};
 pub use self::plugin::{AVIAN_CAPABILITIES, AvianRagdollPlugin};
 pub use self::settings::AvianRagdollSettings;
 pub use self::shape::collider_for_shape;

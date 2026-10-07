@@ -115,7 +115,7 @@ Deviations from the steps above:
 - `AvianRagdollSettings::substep_count` (default 20) sets `SubstepCount`.
   `solver_iterations`, `pgs_iterations`, `max_substeps` and `threads` have
   no Avian equivalent.
-- Swept CCD is off by default (`AvianRagdollSettings::use_swept_ccd`).
+- Swept CCD is off by default (`AvianRagdollSettings::is_swept_ccd_enabled`).
   Avian moves each swept body back to its own time of impact after the
   solve, which separated joints by up to 17 cm on landing. Speculative
   contacts (`SpeculativeMargin` from `soft_ccd_prediction`) stay on.

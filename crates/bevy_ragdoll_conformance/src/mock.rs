@@ -424,7 +424,7 @@ fn ray_sphere(origin: Vec3, direction: Vec3, center: Vec3, radius: f32) -> Optio
     }
     let offset = origin - center;
     let along = offset.dot(direction);
-    let discriminant = along * along - (offset.length_squared() - radius * radius);
+    let discriminant = along.mul_add(along, -radius.mul_add(-radius, offset.length_squared()));
     // A negative discriminant means the normalized ray misses the sphere.
     if discriminant < 0.0 {
         return None;
@@ -480,15 +480,18 @@ fn ray_capsule_side(
     let axis_dot_offset = axis.dot(offset);
     let direction_dot_offset = direction.dot(offset);
     let offset_sq = offset.length_squared();
-    let a = axis_sq - axis_dot_direction * axis_dot_direction;
+    let a = axis_dot_direction.mul_add(-axis_dot_direction, axis_sq);
     // A parallel ray has no isolated cylinder-side intersection.
     if a <= 1.0e-6 {
         return None;
     }
     // Build the quadratic coefficients without transforming the ray into local space.
-    let b = axis_sq * direction_dot_offset - axis_dot_offset * axis_dot_direction;
-    let c = axis_sq * offset_sq - axis_dot_offset * axis_dot_offset - radius * radius * axis_sq;
-    let discriminant = b * b - a * c;
+    let b = axis_dot_offset.mul_add(-axis_dot_direction, axis_sq * direction_dot_offset);
+    let c = (radius * radius).mul_add(
+        -axis_sq,
+        axis_dot_offset.mul_add(-axis_dot_offset, axis_sq * offset_sq),
+    );
+    let discriminant = a.mul_add(-c, b * b);
     // A negative discriminant means the ray misses the infinite cylinder.
     if discriminant < 0.0 {
         return None;
@@ -499,7 +502,7 @@ fn ray_capsule_side(
         distance = (-b + root) / a;
     }
     // Convert the nearest cylinder root back to a bounded point on the capsule axis.
-    let along_axis = axis_dot_offset + distance * axis_dot_direction;
+    let along_axis = distance.mul_add(axis_dot_direction, axis_dot_offset);
     // Keep side hits between endpoint planes; the cap tests cover their hemispheres.
     if distance < 0.0 || along_axis <= 0.0 || along_axis >= axis_sq {
         return None;
@@ -621,11 +624,11 @@ mod tests {
     #[test]
     fn ray_shapes_cover_sphere_cuboid_and_distance_limits() {
         let transform = Transform::IDENTITY;
-        let sphere = bevy_ragdoll::runtime::body::BodyShape(ShapeSpec::Sphere {
+        let sphere = BodyShape(ShapeSpec::Sphere {
             center: Vec3::ZERO,
             radius: 0.5,
         });
-        let cuboid = bevy_ragdoll::runtime::body::BodyShape(ShapeSpec::Cuboid {
+        let cuboid = BodyShape(ShapeSpec::Cuboid {
             center: Vec3::ZERO,
             half_extents: Vec3::splat(0.5),
             rotation: bevy::math::Quat::IDENTITY,

@@ -7,6 +7,9 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 publish = true
+readme = "README.md"
+keywords = ["bevy", "ragdoll", "physics", "avian", "gamedev"]
+categories = ["game-development", "simulation"]
 
 [features]
 default = []

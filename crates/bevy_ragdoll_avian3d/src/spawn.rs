@@ -11,8 +11,8 @@ use crate::shape::collider_for_shape;
 /// Finds a shared upward correction for bodies overlapping static geometry.
 ///
 /// The adapter checks each body at 1 cm intervals up to the configured bound,
-/// matching TGF's spawn-lift policy. A body with no clear position in range
-/// contributes no lift; the largest successful correction moves the whole rig.
+/// matching the Rapier adapter's spawn-lift policy. A body with no clear
+/// position in range contributes no lift; the largest successful correction moves the whole rig.
 /// `is_world_collider` accepts only static, non-ragdoll colliders.
 pub(crate) fn spawn_lift(
     spatial_query: &SpatialQuery<'_, '_>,
@@ -20,6 +20,7 @@ pub(crate) fn spawn_lift(
     max_spawn_lift: f32,
     is_world_collider: &dyn Fn(Entity) -> bool,
 ) -> f32 {
+    // Quantize the bound to centimetre steps and start with no lift.
     let steps = lift_steps(max_spawn_lift);
     let mut lift = 0.0_f32;
     for (shape, pose) in bodies {
@@ -39,12 +40,13 @@ pub(crate) fn spawn_lift(
             );
             is_intersecting
         };
+        // A body that already clears static geometry needs no lift.
         if !overlaps(0.0) {
             continue;
         }
         // Keep the first clear centimetre position; one maximum moves every body.
         if let Some(body_lift) = (1..=steps)
-            .map(|step| step as f32 * 0.01)
+            .map(|step| f32::from(step) * 0.01)
             .find(|distance| !overlaps(*distance))
         {
             lift = lift.max(body_lift);
@@ -53,13 +55,11 @@ pub(crate) fn spawn_lift(
     lift
 }
 
-/// Converts a finite lift bound to TGF's rounded centimetre count.
-fn lift_steps(max_spawn_lift: f32) -> usize {
+/// Converts a finite lift bound to a rounded centimetre count, saturating at
+/// `u16::MAX` (655.35 m).
+fn lift_steps(max_spawn_lift: f32) -> u16 {
     if max_spawn_lift.is_finite() && max_spawn_lift > 0.0 {
-        (max_spawn_lift / 0.01)
-            .round()
-            .to_usize()
-            .unwrap_or(usize::MAX)
+        (max_spawn_lift / 0.01).round().to_u16().unwrap_or(u16::MAX)
     } else {
         0
     }
@@ -71,12 +71,18 @@ mod tests {
 
     use super::lift_steps;
 
-    /// Zero, invalid, and negative bounds disable the lift scan.
+    /// A zero or negative bound disables the lift scan.
     #[test]
-    fn invalid_or_zero_bound_has_no_steps() {
-        for bound in [0.0, -0.01, f32::NAN, f32::INFINITY] {
-            assert_eq!(lift_steps(bound), 0);
-        }
+    fn zero_or_negative_bound_has_no_steps() {
+        assert_eq!(lift_steps(0.0), 0);
+        assert_eq!(lift_steps(-0.01), 0);
+    }
+
+    /// A non-finite bound disables the lift scan.
+    #[test]
+    fn non_finite_bound_has_no_steps() {
+        assert_eq!(lift_steps(f32::NAN), 0);
+        assert_eq!(lift_steps(f32::INFINITY), 0);
     }
 
     /// A half-metre limit checks fifty centimetre positions.
@@ -87,7 +93,7 @@ mod tests {
 
     /// Bounds beyond the addressable step count saturate.
     #[test]
-    fn oversized_bound_saturates_at_the_usize_limit() {
-        assert_eq!(lift_steps(f32::MAX), usize::MAX);
+    fn oversized_bound_saturates_at_the_u16_limit() {
+        assert_eq!(lift_steps(f32::MAX), u16::MAX);
     }
 }
