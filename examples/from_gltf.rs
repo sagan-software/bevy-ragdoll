@@ -2,7 +2,7 @@
 //!
 //! The humanoid uses UE mannequin bone names and gets the humanoid layout.
 //! The quadruped and the seven-legged alien are classified by topology.
-//! Press Space to drop them all.
+//! Press Space to drop them all and watch each body plan fall.
 
 use bevy::prelude::*;
 use bevy_ragdoll::RagdollDebugPlugin;

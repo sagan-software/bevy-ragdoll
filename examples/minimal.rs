@@ -1,5 +1,9 @@
 //! Drops a ragdoll generated from the reference humanoid skeleton.
 //!
+//! `Ragdoll::default()` reads the spawned bones and builds bodies, masses, and
+//! joints for them, so the example needs no authored profile. Rapier steps the
+//! bodies, and the debug plugin draws their colliders.
+//!
 //! Run with `cargo run --example minimal`.
 
 use bevy::prelude::*;

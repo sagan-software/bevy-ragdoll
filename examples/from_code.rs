@@ -1,5 +1,9 @@
 //! Builds a three-body chain with `ProfileBuilder` and pins its root body.
 //!
+//! Use this path when a rig needs bodies that generation cannot infer: each
+//! body names its bone, shape, mass, and rest pose, and each joint names its
+//! limits and torque.
+//!
 //! Run with `cargo run --example from_code`.
 
 use bevy::prelude::*;
