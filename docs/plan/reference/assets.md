@@ -105,54 +105,44 @@ Official Quaternius pack downloads (Google Drive folders linked from the pack pa
 - Ultimate Animated Animals: https://drive.google.com/drive/folders/1uJ3N5HfB7jKTseJUNQr3N4YaN0UuEtHk
 - Animated Dinosaurs: https://drive.google.com/drive/folders/1u5Fhu3ziuRlGonW6bUI7uClqBGoSNeF6
 
-## 3. TGF human rig (`content/rigs/human/`)
+## 3. Generated test rigs (`assets/rigs/`)
 
-Files: `human.blend` (502 KB), `build/human.glb` (108 KB, exported by Khronos glTF Blender I/O v5.2.40).
+`assets/source/generate_creatures.py` builds the test rigs in headless Blender. No rig carries ragdoll data; profiles are generated from the skeleton at load time.
 
-- One skin with 89 joints and no animations.
-- There is no skinned visual mesh. No node references the skin. The 16 meshes are the 16 ragdoll capsules.
-- The root node `human` has extras `{"tgf_rig": "human"}`.
-- Every bone node has extras `tgf_length` (metres) and `tgf_mask` ("upper" or "lower"). IK bones also have `tgf_follows` (for example `ik_foot_l` follows `foot_l`).
-- Sockets: `socket_weapon_l`, `socket_weapon_r`, `socket_eyes`, `socket_head_top`, `socket_back`.
+- `assets/rigs/humanoid.glb`: a humanoid with UE5 mannequin bone names, so name matching selects the humanoid layout.
+- `assets/rigs/quadruped.glb`: a four-legged rig with a neck, head and tail; topology classifies its chains.
+- `assets/rigs/alien.glb`: a 7-legged, 3-armed rig that matches no naming convention; topology classifies its chains.
 
-Bone names (89):
-root, center_of_mass, ik_foot_root, ik_foot_l, ik_foot_r, ik_hand_root, ik_hand_gun, ik_hand_l, ik_hand_r, interaction, pelvis, spine_01, spine_02, spine_03, spine_04, spine_05, clavicle_l, upperarm_l, lowerarm_l, hand_l, index_metacarpal_l, index_01_l, index_02_l, index_03_l, middle_metacarpal_l, middle_01_l, middle_02_l, middle_03_l, pinky_metacarpal_l, pinky_01_l, pinky_02_l, pinky_03_l, ring_metacarpal_l, ring_01_l, ring_02_l, ring_03_l, thumb_01_l, thumb_02_l, thumb_03_l, lowerarm_twist_01_l, lowerarm_twist_02_l, upperarm_twist_01_l, upperarm_twist_02_l, (the same 27 for _r), neck_01, neck_02, head, thigh_l, calf_l, calf_twist_01_l, calf_twist_02_l, foot_l, ball_l, thigh_twist_01_l, thigh_twist_02_l, (the same 8 for _r).
+Reference body values for the 16-body humanoid layout (UE5 mannequin bone names). The masses total 80.0 kg. Torque is the joint's `max_torque` in N·m.
+| Bone | Mass (kg) | Torque (N·m) |
+| --- | --- | --- |
+| pelvis | 8.94 | none (root body) |
+| spine_02 | 13.06 | 200 |
+| spine_04 | 12.77 | 150 |
+| head | 5.55 | 30 |
+| upperarm_l/r | 2.17 | 40 |
+| lowerarm_l/r | 1.30 | 25 |
+| hand_l/r | 0.49 | 8 |
+| thigh_l/r | 11.33 | 150 |
+| calf_l/r | 3.46 | 80 |
+| foot_l/r | 1.10 | 25 |
 
-Ragdoll capsules: 16 nodes named `ragdoll_<bone>`. Each is a child of its bone, and the masses total 80.0 kg.
-| Capsule | Parent bone | mass_kg | RagdollJoint torque_nm |
-| --- | --- | --- | --- |
-| ragdoll_pelvis | pelvis | 8.94 | none (root body, RagdollBody only) |
-| ragdoll_spine_02 | spine_02 | 13.06 | 200 |
-| ragdoll_spine_04 | spine_04 | 12.77 | 150 |
-| ragdoll_head | head | 5.55 | 30 |
-| ragdoll_upperarm_l/r | upperarm_l/r | 2.17 | 40 |
-| ragdoll_lowerarm_l/r | lowerarm_l/r | 1.30 | 25 |
-| ragdoll_hand_l/r | hand_l/r | 0.49 | 8 |
-| ragdoll_thigh_l/r | thigh_l/r | 11.33 | 150 |
-| ragdoll_calf_l/r | calf_l/r | 3.46 | 80 |
-| ragdoll_foot_l/r | foot_l/r | 1.10 | 25 |
+The lower arm is a hinge with x 0..140 degrees and y and z locked. The calf is a hinge with x -140..0 degrees.
 
-Skein extras on each capsule:
-- `skein`: a list of `{ "tgf_rig::ragdoll::RagdollBody": { "mass_kg": f32 } }` and, except on the pelvis, `{ "tgf_rig::ragdoll::RagdollJoint": { "limit_x": {"min_deg","max_deg"}, "limit_y": {...}, "limit_z": {...}, "torque_nm": f32 } }`.
-- There is also a Blender-UI mirror: `skein_two` (with `name` and `selected_type_path`) and `active_component_index`.
-- Example: lowerarm uses limit_x 0..140 with y and z locked (a hinge). The calf uses limit_x -140..0.
-- The type paths are `tgf_rig::...`. A standalone crate must either register types with those paths or rewrite the extras to its own type paths.
+## 4. Quaternius UAL and the humanoid layout
 
-## 4. Mapping Quaternius UAL to TGF's rig
+The UAL skeleton uses UE4 mannequin names, so name matching selects the humanoid layout without a bone map. These names match the UE5 layout exactly: root, pelvis, spine_01, spine_02, spine_03, neck_01, clavicle, upperarm, lowerarm, hand, index/middle/pinky/ring_01-03, thumb_01-03, thigh, calf, foot and ball (both sides).
 
-Most names match exactly by name. These match: root, pelvis, spine_01, spine_02, spine_03, neck_01, clavicle, upperarm, lowerarm, hand, index/middle/pinky/ring_01-03, thumb_01-03, thigh, calf, foot and ball (both sides).
+Differences from the UE5 layout:
+- `Head` is capitalised.
+- UAL has 3 spine bones (UE4 layout); UE5 has 5. The upper chest body attaches to `spine_03` instead of `spine_04`.
+- UAL has no `neck_02`.
+- The generator ignores UAL leaf bones: `*_04_leaf_*` and `ball_leaf_*`.
+- Rest poses and bone roll differ between rigs. Transfer animation relative to each rig's rest pose (retargeting); do not copy local rotations raw. Proportions also differ.
 
-A small bone map is still needed:
-- `Head` (Quaternius) maps to `head` (TGF). Only the case differs.
-- Quaternius has 3 spine bones (UE4 layout). TGF has 5 (UE5 layout). TGF `spine_04` and `spine_05` have no source, and `ragdoll_spine_04` attaches to `spine_04`. Map TGF spine_04 to Quaternius spine_03, or distribute spine_03's rotation over spine_03..05.
-- TGF `neck_02` has no source. Leave it at rest or split neck_01's rotation.
-- Ignore Quaternius-only leaf bones: `*_04_leaf_*` and `ball_leaf_*`.
-- TGF-only bones stay at rest or follow their parent: metacarpals, twist bones, ik_*, center_of_mass and interaction.
-- Rest poses and bone roll differ between the rigs. Transfer rotations relative to each rig's rest pose (retargeting); do not copy local rotations raw. Proportions also differ.
+Ship a Quaternius character and its clips as-is, and let the generator build the 16 ragdoll bodies on its 65-bone skeleton.
 
-For the crate, the simplest path is to ship a Quaternius character and its clips as-is. Then build the ragdoll capsules on its own 65-bone skeleton, using the TGF capsule table as the template. The 16 ragdoll bones map 1:1 except spine_04 -> spine_03 and head -> Head.
-
-Kenney's Humanoid names (Hips, LeftUpLeg, ...) would need a full name map to either rig.
+Kenney's Humanoid names (Hips, LeftUpLeg, ...) match the Mixamo convention without the `mixamorig:` prefix.
 
 ## Attribution lines
 

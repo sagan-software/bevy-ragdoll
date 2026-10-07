@@ -27,7 +27,7 @@ use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 use bevy::transform::TransformSystems;
 use bevy::window::PrimaryWindow;
 use bevy_ragdoll::runtime::body::{BodyMass, BodyPhysicsPose, BodyShape, BodyVelocity};
-use bevy_ragdoll::runtime::components::{Ragdoll, RagdollBodyOf, RagdollDrive, RagdollMode};
+use bevy_ragdoll::runtime::components::{RagdollBodyOf, RagdollDrive, RagdollMode};
 use bevy_ragdoll::runtime::hit::{HitProfile, HitSettings};
 use bevy_ragdoll::runtime::messages::{
     HitKind, RagdollHit, RagdollImpulse, RagdollRaycast, RagdollRaycastResponse,
@@ -35,7 +35,8 @@ use bevy_ragdoll::runtime::messages::{
 };
 use bevy_ragdoll::runtime::sets::{RagdollFixedSystems, RagdollSystems};
 use bevy_ragdoll::runtime::settings::RagdollPhysicsSettings;
-use bevy_ragdoll::{BodyIndex, ProfileSpec, RagdollPlugin, RagdollProfile, ShapeSpec};
+use bevy_ragdoll::{BodyIndex, Ragdoll, RagdollPlugin, Skeleton};
+use bevy::world_serialization::WorldAsset;
 
 /// Half the side length of the square arena floor, in metres.
 const ARENA_HALF_EXTENT: f32 = 20.0;
@@ -71,17 +72,19 @@ const PALETTE: [Color; 6] = [
 enum Backend {
     /// Rapier through `bevy_ragdoll_rapier3d`.
     Rapier,
-    // Avian hook: add `Avian` here and arms below once `bevy_ragdoll_avian3d` is on main.
+    /// Avian through `bevy_ragdoll_avian3d`.
+    Avian,
 }
 
 impl Backend {
     /// Every backend, in panel order.
-    const ALL: [Self; 1] = [Self::Rapier];
+    const ALL: [Self; 2] = [Self::Rapier, Self::Avian];
 
     /// Returns the name used on the command line, in the page URL, and in the panel.
     fn name(self) -> &'static str {
         match self {
             Self::Rapier => "rapier",
+            Self::Avian => "avian",
         }
     }
 
@@ -143,6 +146,14 @@ impl Backend {
                     RapierRagdollPlugin,
                 ));
             }
+            Self::Avian => {
+                use avian3d::prelude::PhysicsPlugins;
+                use bevy_ragdoll_avian3d::{AvianRagdollHooks, AvianRagdollPlugin};
+                app.add_plugins((
+                    PhysicsPlugins::new(FixedUpdate).with_collision_hooks::<AvianRagdollHooks>(),
+                    AvianRagdollPlugin,
+                ));
+            }
         }
     }
 
@@ -156,6 +167,18 @@ impl Backend {
                     Collider::cuboid(half_extents.x, half_extents.y, half_extents.z),
                 ));
             }
+            Self::Avian => {
+                use avian3d::prelude::RigidBody;
+                use bevy_ragdoll::ShapeSpec;
+                entity.insert((
+                    RigidBody::Static,
+                    bevy_ragdoll_avian3d::collider_for_shape(ShapeSpec::Cuboid {
+                        center: Vec3::ZERO,
+                        rotation: Quat::IDENTITY,
+                        half_extents,
+                    }),
+                ));
+            }
         }
     }
 }
@@ -164,13 +187,13 @@ impl Backend {
 #[derive(Resource, Clone, Copy)]
 struct ActiveBackend(Backend);
 
-/// The validated human profile and its asset handle, shared by every character.
+/// Skeletons the crowd is built from. Each `Ragdoll` generates its profile from its skeleton.
 #[derive(Resource)]
-struct Rig {
-    /// Profile used to build each skeleton.
-    profile: RagdollProfile,
-    /// Asset handle placed on each `Ragdoll`.
-    handle: Handle<RagdollProfile>,
+struct Rigs {
+    /// The reference humanoid, spawned from code.
+    humanoid: Skeleton,
+    /// Skinned glTF creatures with no authored ragdoll data: a quadruped and a seven-legged alien.
+    creatures: [Handle<WorldAsset>; 2],
 }
 
 /// Values the panel edits.
@@ -186,6 +209,8 @@ struct Params {
     time_scale: f32,
     /// Position in `HIT_PROFILES` of the hit applied by a click.
     hit: usize,
+    /// Whether every fourth and fifth ragdoll is a glTF creature instead of a humanoid.
+    creatures: bool,
 }
 
 impl Default for Params {
@@ -196,6 +221,7 @@ impl Default for Params {
             gravity: 9.81,
             time_scale: 1.0,
             hit: 2,
+            creatures: true,
         }
     }
 }
@@ -213,16 +239,19 @@ enum Param {
     TimeScale,
     /// `Params::hit`.
     Hit,
+    /// `Params::creatures`.
+    Creatures,
 }
 
 impl Param {
     /// Every parameter, in panel order.
-    const ALL: [Self; 5] = [
+    const ALL: [Self; 6] = [
         Self::Count,
         Self::Muscle,
         Self::Gravity,
         Self::TimeScale,
         Self::Hit,
+        Self::Creatures,
     ];
 
     /// Returns the panel label.
@@ -233,6 +262,7 @@ impl Param {
             Self::Gravity => "Gravity",
             Self::TimeScale => "Time scale",
             Self::Hit => "Hit",
+            Self::Creatures => "Creatures",
         }
     }
 
@@ -254,6 +284,7 @@ impl Param {
                 let len = HIT_PROFILES.len();
                 params.hit = (params.hit + if sign > 0.0 { 1 } else { len - 1 }) % len;
             }
+            Self::Creatures => params.creatures = !params.creatures,
         }
     }
 
@@ -265,6 +296,7 @@ impl Param {
             Self::Gravity => format!("{:.1} m/s2", params.gravity),
             Self::TimeScale => format!("{:.1}x", params.time_scale),
             Self::Hit => format!("{:?}", HIT_PROFILES[params.hit]),
+            Self::Creatures => if params.creatures { "Mixed" } else { "Off" }.to_owned(),
         }
     }
 }
@@ -294,7 +326,7 @@ struct MetricsText;
 #[derive(Component)]
 struct Character(usize);
 
-/// A non-root bone and its local rest rotation, restored each frame as the drive target.
+/// A skeleton bone and its local rest rotation, restored each frame as the drive target.
 #[derive(Component)]
 struct RestRotation(Quat);
 
@@ -310,8 +342,8 @@ struct HitFlash {
 /// Meshes and materials shared by every ragdoll.
 #[derive(Resource, Default)]
 struct BodyAssets {
-    /// One mesh per profile body, built on first use.
-    meshes: HashMap<usize, (Handle<Mesh>, Transform)>,
+    /// One mesh per distinct collider shape, keyed by its debug text, built on first use.
+    meshes: HashMap<String, (Handle<Mesh>, Transform)>,
     /// One material per palette color.
     materials: Vec<Handle<StandardMaterial>>,
     /// Bright material shown briefly on a hit body.
@@ -373,9 +405,7 @@ struct StepTimer {
 }
 
 /// Loads the profile, picks a backend, and runs the showcase.
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let spec: ProfileSpec = ron::from_str(include_str!("../assets/profiles/human.ragdoll.ron"))?;
-    let profile = RagdollProfile::new(spec)?;
+fn main() {
     let backend = Backend::from_environment();
 
     let mut app = App::new();
@@ -407,12 +437,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     .init_resource::<StepTimer>()
     .init_resource::<BodyAssets>();
     backend.add_plugins(&mut app);
-    let handle = app
-        .world_mut()
-        .resource_mut::<Assets<RagdollProfile>>()
-        .add(profile.clone());
-    app.insert_resource(Rig { profile, handle });
-    app.add_systems(Startup, (setup_scene, setup_assets, spawn_panel))
+    app.add_systems(Startup, (setup_scene, setup_assets, load_rigs, spawn_panel))
         .add_systems(
             Update,
             (
@@ -443,7 +468,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             pull_grabbed_body.before(RagdollFixedSystems::Behaviour),
         )
         .run();
-    Ok(())
+}
+
+/// Builds the humanoid skeleton and starts loading the glTF creatures.
+fn load_rigs(mut commands: Commands, assets: Res<AssetServer>) {
+    let creature = |name: &str| {
+        assets.load(GltfAssetLabel::Scene(0).from_asset(format!("rigs/{name}.glb")))
+    };
+    commands.insert_resource(Rigs {
+        humanoid: Skeleton::humanoid(),
+        creatures: [creature("quadruped"), creature("alien")],
+    });
 }
 
 /// Spawns the camera, lights, checkered floor, and a few obstacles.
@@ -569,7 +604,7 @@ fn setup_assets(mut assets: ResMut<BodyAssets>, mut materials: ResMut<Assets<Sta
 fn sync_population(
     mut commands: Commands,
     params: Res<Params>,
-    rig: Res<Rig>,
+    rigs: Option<Res<Rigs>>,
     mut spawned: Local<usize>,
     characters: Query<(Entity, &GlobalTransform), With<Character>>,
 ) {
@@ -581,6 +616,7 @@ fn sync_population(
             alive += 1;
         }
     }
+    let Some(rigs) = rigs else { return };
     let radius = 2.0 + (params.count as f32).sqrt() * 0.9;
     for _ in alive..params.count.min(alive + SPAWNS_PER_FRAME) {
         let index = *spawned;
@@ -593,68 +629,56 @@ fn sync_population(
             1.0 + (index % 5) as f32 * 0.9,
             angle.sin() * distance,
         );
-        spawn_character(&mut commands, &rig, index, position, angle, params.muscle);
+        spawn_character(&mut commands, &rigs, &params, index, position, angle);
     }
 }
 
-/// Spawns one dynamic character and its skeleton, posed at the profile rest pose.
+/// Spawns one dynamic character: a humanoid from code or, when enabled, a glTF creature.
 ///
-/// The runtime binds each profile body to the bone with the same `Name`.
+/// `Ragdoll::default()` generates the ragdoll profile from whatever skeleton is under it.
 fn spawn_character(
     commands: &mut Commands,
-    rig: &Rig,
+    rigs: &Rigs,
+    params: &Params,
     index: usize,
     position: Vec3,
     yaw: f32,
-    muscle: f32,
 ) {
-    let character = commands
-        .spawn((
-            Name::new(format!("ragdoll {index}")),
-            Character(index),
-            Ragdoll::new(rig.handle.clone()),
-            RagdollMode::Dynamic,
-            RagdollDrive::new(muscle, 0.0),
-            Transform::from_translation(position).with_rotation(Quat::from_rotation_y(yaw)),
-        ))
-        .id();
-    let bodies = rig.profile.bodies();
-    let mut parents = vec![None; bodies.len()];
-    for joint in rig.profile.joints() {
-        parents[joint.child().get()] = Some(joint.parent().get());
-    }
-    // Profiles list parents before children, so each parent bone already exists.
-    let mut bones = Vec::with_capacity(bodies.len());
-    for (index, body) in bodies.iter().enumerate() {
-        let rest = body.rest();
-        let mut bone = match parents[index] {
-            None => commands.spawn((
-                Transform::from_translation(rest.translation.into()).with_rotation(rest.rotation),
-                ChildOf(character),
-            )),
-            Some(parent) => {
-                let parent_rest = bodies[parent].rest();
-                let inverse = parent_rest.rotation.inverse();
-                let rotation = inverse * rest.rotation;
-                commands.spawn((
-                    Transform::from_translation(
-                        (inverse * (rest.translation - parent_rest.translation)).into(),
-                    )
-                    .with_rotation(rotation),
-                    RestRotation(rotation),
-                    ChildOf(bones[parent]),
-                ))
-            }
-        };
-        bones.push(bone.insert(Name::new(body.bone().to_owned())).id());
+    let mut character = commands.spawn((
+        Name::new(format!("ragdoll {index}")),
+        Character(index),
+        Ragdoll::default(),
+        RagdollMode::Dynamic,
+        RagdollDrive::new(params.muscle, 0.0),
+        Transform::from_translation(position).with_rotation(Quat::from_rotation_y(yaw)),
+    ));
+    match index % 5 {
+        creature @ 3..=4 if params.creatures => {
+            character.insert(WorldAssetRoot(rigs.creatures[creature - 3].clone()));
+        }
+        _ => {
+            let character = character.id();
+            rigs.humanoid.spawn(commands, character);
+        }
     }
 }
+
+/// Filter for named child entities (skeleton bones) whose rest rotation is not yet recorded.
+type NewBone = (With<Name>, With<ChildOf>, Without<RestRotation>);
 
 /// Puts each bone back at its rest rotation so the muscles pull toward the rest pose.
 ///
 /// Writeback copies physics poses into the bones after capture, so without this
 /// the captured target would equal the current pose and the muscles would idle.
-fn restore_rest_pose(mut bones: Query<(&RestRotation, &mut Transform)>) {
+fn restore_rest_pose(
+    mut commands: Commands,
+    new_bones: Query<(Entity, &Transform), NewBone>,
+    mut bones: Query<(&RestRotation, &mut Transform)>,
+) {
+    // Named children are skeleton bones, from code or from a glTF scene; remember their spawn pose.
+    for (entity, transform) in &new_bones {
+        commands.entity(entity).insert(RestRotation(transform.rotation));
+    }
     for (rest, mut transform) in &mut bones {
         transform.rotation = rest.0;
     }
@@ -665,15 +689,15 @@ fn add_body_meshes(
     mut commands: Commands,
     mut assets: ResMut<BodyAssets>,
     mut meshes: ResMut<Assets<Mesh>>,
-    bodies: Query<(Entity, &BodyShape, &BodyIndex, &RagdollBodyOf), Added<BodyShape>>,
+    bodies: Query<(Entity, &BodyShape, &RagdollBodyOf), Added<BodyShape>>,
     characters: Query<&Character>,
 ) {
-    for (entity, shape, index, owner) in &bodies {
+    for (entity, shape, owner) in &bodies {
         let (mesh, transform) = assets
             .meshes
-            .entry(index.get())
+            .entry(format!("{:?}", shape.0))
             .or_insert_with(|| {
-                let (mesh, transform) = shape_mesh(shape.0);
+                let (mesh, transform) = shape.0.mesh();
                 (meshes.add(mesh), transform)
             })
             .clone();
@@ -686,28 +710,6 @@ fn add_body_meshes(
             transform,
             ChildOf(entity),
         ));
-    }
-}
-
-/// Returns a mesh for a collider shape and the mesh's transform in the body frame.
-fn shape_mesh(shape: ShapeSpec) -> (Mesh, Transform) {
-    match shape {
-        ShapeSpec::Capsule { a, b, radius } => (
-            Capsule3d::new(radius, a.distance(b)).into(),
-            Transform::from_translation((a + b) * 0.5)
-                .with_rotation(Quat::from_rotation_arc(Vec3::Y, (b - a).normalize_or(Vec3::Y))),
-        ),
-        ShapeSpec::Sphere { center, radius } => {
-            (Sphere::new(radius).into(), Transform::from_translation(center))
-        }
-        ShapeSpec::Cuboid {
-            center,
-            rotation,
-            half_extents,
-        } => (
-            Cuboid::from_size(half_extents * 2.0).into(),
-            Transform::from_translation(center).with_rotation(rotation),
-        ),
     }
 }
 

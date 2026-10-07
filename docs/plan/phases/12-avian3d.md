@@ -74,3 +74,79 @@ contract; the Rapier backend as the model to follow.
   Rapier versus Avian section per scenario, and the README states which
   backend is faster for which scenario, with the numbers.
 - `PLAN.md` marks phase 12 done.
+
+## Status (2026-10-07)
+
+`crates/bevy_ragdoll_avian3d` exists and passes the contract tier. The
+physics tier does not pass yet. Phase 12 is not done.
+
+Step 1: `avian3d` 0.7.0 is still the newest release and issue #934
+(spherical joint motors) is still open, so the plan continues on 0.7.0.
+
+Step 2 result (B5). `joint::tests::swing_limit_axis_is_as_documented_in_this_crate`
+pushes a child with a constant torque against a joint to a static parent.
+Avian 0.7 measures the swing cone around `twist_axis.any_orthonormal_vector()`,
+and its "twist" limit bounds rotation about that same vector. With
+`twist_axis = X` that vector is `+Y`. The adapter therefore sets
+`twist_axis = X`. The test shows that rotation about frame `+Y` stops at
+`twist.max`, rotation about `-Y` stops at `twist.min`, and rotation about X
+or Z stops at the swing cone. `revolute_limit_sign_matches_the_profile_x_range`
+shows that a `RevoluteJoint` with `hinge_axis = X` stops at the signed X
+range. `docs/plan/reference/physics-api.md` B5 still says "verify with a
+test"; it was outside this change's file scope.
+
+Deviations from the steps above:
+
+- Schedule: the adapter accepts the `RagdollPlugin` fixed schedule. Apps add
+  `PhysicsPlugins::new(FixedUpdate)`, so one binary can hold both adapters
+  (step 4 said `FixedPostUpdate`).
+- Capabilities: `has_native_joint_motors: false`,
+  `has_asymmetric_swing_limits: false`, `is_deterministic: false` (not
+  measured; the flag has no "same machine" value), `can_run_on_wasm: true`.
+- Joints: all-locked joints are `FixedJoint`; twist and Z locked joints are
+  `RevoluteJoint` with exact X limits but no native motor; other joints are
+  `SphericalJoint` with a cone at the largest X or Z extent. Every joint is
+  driven by the core stable-PD fallback. Step 7's per-joint
+  `JointDriveMode` was not added because it changes the core.
+- `BodyKind::Fixed` maps to `RigidBody::Kinematic` with zero velocity. Avian
+  0.7 panics ("Neither body ... is in an island") when a joint links two
+  static bodies, because static bodies have no island. The adapter keeps a
+  frozen body's `BodyPhysicsPose` and clears its velocity on readback.
+- `solver_iterations` maps to `SubstepCount`. `pgs_iterations`,
+  `max_substeps` and `threads` have no Avian equivalent.
+- Avian creates its collider-tree diagnostics in `Plugin::finish`. Apps that
+  call `App::run` get it; the conformance harness calls `App::update` only,
+  so `tests/conformance.rs` calls `app.finish()` and `app.cleanup()`.
+- `motors_hold_a_target_pose` is not run, because the adapter has no native
+  motors.
+
+Physics-tier cases that fail, with their measured values (all are
+`#[ignore]`d in `tests/conformance.rs`; none crashes or produces NaN):
+
+- `dropped_ragdoll_lands_and_settles`: sinks 2.9 cm (bound 1 cm); limit
+  overshoot 100 deg, 47 deg at rest (bounds 5 and 2 deg); joint gap 7.5 cm
+  at `upperarm_l` (bound 1 cm).
+- `hard_throw_keeps_joints_together`: sinks 5.4 cm (bound 2.5 cm); overshoot
+  68 deg (bound 20 deg); gap 7.8 cm at `calf_l` (bound 3 cm).
+- `same_input_gives_the_same_output`: the shared drop sinks 2.4 cm before
+  repeatability is compared.
+- `torque_drive_holds_a_target_pose`: `calf_l` ends at -89 deg.
+- `pinned_pelvis_stands_for_ten_seconds`: pelvis drifts 12.2 cm.
+- `headshot_drops_body_like_the_references`: `hand_l` goes 60 deg past its
+  X limit at 0.57 s.
+- `chest_hit_buckles_knees_and_stops`: pelvis rises 7.4 cm after landing.
+- `running_death_stops_within_a_body_length`,
+  `body_shot_onto_stairs_stays_on_them`: the body never rests.
+- `bullet_moves_downed_body_a_little`: a head hit moves the body 5.7 cm.
+- `pistol_to_the_chest_does_not_move_the_pelvis_far`: pelvis moves 54 cm.
+
+Step 10 tuning tried `SubstepCount` 8, 12 and 30 and `SolverConfig`
+(`contact_damping_ratio` 20, `contact_frequency_factor` 2.5,
+`max_overlap_solve_speed` 10). More substeps made the drop worse (30
+substeps: 4.6 cm sink, 11.8 cm gap, energy rising after contact in the
+throw). The joint gaps and limit overshoot point at the joint solve or the
+fallback torque, which still needs investigation.
+
+Not done: balance tests against Avian, the `step_avian3d` bench (the bench
+fixtures in `benches/benchmarks/support.rs` build Rapier apps only), the
+stress sweep, and example backend selection.

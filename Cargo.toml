@@ -13,20 +13,21 @@ repository.workspace = true
 bench = false
 
 [features]
-default = ["3d", "gltf", "serialize"]
+default = ["3d", "serialize", "debug"]
 3d = []
 2d = []
-gltf = ["serialize", "dep:serde_json"]
+# Shape meshes for physics bodies through `RagdollDebugPlugin`.
+debug = ["bevy/bevy_pbr"]
 serialize = ["dep:ron", "dep:serde", "bevy/serialize"]
 
 [dependencies]
 bevy = { workspace = true, features = ["std", "bevy_asset", "bevy_animation", "bevy_log"] }
 ron = { workspace = true, optional = true }
 serde = { workspace = true, optional = true }
-serde_json = { workspace = true, optional = true }
 thiserror.workspace = true
 
 [dev-dependencies]
+avian3d.workspace = true
 bevy = { workspace = true, features = [
     "std",
     "3d",
@@ -37,6 +38,7 @@ bevy = { workspace = true, features = [
     "png",
     "x11",
 ] }
+bevy_ragdoll_avian3d.workspace = true
 bevy_ragdoll_conformance.workspace = true
 bevy_ragdoll_rapier3d.workspace = true
 bevy_rapier3d = { workspace = true, features = ["dim3"] }
@@ -57,7 +59,6 @@ web-sys = { workspace = true, features = ["Location", "Window"] }
 
 [[example]]
 name = "showcase"
-required-features = ["serialize"]
 doc-scrape-examples = true
 
 [package.metadata.example.showcase]
@@ -68,12 +69,11 @@ wasm = true
 
 [[example]]
 name = "minimal"
-required-features = ["serialize"]
 doc-scrape-examples = true
 
 [package.metadata.example.minimal]
 name = "Minimal"
-description = "Drop the TGF human ragdoll and inspect its landing and joints."
+description = "Drop the reference humanoid ragdoll and inspect its landing and joints."
 category = "Basics"
 wasm = true
 
@@ -88,24 +88,12 @@ category = "Basics"
 wasm = true
 
 [[example]]
-name = "from_ron"
-required-features = ["serialize"]
+name = "from_gltf"
 doc-scrape-examples = true
 
-[package.metadata.example.from_ron]
-name = "From RON"
-description = "Load a validated human ragdoll profile from RON."
-category = "Basics"
-wasm = true
-
-[[example]]
-name = "from_gltf_skein"
-required-features = ["gltf"]
-doc-scrape-examples = true
-
-[package.metadata.example.from_gltf_skein]
-name = "From glTF Skein"
-description = "Import the TGF human rig and Skein body annotations from GLB."
+[package.metadata.example.from_gltf]
+name = "From glTF"
+description = "Generate ragdolls from skinned glTF creatures with no authored files."
 category = "Basics"
 wasm = true
 
@@ -131,7 +119,6 @@ wasm = true
 
 [[example]]
 name = "hit_reactions"
-required-features = ["gltf"]
 doc-scrape-examples = true
 
 [package.metadata.example.hit_reactions]
@@ -142,7 +129,6 @@ wasm = true
 
 [[example]]
 name = "partial_ragdoll"
-required-features = ["gltf"]
 doc-scrape-examples = true
 
 [package.metadata.example.partial_ragdoll]
@@ -171,7 +157,12 @@ workspace = true
 
 [workspace]
 resolver = "3"
-members = [".", "crates/bevy_ragdoll_conformance", "crates/bevy_ragdoll_rapier3d"]
+members = [
+    ".",
+    "crates/bevy_ragdoll_avian3d",
+    "crates/bevy_ragdoll_conformance",
+    "crates/bevy_ragdoll_rapier3d",
+]
 
 [workspace.package]
 version = "0.1.0-dev"
@@ -183,10 +174,12 @@ repository = "https://github.com/sagan-software/bevy-ragdoll"
 [workspace.dependencies]
 # Local crates
 bevy_ragdoll = { path = ".", version = "0.1.0-dev", default-features = false }
+bevy_ragdoll_avian3d = { path = "crates/bevy_ragdoll_avian3d", version = "0.1.0-dev" }
 bevy_ragdoll_conformance = { path = "crates/bevy_ragdoll_conformance", version = "0.1.0-dev" }
 bevy_ragdoll_rapier3d = { path = "crates/bevy_ragdoll_rapier3d", version = "0.1.0-dev" }
 
 # crates.io
+avian3d = { version = "=0.7.0", default-features = false }
 bevy = { version = "=0.19.1", default-features = false }
 bevy_rapier3d = { version = "=0.36.0", default-features = false }
 clap = { version = "4.6", features = ["derive"] }
@@ -207,14 +200,27 @@ unsafe_code = "forbid"
 [workspace.lints.clippy]
 missing_docs_in_private_items = "warn"
 
+# Bevy optimization profiles: https://bevy.org/learn/quick-start/getting-started/setup/
 [profile.dev]
 opt-level = 1
+debug = 1
 
 [profile.dev.package."*"]
 opt-level = 3
+
+[profile.release]
+codegen-units = 1
+lto = "thin"
+strip = "debuginfo"
+
+[profile.wasm-release]
+inherits = "release"
+opt-level = "s"
+strip = "debuginfo"
 
 [profile.stress-test]
 inherits = "release"
 lto = "fat"
 codegen-units = 1
 debug = "line-tables-only"
+strip = "none"

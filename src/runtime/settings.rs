@@ -1,8 +1,8 @@
-//! Shared physics and actuator parameters copied from the original TGF game
+//! Shared physics and actuator parameters copied from an earlier game project
 //! configuration.
 //!
 //! The runtime exposes these values to backends and uses motor, pin, and settle
-//! settings directly. Defaults preserve the TGF tuning where the project scope
+//! settings directly. Defaults preserve that tuning where the project scope
 //! requires parity, while every field remains editable before play. Values use
 //! SI units except dimensionless coefficients, counts, and frequencies;
 //! adapters should not silently reinterpret the documented units.
@@ -12,7 +12,7 @@ use bevy::prelude::Resource;
 
 /// Shared physics and drive tuning passed from the core runtime to a backend.
 ///
-/// Defaults mirror TGF's gravity, solver, damping, collision, motor, pin, and
+/// Defaults mirror that project's gravity, solver, damping, collision, motor, pin, and
 /// settling configuration. The core sanitizes selected force inputs, but
 /// backends remain responsible for validating values they pass to
 /// engine-specific APIs and for preserving the stated SI unit conventions.

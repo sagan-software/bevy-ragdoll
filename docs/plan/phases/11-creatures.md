@@ -30,10 +30,10 @@ section 9, [../reference/assets.md](../reference/assets.md) section 2.
    `ProfileSpec`-free code.
 4. Implement the generator steps 1 to 8 in `auto/` (one file per step
    group: `filter.rs`, `chains.rs`, `shapes.rs`, `roles.rs`, `limits.rs`).
-5. `Ragdoll::auto(AutoOptions)` generates at bind time and caches the
+5. `Ragdoll::default()` generates at bind time and caches the
    result as a `RagdollProfile` asset per glTF handle.
-6. Example `auto_profile` with `--save`, then hand-tune each creature
-   from the saved spec into `assets/creatures/<name>/<name>.ragdoll.ron`.
+6. Example `auto_profile`, then tune each creature with a short RON
+   overrides file, `assets/creatures/<name>/<name>.overrides.ron`.
    Tuning targets: lands and settles, legs fold naturally, tails do not
    flip through the body, powered idle holds the pose with mean joint
    error under 8 degrees.
@@ -44,8 +44,9 @@ section 9, [../reference/assets.md](../reference/assets.md) section 2.
 
 ## Tests
 
-- `tgf_human_auto_profile_is_reasonable`: 14 to 18 bodies, mass equals
-  the option, knees hinge backward.
+- `humanoid_auto_profile_is_reasonable` on `assets/rigs/humanoid.glb`
+  (UE5 mannequin names): 14 to 18 bodies, mass equals the option, knees
+  hinge backward.
 - `ual_human_auto_profile_is_reasonable`: same.
 - `ignored_bones_never_get_bodies`: twist, leaf, finger and IK bones.
 - `hinge_sign_follows_rest_bend`: a synthetic two-bone leg bent forward

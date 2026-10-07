@@ -33,12 +33,13 @@ impl Strength {
     }
 }
 
-/// The profile assigned to a character that can become a ragdoll.
+/// Marks a character whose descendants form a ragdoll skeleton.
 ///
-/// Inserting this component also inserts its mode, drive, blend, per-body
-/// strengths, and hit-history defaults when the character does not already
-/// have them.
-#[derive(Component, Clone, Debug, PartialEq, bevy::prelude::Reflect)]
+/// `Ragdoll::default()` generates the profile from the skeleton once its bones
+/// exist, for example after a glTF scene spawns. Inserting this component also
+/// inserts its mode, drive, blend, per-body strengths, and hit-history
+/// defaults when the character does not already have them.
+#[derive(Component, Clone, Debug, Default, PartialEq, bevy::prelude::Reflect)]
 #[require(
     RagdollMode,
     RagdollDrive,
@@ -47,51 +48,32 @@ impl Strength {
     super::hit::LastHit
 )]
 pub struct Ragdoll {
-    /// Validated body and joint data shared by every ragdoll using the rig.
-    profile: bevy::asset::Handle<RagdollProfile>,
+    /// Profile used for body creation. `None` generates one from the skeleton
+    /// and stores its handle here.
+    pub profile: Option<bevy::asset::Handle<RagdollProfile>>,
+    /// Total mass for a generated profile; `None` derives mass from volume.
+    pub mass: Option<crate::profile::Mass>,
+    /// Sparse overrides for a generated profile, usually a `.ragdoll.ron` file.
+    pub overrides: Option<bevy::asset::Handle<crate::auto::RagdollOverrides>>,
 }
 
 impl Ragdoll {
-    /// Associates an animated character with the validated profile asset used
-    /// for body creation.
-    ///
-    /// The component begins in `Animated` mode through Bevy's required
-    /// components and retains the asset handle until binding succeeds. Add the
-    /// profile to `Assets<RagdollProfile>` before the runtime attempts skeleton
-    /// binding.
+    /// Uses a prebuilt profile instead of generating one.
     ///
     /// # Examples
     ///
     /// ```
-    /// use bevy::asset::Handle; use bevy_ragdoll::profile::RagdollProfile; use
-    /// bevy_ragdoll::runtime::components::Ragdoll;
+    /// use bevy::asset::Handle;
+    /// use bevy_ragdoll::{Ragdoll, RagdollProfile};
     ///
     /// let ragdoll = Ragdoll::new(Handle::<RagdollProfile>::default());
-    /// let _profile_handle = ragdoll.profile();
+    /// assert!(ragdoll.profile.is_some());
     /// ```
     pub fn new(profile: bevy::asset::Handle<RagdollProfile>) -> Self {
-        Self { profile }
-    }
-
-    /// Returns the profile asset handle used for skeleton binding and body
-    /// construction.
-    ///
-    /// The borrowed handle preserves asset identity without cloning its
-    /// reference count. It may be unresolved while assets load, so callers
-    /// should wait for successful binding before assuming that body entities
-    /// have been created.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use bevy::asset::Handle; use bevy_ragdoll::profile::RagdollProfile; use
-    /// bevy_ragdoll::runtime::components::Ragdoll;
-    ///
-    /// let ragdoll = Ragdoll::new(Handle::<RagdollProfile>::default()); let
-    /// _profile_handle = ragdoll.profile();
-    /// ```
-    pub const fn profile(&self) -> &bevy::asset::Handle<RagdollProfile> {
-        &self.profile
+        Self {
+            profile: Some(profile),
+            ..Self::default()
+        }
     }
 }
 

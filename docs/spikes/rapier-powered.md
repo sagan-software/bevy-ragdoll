@@ -1,6 +1,6 @@
 # Rapier powered ragdoll spike
 
-The spike tested the TGF human profile with `bevy_rapier3d` at a fixed 60 Hz
+The spike tested the 16-body human profile with `bevy_rapier3d` at a fixed 60 Hz
 for 10 seconds (600 steps). Each ragdoll has 16 bodies and 15 joints. Runs
 used the 4 Hz natural frequency unless noted. The matrix compares Rapier's
 `AccelerationBased` joint motors with a torque controller, muscle strength,

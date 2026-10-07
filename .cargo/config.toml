@@ -1,0 +1,5 @@
+# Bevy fast-compile recommendations: https://bevy.org/learn/quick-start/getting-started/setup/
+# Linux uses mold through the Nix dev shell's RUSTFLAGS; Windows uses rust-lld.
+[target.x86_64-pc-windows-msvc]
+linker = "rust-lld.exe"
+rustdocflags = ["-Clinker=rust-lld.exe"]

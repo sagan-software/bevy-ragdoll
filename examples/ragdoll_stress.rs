@@ -22,9 +22,9 @@ use bevy::prelude::*;
 use bevy::time::TimeUpdateStrategy;
 use bevy::transform::TransformSystems;
 use bevy_ragdoll::runtime::body::{BodyPhysicsPose, BodyShape, BodyVelocity};
-use bevy_ragdoll::runtime::components::{Ragdoll, RagdollBodyOf, RagdollDrive, RagdollMode};
+use bevy_ragdoll::runtime::components::{RagdollBodyOf, RagdollDrive, RagdollMode};
 use bevy_ragdoll::runtime::sets::RagdollSystems;
-use bevy_ragdoll::{ProfileSpec, RagdollPlugin, RagdollProfile, ShapeSpec};
+use bevy_ragdoll::{Ragdoll, RagdollPlugin, Skeleton};
 use bevy_ragdoll_rapier3d::{RapierRagdollHooks, RapierRagdollPlugin};
 use bevy_rapier3d::plugin::{RapierPhysicsPlugin, TimestepMode};
 use bevy_rapier3d::prelude::{Collider, RigidBody};
@@ -124,8 +124,8 @@ impl Summary {
 struct Run {
     /// Command-line options.
     args: Args,
-    /// The ragdoll profile every character uses.
-    profile: RagdollProfile,
+    /// The skeleton every character uses; each `Ragdoll` generates its profile from it.
+    skeleton: Skeleton,
     /// Frame times in milliseconds after the warmup.
     frames: Vec<f64>,
     /// Fixed-step times in milliseconds after the warmup.
@@ -151,8 +151,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     #[cfg(not(target_arch = "wasm32"))]
     let args = Args::parse();
 
-    let spec: ProfileSpec = ron::from_str(include_str!("../assets/profiles/human.ragdoll.ron"))?;
-    let profile = RagdollProfile::new(spec)?;
     let step = Duration::from_secs_f64(1.0 / FIXED_HZ);
 
     let mut app = App::new();
@@ -174,7 +172,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     app.insert_resource(Run {
         args,
-        profile,
+        skeleton: Skeleton::humanoid(),
         frames: Vec::new(),
         steps: Vec::new(),
         frame_start: None,
@@ -205,17 +203,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 /// Spawns the floor and the ragdolls for the selected scenario.
-fn spawn_ragdolls(
-    mut commands: Commands,
-    mut profiles: ResMut<Assets<RagdollProfile>>,
-    run: Res<Run>,
-) {
+fn spawn_ragdolls(mut commands: Commands, run: Res<Run>) {
     commands.spawn((
         RigidBody::Fixed,
         Collider::cuboid(100.0, 0.1, 100.0),
         Transform::from_xyz(0.0, -0.1, 0.0),
     ));
-    let handle = profiles.add(run.profile.clone());
     let columns = (run.args.count as f32).sqrt().ceil() as u32;
     for index in 0..run.args.count {
         let position = match run.args.scenario {
@@ -234,49 +227,13 @@ fn spawn_ragdolls(
         };
         let character = commands
             .spawn((
-                Ragdoll::new(handle.clone()),
+                Ragdoll::default(),
                 RagdollMode::Dynamic,
                 RagdollDrive::new(0.0, 0.0),
                 Transform::from_translation(position).with_rotation(rotation),
             ))
             .id();
-        spawn_skeleton(&mut commands, character, &run.profile);
-    }
-}
-
-/// Spawns one named bone per profile body at its rest pose.
-///
-/// The runtime binds each profile body to the bone with the same `Name`.
-fn spawn_skeleton(commands: &mut Commands, character: Entity, profile: &RagdollProfile) {
-    let bodies = profile.bodies();
-    let mut parents = vec![None; bodies.len()];
-    for joint in profile.joints() {
-        parents[joint.child().get()] = Some(joint.parent().get());
-    }
-    // Profiles list parents before children, so each parent bone already exists.
-    let mut bones = Vec::with_capacity(bodies.len());
-    for (index, body) in bodies.iter().enumerate() {
-        let rest = body.rest();
-        let (parent, transform) = match parents[index] {
-            None => (
-                character,
-                Transform::from_translation(rest.translation.into()).with_rotation(rest.rotation),
-            ),
-            Some(parent) => {
-                let parent_rest = bodies[parent].rest();
-                let inverse = parent_rest.rotation.inverse();
-                let offset = inverse * (rest.translation - parent_rest.translation);
-                (
-                    bones[parent],
-                    Transform::from_translation(offset.into())
-                        .with_rotation(inverse * rest.rotation),
-                )
-            }
-        };
-        let bone = commands
-            .spawn((Name::new(body.bone().to_owned()), transform, ChildOf(parent)))
-            .id();
-        bones.push(bone);
+        run.skeleton.spawn(&mut commands, character);
     }
 }
 
@@ -381,26 +338,7 @@ fn add_body_meshes(
         .get_or_insert_with(|| materials.add(Color::srgb(0.9, 0.6, 0.35)))
         .clone();
     for (entity, shape) in &bodies {
-        let (mesh, transform): (Mesh, Transform) = match shape.0 {
-            ShapeSpec::Capsule { a, b, radius } => (
-                Capsule3d::new(radius, a.distance(b)).into(),
-                Transform::from_translation((a + b) * 0.5).with_rotation(Quat::from_rotation_arc(
-                    Vec3::Y,
-                    (b - a).normalize_or(Vec3::Y),
-                )),
-            ),
-            ShapeSpec::Sphere { center, radius } => {
-                (Sphere::new(radius).into(), Transform::from_translation(center))
-            }
-            ShapeSpec::Cuboid {
-                center,
-                rotation,
-                half_extents,
-            } => (
-                Cuboid::from_size(half_extents * 2.0).into(),
-                Transform::from_translation(center).with_rotation(rotation),
-            ),
-        };
+        let (mesh, transform) = shape.0.mesh();
         commands.entity(entity).insert(Visibility::Inherited);
         commands.spawn((
             Mesh3d(meshes.add(mesh)),

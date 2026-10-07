@@ -25,7 +25,7 @@ pub mod contract;
 pub mod mock;
 /// Reusable physical behavior checks shared by every physics backend.
 ///
-/// These checks build the TGF human profile, add backend-neutral scenario
+/// These checks build the human profile, add backend-neutral scenario
 /// settings, and ask the selected adapter to add fixed geometry. They measure
 /// body motion, joint limits, impacts, and settling through shared runtime
 /// components.

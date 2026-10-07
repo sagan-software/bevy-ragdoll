@@ -43,7 +43,8 @@ invalid timing values, missing matching configurations, and unstable bodies.
 
 `benches/bench_main.rs` runs the seeded profile, math, capture, writeback,
 plugin-build, and Rapier-step groups from `benches/benchmarks/`. The capture and writeback cases construct their app outside the timed
-iteration, bind the human skeleton, then time one Bevy update. Writeback starts
+iteration, bind the human skeleton, then time one Bevy update. The profile
+cases use a profile generated from the built-in reference humanoid skeleton. Writeback starts
 with distinct seeded previous and current physics poses. Rapier cases time 60
 fixed steps for limp, powered, and asleep populations.
 

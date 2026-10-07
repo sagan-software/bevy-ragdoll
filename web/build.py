@@ -23,6 +23,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 WEB = ROOT / "web"
 TARGET = "wasm32-unknown-unknown"
+PROFILE = "wasm-release"
+# Runtime assets; Bevy on the web fetches them from `assets/` beside the page.
+ASSET_DIRS = ["rigs"]
 # The showcase leads the gallery; other categories follow in Cargo.toml order.
 FEATURED_CATEGORY = "Showcase"
 
@@ -39,9 +42,8 @@ def build_wasm(names: list[str], out: Path) -> dict[str, int]:
     env = dict(os.environ)
     # The dev shell links native code with mold, which rust-lld rejects for wasm32.
     env["RUSTFLAGS"] = ""
-    # Release without debug info; wasm-opt then shrinks the bound module.
-    env["CARGO_PROFILE_RELEASE_DEBUG"] = "false"
-    command = ["cargo", "build", "--release", "--locked", "--target", TARGET]
+    # Cargo.toml's size-optimized profile; wasm-opt then shrinks the bound module further.
+    command = ["cargo", "build", "--profile", PROFILE, "--locked", "--target", TARGET]
     for name in names:
         command += ["--example", name]
     subprocess.run(command, cwd=ROOT, env=env, check=True)
@@ -52,7 +54,7 @@ def build_wasm(names: list[str], out: Path) -> dict[str, int]:
         """Generates the JS bindings for one example and optimizes its module."""
         page = out / "examples" / name
         page.mkdir(parents=True, exist_ok=True)
-        wasm = target_dir / TARGET / "release" / "examples" / f"{name}.wasm"
+        wasm = target_dir / TARGET / PROFILE / "examples" / f"{name}.wasm"
         subprocess.run(
             ["wasm-bindgen", "--target", "web", "--no-typescript", "--out-dir", page, "--out-name", name, wasm],
             check=True,
@@ -115,6 +117,8 @@ def write_site(examples: list[tuple[str, dict]], sizes: dict[str, int], out: Pat
         )
         (out / "examples" / name).mkdir(parents=True, exist_ok=True)
         (out / "examples" / name / "index.html").write_text(page)
+        for directory in ASSET_DIRS:
+            shutil.copytree(ROOT / "assets" / directory, out / "examples" / name / "assets" / directory, dirs_exist_ok=True)
 
 
 def main() -> None:

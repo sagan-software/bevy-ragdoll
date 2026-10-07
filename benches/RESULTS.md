@@ -57,9 +57,9 @@ three input sizes. Profile entries validate or parse the named profile.
 | Target | Input | Mean |
 |---|---:|---:|
 | Plugin build | Required core plugins | 420.930 µs |
-| Profile construction | TGF human, 16 bodies | 6.194 µs |
+| Profile construction | Human, 16 bodies | 6.194 µs |
 | Profile construction | Seeded chain, 64 bodies | 83.940 µs |
-| Profile RON parsing | TGF human, 16 bodies | 270.032 µs |
+| Profile RON parsing | Human, 16 bodies | 270.032 µs |
 | Joint angles | 1 | 63.967 ns |
 | Joint angles | 16 | 977.574 ns |
 | Joint angles | 1,024 | 63.018 µs |
