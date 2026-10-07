@@ -27,12 +27,18 @@ fn count(profile: &RagdollProfile, role: BodyRole) -> usize {
         .count()
 }
 
+/// Counts the bodies with each of `wanted`, in the same order.
+fn counts<const N: usize>(profile: &RagdollProfile, wanted: [BodyRole; N]) -> [usize; N] {
+    wanted.map(|role| count(profile, role))
+}
+
 /// The reference humanoid with every bone renamed through `rename`.
 fn renamed(rename: impl Fn(&str) -> String) -> Skeleton {
     let mut skeleton = Skeleton::humanoid();
-    for bone in &mut skeleton.bones {
-        bone.name = rename(&bone.name);
-    }
+    skeleton
+        .bones
+        .iter_mut()
+        .for_each(|bone| bone.name = rename(&bone.name));
     skeleton
 }
 
@@ -47,6 +53,7 @@ fn quadruped() -> Skeleton {
         ("tail_2", Some("tail_1"), Vec3::new(0.0, 0.64, -0.55)),
         ("tail_3", Some("tail_2"), Vec3::new(0.0, 0.66, -0.7)),
     ];
+    // Front legs hang from the chest and back legs from the hips.
     let legs: [(&str, &str, f32, f32); 4] = [
         ("leg_fl", "chest", 0.12, 0.3),
         ("leg_fr", "chest", -0.12, 0.3),
@@ -57,6 +64,7 @@ fn quadruped() -> Skeleton {
         .iter()
         .map(|(name, ..)| [1, 2, 3].map(|i| format!("{name}_{i}")))
         .collect::<Vec<_>>();
+    // Each leg bends slightly forward at the knee and ends on the ground.
     for ((_, parent, x, z), names) in legs.iter().zip(&names) {
         bones.push((&names[0], Some(*parent), Vec3::new(*x, 0.55, *z)));
         bones.push((&names[1], Some(&names[0]), Vec3::new(*x, 0.3, *z + 0.03)));
@@ -67,18 +75,18 @@ fn quadruped() -> Skeleton {
 
 /// A torso with seven radial three-segment legs, three raised arms and a head.
 fn alien() -> Skeleton {
-    let mut names = Vec::new();
-    for leg in 1..=7 {
-        names.push(["a", "b", "c"].map(|s| format!("leg_{leg}_{s}")));
-    }
-    for arm in 1..=3 {
-        names.push(["a", "b", "c"].map(|s| format!("arm_{arm}_{s}")));
-    }
+    // Seven leg chains come first, then three arm chains.
+    let limb = |kind: &str, number: usize| ["a", "b", "c"].map(|s| format!("{kind}_{number}_{s}"));
+    let names = (1..=7)
+        .map(|leg| limb("leg", leg))
+        .chain((1..=3).map(|arm| limb("arm", arm)))
+        .collect::<Vec<_>>();
     let mut bones = vec![
         ("torso", None, Vec3::new(0.0, 0.8, 0.0)),
         ("upper_torso", Some("torso"), Vec3::new(0.0, 1.1, 0.0)),
         ("head", Some("upper_torso"), Vec3::new(0.0, 1.4, 0.0)),
     ];
+    // Legs spread around the torso to the ground; arms rise from the upper torso.
     for (index, chain) in names.iter().enumerate() {
         let (parent, count, base_y) = if index < 7 {
             ("torso", 7.0, 0.8)
@@ -109,6 +117,7 @@ fn alien() -> Skeleton {
 
 #[test]
 fn reference_humanoid_gets_sixteen_named_bodies() {
+    // Clavicles, the neck and the balls merge into neighbouring bodies.
     let profile = generate(&Skeleton::humanoid());
     let bones = profile
         .bodies()
@@ -136,8 +145,7 @@ fn reference_humanoid_gets_sixteen_named_bodies() {
             "foot_r",
         ]
     );
-    assert!((profile.total_mass().kilograms() - 80.02).abs() < 1.0e-3);
-    assert_eq!(count(&profile, BodyRole::Calf), 2);
+    // The chest is the second spine bone, where the arms branch.
     assert_eq!(
         profile.body_with_role(BodyRole::Chest),
         profile.body_index("spine_02")
@@ -145,21 +153,30 @@ fn reference_humanoid_gets_sixteen_named_bodies() {
 }
 
 #[test]
+fn reference_humanoid_weighs_eighty_kilograms() {
+    let profile = generate(&Skeleton::humanoid());
+    assert!((profile.total_mass().kilograms() - 80.02).abs() < 1.0e-3);
+}
+
+#[test]
 fn knees_and_elbows_are_hinges_that_flex_in_opposite_directions() {
     let profile = generate(&Skeleton::humanoid());
     let joint = |bone: &str| *profile.joint_of(profile.body_index(bone).unwrap()).unwrap();
-    for bone in ["calf_l", "calf_r", "lowerarm_l", "lowerarm_r"] {
-        assert!(joint(bone).is_hinge(), "{bone} is a hinge");
-    }
+    // Every elbow and knee locks twist and side bend.
+    let hinges =
+        ["calf_l", "calf_r", "lowerarm_l", "lowerarm_r"].map(|bone| joint(bone).is_hinge());
+    assert_eq!(hinges, [true; 4]);
     // The knee flexes backward and the elbow forward, so world-space flex differs.
     let knee = joint("calf_l").limits();
     assert!(knee.x.min < -2.0 || knee.x.max > 2.0);
+    // Ball joints such as the hip keep a twist range.
     let hip = joint("thigh_l").limits();
     assert!(hip.twist.max > 0.0);
 }
 
 #[test]
 fn joint_torque_scales_with_total_mass() {
+    // Torque scales linearly, so doubling the mass doubles every joint torque.
     let light = generate(&Skeleton {
         mass: Mass::try_from(40.0).ok(),
         ..Skeleton::humanoid()
@@ -174,6 +191,7 @@ fn joint_torque_scales_with_total_mass() {
 
 #[test]
 fn humanoid_mass_follows_the_segment_table() {
+    // Without a requested total, only the table ratios are fixed.
     let profile = generate(&Skeleton {
         mass: None,
         ..Skeleton::humanoid()
@@ -188,51 +206,55 @@ fn humanoid_mass_follows_the_segment_table() {
 
 #[test]
 fn unnormalized_mass_comes_from_capsule_volume() {
+    // A non-humanoid without a total mass keeps the volume-derived mass.
     let profile = generate(&quadruped());
     let body = &profile.bodies()[profile.body_index("leg_fl_1").unwrap().get()];
     let ShapeSpec::Capsule { a, b, radius } = body.shape() else {
         panic!("generated bodies are capsules");
     };
+    // Capsule volume is a cylinder plus one sphere, at 985 kg/m^3.
     let volume = std::f32::consts::PI * radius * radius * (a.distance(*b) + 4.0 / 3.0 * radius);
     assert!((body.mass().kilograms() - volume * 985.0).abs() < 1.0e-3);
 }
 
 #[test]
 fn names_normalize_across_conventions() {
-    assert_eq!(
-        normalize("mixamorig:LeftForeArm"),
-        ("forearm".into(), Some(Side::Left))
-    );
-    assert_eq!(
-        normalize("mixamorig1_RightUpLeg"),
-        ("upleg".into(), Some(Side::Right))
-    );
-    assert_eq!(
-        normalize("DEF-upper_arm.L.001"),
-        ("upperarm".into(), Some(Side::Left))
-    );
-    assert_eq!(
-        normalize("Armature|thigh_r"),
-        ("thigh".into(), Some(Side::Right))
-    );
-    assert_eq!(normalize("l_hand"), ("hand".into(), Some(Side::Left)));
-    assert_eq!(
-        normalize("leftUpperArm"),
-        ("upperarm".into(), Some(Side::Left))
-    );
-    assert_eq!(normalize("spine_01"), ("spine".into(), None));
-    assert_eq!(normalize("l"), ("l".into(), None));
+    // Each case covers one prefix, separator or side convention.
+    let names = [
+        "mixamorig:LeftForeArm",
+        "mixamorig1_RightUpLeg",
+        "DEF-upper_arm.L.001",
+        "Armature|thigh_r",
+        "l_hand",
+        "leftUpperArm",
+        "spine_01",
+        "l",
+    ];
+    let expected = [
+        ("forearm", Some(Side::Left)),
+        ("upleg", Some(Side::Right)),
+        ("upperarm", Some(Side::Left)),
+        ("thigh", Some(Side::Right)),
+        ("hand", Some(Side::Left)),
+        ("upperarm", Some(Side::Left)),
+        ("spine", None),
+        ("l", None),
+    ]
+    .map(|(base, side)| (base.to_owned(), side));
+    assert_eq!(names.map(normalize), expected);
 }
 
 #[test]
 fn mixamo_leg_is_the_lower_leg_and_unsided_limbs_do_not_match() {
-    assert_eq!(
-        role_of("mixamorig:LeftLeg"),
-        Some((BodyRole::Calf, Some(Side::Left)))
-    );
-    assert_eq!(role_of("mixamorig:Hips"), Some((BodyRole::Pelvis, None)));
-    assert_eq!(role_of("leg"), None);
-    assert_eq!(role_of("HeadTop_End"), None);
+    // Limb aliases need a side; the hips and head do not.
+    let roles = ["mixamorig:LeftLeg", "mixamorig:Hips", "leg", "HeadTop_End"].map(role_of);
+    let expected = [
+        Some((BodyRole::Calf, Some(Side::Left))),
+        Some((BodyRole::Pelvis, None)),
+        None,
+        None,
+    ];
+    assert_eq!(roles, expected);
 }
 
 #[test]
@@ -288,17 +310,19 @@ fn every_convention_yields_the_same_humanoid_layout() {
         "calf_l" => "DEF-shin.L".to_owned(),
         other => format!("DEF-{}", other.replace("_l", ".L").replace("_r", ".R")),
     };
-    for skeleton in [renamed(mixamo), renamed(unity), renamed(rigify)] {
-        let generated = roles(&generate(&skeleton))
+    // Every convention must produce the reference role sequence.
+    let generated = [renamed(mixamo), renamed(unity), renamed(rigify)].map(|skeleton| {
+        roles(&generate(&skeleton))
             .into_iter()
             .map(|(_, role)| role)
-            .collect::<Vec<_>>();
-        assert_eq!(generated, reference);
-    }
+            .collect::<Vec<_>>()
+    });
+    assert_eq!(generated, [reference.clone(), reference.clone(), reference]);
 }
 
 #[test]
 fn a_missing_limb_falls_back_to_topology() {
+    // Without a right hand the preset fails, and topology still finds the limbs.
     let skeleton = renamed(|name| name.replace("hand_r", "paw"));
     let profile = generate(&skeleton);
     assert_eq!(profile.bodies()[0].role(), BodyRole::Pelvis);
@@ -306,20 +330,23 @@ fn a_missing_limb_falls_back_to_topology() {
         profile.body_index("clavicle_l").is_some(),
         "topology keeps clavicles"
     );
-    assert_eq!(count(&profile, BodyRole::Thigh), 2);
-    assert_eq!(count(&profile, BodyRole::UpperArm), 2);
-    assert_eq!(count(&profile, BodyRole::Head), 1);
+    let wanted = [BodyRole::Thigh, BodyRole::UpperArm, BodyRole::Head];
+    assert_eq!(counts(&profile, wanted), [2, 2, 1]);
 }
 
 #[test]
 fn quadruped_gets_four_legs_a_head_and_a_tail() {
+    // Ground contact makes legs; the backward chain makes a tail.
     let profile = generate(&quadruped());
-    assert_eq!(count(&profile, BodyRole::Thigh), 4);
-    assert_eq!(count(&profile, BodyRole::Calf), 4);
-    assert_eq!(count(&profile, BodyRole::Foot), 4);
-    assert_eq!(count(&profile, BodyRole::Tail), 3);
-    assert_eq!(count(&profile, BodyRole::Neck), 1);
-    assert_eq!(count(&profile, BodyRole::Head), 1);
+    let wanted = [
+        BodyRole::Thigh,
+        BodyRole::Calf,
+        BodyRole::Foot,
+        BodyRole::Tail,
+        BodyRole::Neck,
+        BodyRole::Head,
+    ];
+    assert_eq!(counts(&profile, wanted), [4, 4, 4, 3, 1, 1]);
     assert_eq!(
         profile.bodies()[profile.body_index("chest").unwrap().get()].role(),
         BodyRole::Chest
@@ -328,13 +355,17 @@ fn quadruped_gets_four_legs_a_head_and_a_tail() {
 
 #[test]
 fn alien_gets_seven_legs_three_arms_and_a_head() {
+    // Three torso bodies plus ten three-segment limbs.
     let profile = generate(&alien());
     assert_eq!(profile.bodies().len(), 3 + 30);
-    assert_eq!(count(&profile, BodyRole::Thigh), 7);
-    assert_eq!(count(&profile, BodyRole::Foot), 7);
-    assert_eq!(count(&profile, BodyRole::UpperArm), 3);
-    assert_eq!(count(&profile, BodyRole::Hand), 3);
-    assert_eq!(count(&profile, BodyRole::Head), 1);
+    let wanted = [
+        BodyRole::Thigh,
+        BodyRole::Foot,
+        BodyRole::UpperArm,
+        BodyRole::Hand,
+        BodyRole::Head,
+    ];
+    assert_eq!(counts(&profile, wanted), [7, 7, 3, 3, 1]);
 }
 
 #[test]
