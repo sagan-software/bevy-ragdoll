@@ -93,8 +93,10 @@ fn alien() -> Skeleton {
         } else {
             ("upper_torso", 3.0, 1.2)
         };
+        // Spread each group of chains evenly around the vertical axis.
         let angle = float(index) / count * std::f32::consts::TAU;
         let out = Vec3::new(angle.cos(), 0.0, angle.sin());
+        // Legs rise to a knee and end on the ground; arms keep rising outward.
         let points = if index < 7 {
             [
                 out * 0.15 + Vec3::Y * base_y,
@@ -108,6 +110,7 @@ fn alien() -> Skeleton {
                 out * 0.5 + Vec3::Y * 1.6,
             ]
         };
+        // Link base, middle and tip in parent-first order.
         bones.push((&chain[0], Some(parent), points[0]));
         bones.push((&chain[1], Some(&chain[0]), points[1]));
         bones.push((&chain[2], Some(&chain[1]), points[2]));
@@ -347,6 +350,7 @@ fn a_missing_limb_falls_back_to_topology() {
     // Without a right hand the preset fails, and topology still finds the limbs.
     let skeleton = renamed(|name| name.replace("hand_r", "paw"));
     let profile = generate(&skeleton);
+    // The root still becomes the core, and short clavicles keep their bodies.
     assert_eq!(profile.bodies()[0].role(), BodyRole::Pelvis);
     assert!(
         profile.body_index("clavicle_l").is_some(),
@@ -578,6 +582,7 @@ fn body_overrides_skip_and_force_bodies() {
     );
     let neck = skeleton.bone_index("neck_01").unwrap();
     skeleton.bones[neck].overrides.body = BoneBody::Body;
+    // The hand body disappears and the neck body appears in its place.
     let profile = generate(&skeleton);
     let present = ["hand_l", "neck_01"].map(|bone| profile.body_index(bone).is_some());
     assert_eq!(present, [false, true]);
@@ -625,6 +630,7 @@ fn merge_override_removes_a_topology_body() {
     let neck = skeleton.bone_index("neck").unwrap();
     skeleton.bones[neck].overrides.body = BoneBody::Merge;
     let profile = generate(&skeleton);
+    // The head role survives because the skull still continues the spine.
     assert!(profile.body_index("neck").is_none());
     assert_eq!(count(&profile, BodyRole::Head), 1);
 }

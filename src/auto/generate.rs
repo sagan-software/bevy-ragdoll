@@ -571,6 +571,7 @@ impl<'a> Rig<'a> {
         if !(scale.is_finite() && scale > 0.0) {
             return;
         }
+        // Apply the same factor to every automatic mass so their ratios hold.
         for (index, body) in bodies.iter_mut().enumerate() {
             if explicit(index).is_none() {
                 body.mass *= scale;
@@ -954,6 +955,7 @@ impl BodyTree {
             members.extend(self.children[body].iter().map(|child| (*child, depth + 1)));
             next += 1;
         }
+        // `start` is first, so callers can treat index zero as the chain base.
         members
     }
 

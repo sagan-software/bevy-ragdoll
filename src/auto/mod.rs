@@ -107,7 +107,7 @@ impl Skeleton {
     }
 
     /// Returns the index of the bone named `name` in [`Skeleton::bones`], or
-    /// `None` when no bone has that exact, case-sensitive name.
+    /// `None` when no bone in this skeleton has that exact, case-sensitive name.
     ///
     /// # Examples
     ///

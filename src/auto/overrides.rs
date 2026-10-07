@@ -41,8 +41,8 @@ pub enum BoneBody {
     serde(default, deny_unknown_fields)
 )]
 pub struct RagdollBone {
-    /// Whether this bone gets a body, merges into its parent body, or is
-    /// skipped together with its descendants; see [`BoneBody`].
+    /// Whether this bone gets its own body, merges into its parent body, or is
+    /// skipped together with all its descendants; see [`BoneBody`].
     pub body: BoneBody,
     /// Role used by hit reactions and recovery order. `None` keeps the role
     /// that the generator derives from the bone name and the skeleton topology.
@@ -83,11 +83,11 @@ pub struct RagdollBone {
     serde(default, deny_unknown_fields)
 )]
 pub struct RagdollOverrides {
-    /// Total ragdoll mass in kilograms. `None` keeps the skeleton's mass,
+    /// Total ragdoll mass in kilograms. `None` keeps the skeleton's own mass,
     /// which defaults to the sum of the volume-derived body masses.
     pub mass: Option<f32>,
     /// Overrides keyed by exact bone name or by a `prefix*` pattern. The
-    /// [`RagdollOverrides::get`] method resolves which key applies to each bone.
+    /// [`RagdollOverrides::get`] method resolves which single key applies to each bone.
     pub bones: BTreeMap<String, RagdollBone>,
 }
 
@@ -126,9 +126,9 @@ impl RagdollOverrides {
 
 /// Loads [`RagdollOverrides`] from `.ragdoll.ron` files.
 ///
-/// [`crate::RagdollPlugin`] registers this loader, so `AssetServer::load`
-/// returns a [`RagdollOverrides`] handle for any asset path that ends in
-/// `.ragdoll.ron`.
+/// [`crate::RagdollPlugin`] registers this loader when the `serialize`
+/// feature is enabled, so `AssetServer::load` returns a [`RagdollOverrides`]
+/// handle for any asset path that ends in `.ragdoll.ron`.
 #[cfg(feature = "serialize")]
 #[derive(Clone, Copy, Debug, Default, bevy::reflect::TypePath)]
 pub struct RagdollOverridesLoader;
