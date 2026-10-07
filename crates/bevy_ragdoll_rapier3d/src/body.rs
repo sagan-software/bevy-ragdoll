@@ -526,6 +526,7 @@ mod tests {
             apply_body_kinds_and_sleeping(bodies, drivers, settings);
             apply_kinematic_targets(roots, targets);
         }
+        // Flush the deferred sleep and transform changes into the world.
         system.apply(world);
     }
 
