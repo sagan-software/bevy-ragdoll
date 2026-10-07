@@ -524,6 +524,7 @@ fn add_showcase_systems(app: &mut App) {
             setup_assets,
             load_rigs,
             spawn_panel,
+            spawn_hints,
         ),
     )
     .add_systems(
@@ -871,38 +872,51 @@ fn spawn_panel(
         MetricsText,
         ChildOf(panel),
     ));
-    // One stepper row per tunable parameter.
+    // One stepper row per tunable parameter, then backends, then actions.
     for param in Param::ALL {
-        let row = commands.spawn((row_node(), ChildOf(panel))).id();
-        commands.spawn((
-            text(param.label(), 14.0, Color::WHITE),
-            Node {
-                flex_grow: 1.0,
-                ..default()
-            },
-            ChildOf(row),
-        ));
-        button(
-            commands.reborrow(),
-            row,
-            "-",
-            Action::Step(param, -1),
-            false,
-        );
-        commands.spawn((
-            text(&param.value(&params), 14.0, Color::WHITE),
-            Node {
-                width: px(100),
-                justify_content: JustifyContent::Center,
-                ..default()
-            },
-            TextLayout::justify(Justify::Center),
-            ParamValue(param),
-            ChildOf(row),
-        ));
-        button(commands.reborrow(), row, "+", Action::Step(param, 1), false);
+        spawn_param_row(commands.reborrow(), panel, param, &params);
     }
-    // Backend buttons; choosing another one restarts the app.
+    spawn_backend_row(commands.reborrow(), panel, backend.0);
+    let row = commands.spawn((row_node(), ChildOf(panel))).id();
+    button(commands.reborrow(), row, "Explode", Action::Explode, false);
+    button(commands.reborrow(), row, "Reset", Action::Reset, false);
+}
+
+/// Spawns one `label  -  value  +` stepper row for `param` in `panel`.
+fn spawn_param_row(mut commands: Commands<'_, '_>, panel: Entity, param: Param, params: &Params) {
+    let row = commands.spawn((row_node(), ChildOf(panel))).id();
+    commands.spawn((
+        text(param.label(), 14.0, Color::WHITE),
+        Node {
+            flex_grow: 1.0,
+            ..default()
+        },
+        ChildOf(row),
+    ));
+    // The value sits between its buttons in a fixed-width, centered column.
+    button(
+        commands.reborrow(),
+        row,
+        "-",
+        Action::Step(param, -1),
+        false,
+    );
+    commands.spawn((
+        text(&param.value(params), 14.0, Color::WHITE),
+        Node {
+            width: px(100),
+            justify_content: JustifyContent::Center,
+            ..default()
+        },
+        TextLayout::justify(Justify::Center),
+        ParamValue(param),
+        ChildOf(row),
+    ));
+    button(commands.reborrow(), row, "+", Action::Step(param, 1), false);
+}
+
+/// Spawns the backend row; choosing a backend other than `active` restarts the app.
+fn spawn_backend_row(mut commands: Commands<'_, '_>, panel: Entity, active: Backend) {
     let row = commands.spawn((row_node(), ChildOf(panel))).id();
     commands.spawn((
         text("Backend", 14.0, Color::WHITE),
@@ -912,8 +926,9 @@ fn spawn_panel(
         },
         ChildOf(row),
     ));
+    // The running backend is highlighted.
     for option in Backend::ALL {
-        let is_selected = option == backend.0;
+        let is_selected = option == active;
         button(
             commands.reborrow(),
             row,
@@ -922,11 +937,10 @@ fn spawn_panel(
             is_selected,
         );
     }
-    let row = commands.spawn((row_node(), ChildOf(panel))).id();
-    button(commands.reborrow(), row, "Explode", Action::Explode, false);
-    button(commands.reborrow(), row, "Reset", Action::Reset, false);
+}
 
-    // Control hints stay at the bottom-left, outside the panel.
+/// Spawns the control hints at the bottom-left, outside the panel.
+fn spawn_hints(mut commands: Commands<'_, '_>) {
     commands.spawn((
         text(
             "Drag: throw   Click: hit   Right-drag: orbit   Wheel: zoom",
