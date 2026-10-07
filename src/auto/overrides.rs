@@ -45,19 +45,19 @@ pub struct RagdollBone {
     /// skipped together with its descendants; see [`BoneBody`].
     pub body: BoneBody,
     /// Role used by hit reactions and recovery order. `None` keeps the role
-    /// that the generator derives from the bone name and topology.
+    /// that the generator derives from the bone name and the skeleton topology.
     pub role: Option<BodyRole>,
     /// Body mass in kilograms. The generator keeps this mass when it scales
     /// the other bodies to reach the total ragdoll mass.
     pub mass: Option<f32>,
     /// Capsule radius in metres. `None` keeps the radius that the generator
-    /// derives from the body role and segment length.
+    /// derives from the body role, the segment length and the skeleton size.
     pub radius: Option<f32>,
     /// Limits of the joint between this body and its parent body, in
     /// radians. `None` keeps the generated limits for the body role.
     pub limits: Option<JointLimits>,
     /// Maximum motor torque of that joint in newton metres. `None` keeps the
-    /// role torque scaled by the total ragdoll mass.
+    /// template torque for the body role, scaled by the total ragdoll mass.
     pub max_torque: Option<f32>,
 }
 
@@ -83,11 +83,11 @@ pub struct RagdollBone {
     serde(default, deny_unknown_fields)
 )]
 pub struct RagdollOverrides {
-    /// Total ragdoll mass in kilograms. `None` keeps the mass that the
-    /// generator estimates from the skeleton height.
+    /// Total ragdoll mass in kilograms. `None` keeps the skeleton's mass,
+    /// which defaults to the sum of the volume-derived body masses.
     pub mass: Option<f32>,
     /// Overrides keyed by exact bone name or by a `prefix*` pattern. The
-    /// [`RagdollOverrides::get`] method resolves which key applies.
+    /// [`RagdollOverrides::get`] method resolves which key applies to each bone.
     pub bones: BTreeMap<String, RagdollBone>,
 }
 
@@ -127,7 +127,8 @@ impl RagdollOverrides {
 /// Loads [`RagdollOverrides`] from `.ragdoll.ron` files.
 ///
 /// [`crate::RagdollPlugin`] registers this loader, so `AssetServer::load`
-/// returns overrides for any path that ends in `.ragdoll.ron`.
+/// returns a [`RagdollOverrides`] handle for any asset path that ends in
+/// `.ragdoll.ron`.
 #[cfg(feature = "serialize")]
 #[derive(Clone, Copy, Debug, Default, bevy::reflect::TypePath)]
 pub struct RagdollOverridesLoader;
@@ -140,10 +141,10 @@ pub struct RagdollOverridesLoader;
 #[derive(Debug, thiserror::Error)]
 pub enum RagdollOverridesLoaderError {
     /// The asset reader failed before all bytes of the overrides file were
-    /// read; the source carries the I/O error.
+    /// read; the error source carries the underlying I/O error.
     #[error("could not read ragdoll overrides: {0}")]
     Io(#[from] std::io::Error),
-    /// The bytes are not valid overrides RON; the source carries the
+    /// The bytes are not valid overrides RON; the error source carries the
     /// position and reason reported by the RON parser.
     #[error("could not parse ragdoll overrides: {0}")]
     Ron(#[from] ron::error::SpannedError),

@@ -163,6 +163,7 @@ impl<'a> Rig<'a> {
             .iter()
             .map(|bone| Vec3::from(bone.rest.translation))
             .collect::<Vec<_>>();
+        // Fold the bounding box of the eligible heads.
         let (min, max) = heads
             .iter()
             .zip(&eligible)
@@ -591,6 +592,7 @@ impl<'a> Rig<'a> {
         let source = &self.skeleton.bones[tree.bones[child]];
         let parent_rest = self.skeleton.bones[tree.bones[parent]].rest;
         let role = roles[child];
+        // Overrides replace generated limits and torque; the frame always comes from rest poses.
         let template = Template::of(role);
         // The basis puts the twist axis on the bone, whatever the rig's bone axis.
         let along = segments[child].direction();
@@ -662,6 +664,7 @@ impl<'a> Rig<'a> {
 /// mannequin with bones along local X, get the quarter or half turn that maps
 /// Y onto the signed local axis nearest `along`.
 pub(super) fn twist_basis(along: Vec3) -> Quat {
+    // +Y comes first so a tie keeps the Blender convention and identity.
     let axes = [
         Vec3::Y,
         Vec3::X,
@@ -680,6 +683,8 @@ pub(super) fn twist_basis(along: Vec3) -> Quat {
             }
         })
         .unwrap_or(Vec3::Y);
+    // `from_rotation_arc` has no unique answer for opposite vectors, so -Y gets
+    // an explicit half turn about Z.
     if nearest == Vec3::Y {
         Quat::IDENTITY
     } else if nearest == Vec3::NEG_Y {
@@ -869,6 +874,7 @@ impl BodyTree {
     fn new(rig: &Rig<'_>, selected: Vec<usize>) -> Self {
         // Assign every bone to a body before choosing among several roots.
         let owner = Self::owners(rig, &selected);
+        // A body's parent body is whichever body owns its parent bone.
         let parent_body = |bone: usize| rig.parents[bone].and_then(|parent| owner[parent]);
         // Count descendants per root to choose the single root.
         let roots = selected
@@ -901,6 +907,7 @@ impl BodyTree {
             .iter()
             .map(|bone| rig.parents[*bone].and_then(|parent| owner[parent]))
             .collect::<Vec<_>>();
+        // Children lists let later stages walk subtrees top-down.
         let mut children = vec![Vec::new(); kept.len()];
         parents
             .iter()
@@ -920,6 +927,7 @@ impl BodyTree {
     /// A body bone owns itself. An eligible bone joins its parent's owner, and
     /// an ineligible bone has no owner.
     fn owners(rig: &Rig<'_>, bodies: &[usize]) -> Vec<Option<usize>> {
+        // Map each body bone to its body index first.
         let count = rig.skeleton.bones.len();
         let mut body_of = vec![None; count];
         for (body, bone) in bodies.iter().enumerate() {

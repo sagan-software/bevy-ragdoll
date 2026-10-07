@@ -89,6 +89,7 @@ impl Skeleton {
     pub fn from_positions<'a>(
         bones: impl IntoIterator<Item = (&'a str, Option<&'a str>, Vec3)>,
     ) -> Self {
+        // Bones start unrotated; orient_bones aims them once all heads are known.
         let mut skeleton = Self::default();
         for (name, parent, position) in bones {
             // Resolve the parent among bones already pushed, keeping parent-first order.
@@ -106,7 +107,7 @@ impl Skeleton {
     }
 
     /// Returns the index of the bone named `name` in [`Skeleton::bones`], or
-    /// `None` when no bone has that exact name.
+    /// `None` when no bone has that exact, case-sensitive name.
     ///
     /// # Examples
     ///

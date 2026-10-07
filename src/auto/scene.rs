@@ -27,6 +27,7 @@ pub(crate) fn skeleton_from_world(
     let is_bone = |entity: Entity| {
         world.get::<Name>(entity).is_some() && (joints.is_empty() || joints.contains(&entity))
     };
+    // `bone_of` maps each listed entity to its nearest bone, itself included.
     let mut bone_of = vec![None; order.len()];
     let mut skeleton = Skeleton::default();
     for (index, (entity, pose, parent)) in order.iter().enumerate() {

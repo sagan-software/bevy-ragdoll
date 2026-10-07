@@ -57,11 +57,13 @@ fn strip_prefixes(name: &str) -> (String, Option<Side>) {
         let rest = rest.trim_start_matches(|c: char| c.is_ascii_digit());
         lower = rest.trim_start_matches('_').to_owned();
     }
-    for prefix in ["def-", "def_", "def."] {
-        if let Some(rest) = lower.strip_prefix(prefix) {
-            lower = rest.to_owned();
-        }
+    if let Some(rest) = ["def-", "def_", "def."]
+        .into_iter()
+        .find_map(|prefix| lower.strip_prefix(prefix))
+    {
+        lower = rest.to_owned();
     }
+    // `left` and `right` only count as a whole leading word, so `leg` stays intact.
     let mut side = None;
     // Whole-word side prefixes such as `LeftUpperArm` or `leftUpperArm`.
     for (word, marker) in [("left", Side::Left), ("right", Side::Right)] {
@@ -74,8 +76,8 @@ fn strip_prefixes(name: &str) -> (String, Option<Side>) {
 }
 
 /// Returns whether `token` is a segment number such as `01` or `001`.
-fn is_number(token: &str) -> bool {
-    token.chars().all(|c| c.is_ascii_digit())
+fn is_number(part: &str) -> bool {
+    part.chars().all(|c| c.is_ascii_digit())
 }
 
 /// Removes a side token at either end (`hand_l`, `thigh.R`, `l_hand`).
@@ -84,6 +86,7 @@ fn is_number(token: &str) -> bool {
 fn strip_side_token(tokens: &mut Vec<&str>) -> Option<Side> {
     // The last token is checked first because suffixes are the common form.
     for index in [tokens.len().wrapping_sub(1), 0] {
+        // Only single-letter or whole-word markers count, so `leg` is not a side.
         let marker = match tokens.get(index).copied() {
             Some("l" | "left") => Some(Side::Left),
             Some("r" | "right") => Some(Side::Right),
@@ -142,11 +145,13 @@ impl Bones<'_> {
 
     /// Returns the path from `bone` up to its root, starting with `bone`.
     fn ancestry(&self, mut bone: usize) -> Vec<usize> {
+        // Parents precede children, so the walk always ends at a root.
         let mut path = vec![bone];
         while let Some(parent) = self.parents[bone] {
             path.push(parent);
             bone = parent;
         }
+        // The path is ordered bone-first, which common_ancestor relies on.
         path
     }
 
@@ -178,6 +183,7 @@ pub(super) fn detect(bones: &Bones<'_>) -> Option<Vec<(usize, BodyRole)>> {
             found.push((key, index));
         }
     }
+    // Look up the first matching bone for a role and side.
     let get = |role, side| {
         found
             .iter()
@@ -187,6 +193,7 @@ pub(super) fn detect(bones: &Bones<'_>) -> Option<Vec<(usize, BodyRole)>> {
     // All four limbs must match before the torso is located from them.
     let limbs = limbs(bones, get)?;
     let mut slots = torso(bones, get, &limbs)?;
+    // Parent-first bone order is the body order the generator expects.
     slots.extend(limbs);
     slots.sort_by_key(|(bone, _)| *bone);
     Some(slots)
@@ -197,12 +204,14 @@ fn limbs(
     bones: &Bones<'_>,
     get: impl Fn(BodyRole, Option<Side>) -> Option<usize>,
 ) -> Option<Vec<(usize, BodyRole)>> {
+    // Two sides with an arm chain and a leg chain each give twelve slots.
     let mut limbs = Vec::with_capacity(12);
     for side in [Side::Left, Side::Right] {
         for chain in [
             [BodyRole::UpperArm, BodyRole::LowerArm, BodyRole::Hand],
             [BodyRole::Thigh, BodyRole::Calf, BodyRole::Foot],
         ] {
+            // A missing segment anywhere means the rig is not a full humanoid.
             let [first, second, third] = chain.map(|role| get(role, Some(side)));
             let (first, second, third) = (first?, second?, third?);
             // Each limb segment must descend from the previous one.
@@ -234,6 +243,7 @@ fn torso(
     if !bones.is_ancestor(hips, chest) || !bones.is_ancestor(chest, head) {
         return None;
     }
+    // Slots are pushed proximal first; `detect` sorts them by bone afterwards.
     let mut slots = vec![(hips, BodyRole::Pelvis)];
     if chest != hips {
         // The spine body is the middle eligible bone strictly between hips and chest.
