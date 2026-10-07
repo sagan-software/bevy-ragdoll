@@ -30,6 +30,7 @@ impl AngleRange {
     /// let locked = AngleRange { min: 0.0, max: 0.0 };
     /// assert!(locked.is_locked());
     /// ```
+    #[must_use]
     pub const fn is_locked(self) -> bool {
         self.min == 0.0 && self.max == 0.0
     }
@@ -47,6 +48,7 @@ impl AngleRange {
     /// let range = AngleRange { min: -0.5, max: 0.5 };
     /// assert!(range.is_angle_within_range(0.25));
     /// ```
+    #[must_use]
     pub fn is_angle_within_range(self, angle: f32) -> bool {
         self.min <= angle && angle <= self.max
     }
@@ -89,6 +91,7 @@ impl JointLimits {
     /// let limits = JointLimits { x: AngleRange { min: -1.0, max: 1.0 }, twist: locked, z: locked };
     /// assert!(limits.is_hinge());
     /// ```
+    #[must_use]
     pub const fn is_hinge(self) -> bool {
         self.twist.is_locked() && self.z.is_locked()
     }

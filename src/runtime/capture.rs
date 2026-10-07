@@ -77,8 +77,7 @@ pub(crate) fn capture_poses(world: &World, map: &SkeletonMap) -> Vec<Isometry3d>
         let affine = bone
             .parent
             .and_then(|parent| skeleton_affines.get(parent).copied())
-            .map(|parent| parent * local)
-            .unwrap_or(local);
+            .map_or(local, |parent| parent * local);
         skeleton_affines.push(affine);
     }
 

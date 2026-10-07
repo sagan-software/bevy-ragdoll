@@ -108,7 +108,6 @@ fn explicit_profile_roles_override_bone_name_hints() {
     assert_eq!(profile.bodies()[0].role(), BodyRole::Tail);
 }
 
-
 /// Creates the core and mock backend with one fixed step per app update.
 fn app() -> App {
     let mut app = App::new();
@@ -126,7 +125,7 @@ fn app() -> App {
 }
 
 /// Builds a two-body pelvis and spine profile for one hit behavior check.
-fn two_body_profile() -> bevy_ragdoll::RagdollProfile {
+fn two_body_profile() -> RagdollProfile {
     let shape = ShapeSpec::Sphere {
         center: Vec3::ZERO,
         radius: 0.1,
@@ -170,7 +169,7 @@ fn body_at_index(world: &mut bevy::prelude::World, character: Entity, index: usi
 fn spawn_two_body_character(app: &mut App) -> Entity {
     let profile = app
         .world_mut()
-        .resource_mut::<Assets<bevy_ragdoll::RagdollProfile>>()
+        .resource_mut::<Assets<RagdollProfile>>()
         .add(two_body_profile());
     let character = app
         .world_mut()
@@ -623,7 +622,7 @@ fn a_hit_reduces_the_hit_body_muscle_weight() {
     let mut app = app();
     let profile = app
         .world_mut()
-        .resource_mut::<Assets<bevy_ragdoll::RagdollProfile>>()
+        .resource_mut::<Assets<RagdollProfile>>()
         .add(two_body_profile());
     let character = app
         .world_mut()

@@ -204,7 +204,7 @@ fn binding_waits_for_a_profile_asset_to_load() {
             .get::<bevy_ragdoll::runtime::RagdollError>(character)
             .is_none()
     );
-    assert!(body_entities(app.world_mut(), character).is_empty());
+    assert_eq!(body_entities(app.world_mut(), character), []);
 }
 
 #[test]
@@ -230,7 +230,7 @@ fn binding_waits_for_skeleton_descendants() {
             .get::<bevy_ragdoll::runtime::RagdollError>(character)
             .is_none()
     );
-    assert!(body_entities(app.world_mut(), character).is_empty());
+    assert_eq!(body_entities(app.world_mut(), character), []);
 }
 
 #[test]
@@ -264,7 +264,7 @@ fn animated_mode_has_no_body_entities() {
 
     app.update();
 
-    assert!(body_entities(app.world_mut(), character).is_empty());
+    assert_eq!(body_entities(app.world_mut(), character), []);
 }
 
 #[test]
@@ -333,7 +333,7 @@ fn returning_to_animated_despawns_bodies() {
         .insert(RagdollMode::Animated);
     app.update();
 
-    assert!(body_entities(app.world_mut(), character).is_empty());
+    assert_eq!(body_entities(app.world_mut(), character), []);
 }
 
 #[test]
@@ -541,7 +541,7 @@ fn budget_freezes_the_oldest_and_triggers_one_event() {
     let evictions = Arc::new(AtomicUsize::new(0));
     let count = Arc::clone(&evictions);
     app.world_mut().entity_mut(first).observe(
-        move |_event: bevy::ecs::observer::On<RagdollBudgetEvicted>| {
+        move |_event: bevy::ecs::observer::On<'_, '_, RagdollBudgetEvicted>| {
             count.fetch_add(1, Ordering::Relaxed);
         },
     );
@@ -587,7 +587,7 @@ fn limp_dynamic_ragdolls_settle_once_and_freeze_when_configured() {
         let events = Arc::new(AtomicUsize::new(0));
         let event_count = Arc::clone(&events);
         app.world_mut().entity_mut(character).observe(
-            move |_event: bevy::ecs::observer::On<RagdollSettled>| {
+            move |_event: bevy::ecs::observer::On<'_, '_, RagdollSettled>| {
                 event_count.fetch_add(1, Ordering::Relaxed);
             },
         );
@@ -624,7 +624,7 @@ fn settling_resets_its_timer_when_any_body_speeds_up() {
     let events = Arc::new(AtomicUsize::new(0));
     let event_count = Arc::clone(&events);
     app.world_mut().entity_mut(character).observe(
-        move |_event: bevy::ecs::observer::On<RagdollSettled>| {
+        move |_event: bevy::ecs::observer::On<'_, '_, RagdollSettled>| {
             event_count.fetch_add(1, Ordering::Relaxed);
         },
     );

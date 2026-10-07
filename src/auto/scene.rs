@@ -13,6 +13,10 @@ use super::{RagdollBone, RagdollOverrides, Skeleton, SkeletonBone};
 /// When skinned meshes exist, their joints are the bones; otherwise every
 /// named descendant is a bone. Rest poses compose local transforms from the
 /// character down. A [`RagdollBone`] component on a bone beats `overrides`.
+#[expect(
+    clippy::indexing_slicing,
+    reason = "bone indexes come from the same parent-first skeleton vectors"
+)]
 pub(crate) fn skeleton_from_world(
     world: &World,
     character: Entity,
@@ -66,7 +70,7 @@ pub(crate) fn skeleton_from_world(
         let overrides = world
             .get::<RagdollBone>(*entity)
             .or_else(|| overrides.and_then(|overrides| overrides.get(&name)))
-            .cloned()
+            .copied()
             .unwrap_or_default();
         skeleton.bones.push(SkeletonBone {
             name,

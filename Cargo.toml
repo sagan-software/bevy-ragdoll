@@ -2,6 +2,9 @@
 name = "bevy_ragdoll"
 description = "Active ragdolls for Bevy on any skeleton and physics engine"
 publish = true
+readme = "README.md"
+keywords = ["bevy", "ragdoll", "physics", "animation", "gamedev"]
+categories = ["game-development", "simulation"]
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

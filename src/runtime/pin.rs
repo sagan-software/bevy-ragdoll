@@ -40,6 +40,7 @@ impl PinTargets {
     /// let targets = PinTargets::all();
     /// assert!(targets.is_targeted(BodyIndex::try_from(0).expect("zero is valid")));
     /// ```
+    #[must_use]
     pub const fn all() -> Self {
         Self(u64::MAX)
     }
@@ -56,6 +57,7 @@ impl PinTargets {
     /// let targets = PinTargets::none();
     /// assert!(!targets.is_targeted(BodyIndex::try_from(0).expect("zero is valid")));
     /// ```
+    #[must_use]
     pub const fn none() -> Self {
         Self(0)
     }
@@ -94,6 +96,7 @@ impl PinTargets {
     /// let pelvis = BodyIndex::try_from(0).expect("zero is valid");
     /// assert!(PinTargets::default().is_targeted(pelvis));
     /// ```
+    #[must_use]
     pub const fn is_targeted(self, index: BodyIndex) -> bool {
         self.0 & (1_u64 << index.get()) != 0
     }
@@ -111,7 +114,7 @@ impl PinTargets {
     /// targets.set(pelvis, true);
     /// assert!(targets.is_targeted(pelvis));
     /// ```
-    pub fn set(&mut self, index: BodyIndex, is_targeted: bool) {
+    pub const fn set(&mut self, index: BodyIndex, is_targeted: bool) {
         // Update one mask bit while preserving all other profile body choices.
         let mask = 1_u64 << index.get();
         if is_targeted {
@@ -166,7 +169,8 @@ impl PinSettings {
     /// let settings = PinSettings::new(2.0, 1.0, 300.0, 400.0, 2.0);
     /// assert_eq!(settings.frequency_hz(), 2.0);
     /// ```
-    pub fn new(
+    #[must_use]
+    pub const fn new(
         frequency_hz: f32,
         damping_ratio: f32,
         max_force: f32,
@@ -192,6 +196,7 @@ impl PinSettings {
     ///
     /// assert_eq!(PinSettings::default().frequency_hz(), 1.5);
     /// ```
+    #[must_use]
     pub const fn frequency_hz(self) -> f32 {
         self.frequency_hz
     }
@@ -207,6 +212,7 @@ impl PinSettings {
     ///
     /// assert_eq!(PinSettings::default().damping_ratio(), 1.0);
     /// ```
+    #[must_use]
     pub const fn damping_ratio(self) -> f32 {
         self.damping_ratio
     }
@@ -222,6 +228,7 @@ impl PinSettings {
     ///
     /// assert_eq!(PinSettings::default().max_force(), 340.0);
     /// ```
+    #[must_use]
     pub const fn max_force(self) -> f32 {
         self.max_force
     }
@@ -236,6 +243,7 @@ impl PinSettings {
     ///
     /// assert_eq!(PinSettings::default().max_torque(), 400.0);
     /// ```
+    #[must_use]
     pub const fn max_torque(self) -> f32 {
         self.max_torque
     }
@@ -251,12 +259,13 @@ impl PinSettings {
     ///
     /// assert_eq!(PinSettings::default().distance_falloff(), 2.0);
     /// ```
+    #[must_use]
     pub const fn distance_falloff(self) -> f32 {
         self.distance_falloff
     }
 
     /// Applies these checked values to a copy of the shared physics settings.
-    pub(crate) fn override_shared(self, settings: &mut RagdollPhysicsSettings) {
+    pub(crate) const fn override_shared(self, settings: &mut RagdollPhysicsSettings) {
         // Copy each character-level override before drive reads the shared controller settings.
         settings.pin_frequency_hz = self.frequency_hz;
         settings.pin_damping_ratio = self.damping_ratio;
@@ -267,7 +276,7 @@ impl PinSettings {
 }
 
 /// Replaces non-finite tuning values with zero and clamps finite values below zero.
-fn finite_nonnegative(value: f32) -> f32 {
+const fn finite_nonnegative(value: f32) -> f32 {
     if value.is_finite() {
         value.max(0.0)
     } else {

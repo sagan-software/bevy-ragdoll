@@ -27,7 +27,7 @@ pub struct Body {
 
 impl Body {
     /// Creates a body after its source spec has passed validation.
-    pub(super) fn new(
+    pub(super) const fn new(
         index: BodyIndex,
         bone: String,
         shape: ShapeSpec,
@@ -58,6 +58,7 @@ impl Body {
     /// body.index().get()
     /// # }
     /// ```
+    #[must_use]
     pub const fn index(&self) -> BodyIndex {
         self.index
     }
@@ -75,6 +76,7 @@ impl Body {
     /// body.bone()
     /// # }
     /// ```
+    #[must_use]
     pub fn bone(&self) -> &str {
         &self.bone
     }
@@ -92,6 +94,7 @@ impl Body {
     /// body.shape()
     /// # }
     /// ```
+    #[must_use]
     pub const fn shape(&self) -> &ShapeSpec {
         &self.shape
     }
@@ -109,6 +112,7 @@ impl Body {
     /// body.mass().kilograms()
     /// # }
     /// ```
+    #[must_use]
     pub const fn mass(&self) -> Mass {
         self.mass
     }
@@ -127,6 +131,7 @@ impl Body {
     /// body.rest()
     /// # }
     /// ```
+    #[must_use]
     pub const fn rest(&self) -> Isometry3d {
         self.rest
     }
@@ -155,6 +160,7 @@ impl Body {
     /// assert_eq!(body.role(), BodyRole::Pelvis);
     /// # Ok::<(), Box<dyn std::error::Error>>(())
     /// ```
+    #[must_use]
     pub const fn role(&self) -> BodyRole {
         self.role
     }

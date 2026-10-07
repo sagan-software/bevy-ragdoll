@@ -26,7 +26,7 @@ pub enum BoneBody {
 ///
 /// Insert it on a bone entity from Rust, or add it to a bone in Blender with
 /// Skein: the plugin registers this type, so no other setup is needed.
-#[derive(Component, Clone, Debug, Default, PartialEq, bevy::prelude::Reflect)]
+#[derive(Component, Clone, Copy, Debug, Default, PartialEq, bevy::prelude::Reflect)]
 #[reflect(Component, Default)]
 #[cfg_attr(
     feature = "serialize",
@@ -78,6 +78,7 @@ pub struct RagdollOverrides {
 
 impl RagdollOverrides {
     /// Returns the override that applies to `bone`, if any key matches.
+    #[must_use]
     pub fn get(&self, bone: &str) -> Option<&RagdollBone> {
         if let Some(exact) = self.bones.get(bone) {
             return Some(exact);
@@ -96,7 +97,7 @@ impl RagdollOverrides {
 
 /// Loads [`RagdollOverrides`] from `.ragdoll.ron` files.
 #[cfg(feature = "serialize")]
-#[derive(Default, bevy::reflect::TypePath)]
+#[derive(Clone, Copy, Debug, Default, bevy::reflect::TypePath)]
 pub struct RagdollOverridesLoader;
 
 /// A `.ragdoll.ron` file could not be read or parsed.

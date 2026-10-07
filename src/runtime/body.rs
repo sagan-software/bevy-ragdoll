@@ -287,7 +287,7 @@ pub struct JointDriveTarget {
     /// Desired child rotation relative to the parent joint frame after target
     /// composition. The runtime stores or reads this value through the shared
     /// backend contract during fixed simulation.
-    pub rotation: bevy::math::Quat,
+    pub rotation: Quat,
     /// Desired relative angular velocity in radians per second for the child
     /// joint frame. The runtime stores or reads this value through the shared
     /// backend contract during fixed simulation.

@@ -13,9 +13,8 @@ use bevy_ragdoll::{
     ProfileSpec, RagdollOverrides, RagdollPlugin, RagdollProfile, ShapeSpec, Skeleton,
 };
 
-
 /// Creates a capsule in body-local coordinates.
-fn capsule(a: Vec3, b: Vec3, radius: f32) -> ShapeSpec {
+const fn capsule(a: Vec3, b: Vec3, radius: f32) -> ShapeSpec {
     ShapeSpec::Capsule { a, b, radius }
 }
 
@@ -445,7 +444,8 @@ fn body_index_rejects_indices_outside_the_mask() {
 /// Loads a sparse `.ragdoll.ron` overrides file through Bevy's asset server.
 #[test]
 fn overrides_asset_loads_through_the_asset_server() {
-    let directory = std::env::temp_dir().join(format!("bevy_ragdoll_overrides_{}", std::process::id()));
+    let directory =
+        std::env::temp_dir().join(format!("bevy_ragdoll_overrides_{}", std::process::id()));
     fs::create_dir_all(&directory).expect("the temporary asset directory is created");
     fs::write(
         directory.join("fox.ragdoll.ron"),
@@ -471,8 +471,14 @@ fn overrides_asset_loads_through_the_asset_server() {
             .get(&handle)
         {
             assert_eq!(overrides.mass, Some(12.0));
-            assert_eq!(overrides.get("tail_3").map(|bone| bone.body), Some(bevy_ragdoll::BoneBody::Skip));
-            assert_eq!(overrides.get("head").and_then(|bone| bone.radius), Some(0.1));
+            assert_eq!(
+                overrides.get("tail_3").map(|bone| bone.body),
+                Some(bevy_ragdoll::BoneBody::Skip)
+            );
+            assert_eq!(
+                overrides.get("head").and_then(|bone| bone.radius),
+                Some(0.1)
+            );
             return;
         }
     }

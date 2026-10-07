@@ -42,6 +42,7 @@ impl Mass {
     /// assert_eq!(mass.kilograms(), 12.5);
     /// # Ok::<(), MassError>(())
     /// ```
+    #[must_use]
     pub const fn kilograms(self) -> f32 {
         self.0
     }

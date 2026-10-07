@@ -19,19 +19,24 @@
 //! }
 //! ```
 
+#![expect(
+    clippy::suboptimal_flops,
+    reason = "mul_add calls software fmaf on x86-64 without FMA and changes physics results"
+)]
+
 pub mod auto;
 #[cfg(feature = "debug")]
 mod debug;
 pub mod profile;
 pub mod runtime;
 
+pub use self::auto::{BoneBody, RagdollBone, RagdollOverrides, Skeleton, SkeletonBone};
+#[cfg(feature = "debug")]
+pub use self::debug::RagdollDebugPlugin;
 pub use self::profile::{
     AngleRange, Body, BodyIndex, BodyRole, BodySpec, Joint, JointAxis, JointLimits, JointSpec,
     MAX_BODIES, Mass, MassError, ProfileBuilder, ProfileError, ProfileSpec, RagdollProfile,
     ShapeSpec,
 };
-pub use self::auto::{BoneBody, RagdollBone, RagdollOverrides, Skeleton, SkeletonBone};
-#[cfg(feature = "debug")]
-pub use self::debug::RagdollDebugPlugin;
 pub use self::runtime::components::Ragdoll;
 pub use self::runtime::{RagdollError, RagdollPlugin};

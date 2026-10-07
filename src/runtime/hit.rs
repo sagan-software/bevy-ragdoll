@@ -225,7 +225,7 @@ const STREAK_DROP_MULTIPLIER: f32 = 0.3;
 /// Stores fixed-clock timing and rapid-fire state for one character. The
 /// component lets hit processing scale consecutive strength drops and delay
 /// recovery after accepted messages.
-#[derive(bevy::prelude::Component, Clone, Copy, Debug, Default, PartialEq, Reflect)]
+#[derive(bevy::prelude::Component, Clone, Copy, Debug, Default, PartialEq, Eq, Reflect)]
 pub struct LastHit {
     /// Fixed-clock time at which the most recent accepted hit was processed.
     last_at: Option<Duration>,
@@ -245,6 +245,7 @@ impl LastHit {
     ///
     /// assert_eq!(LastHit::default().streak(), 0);
     /// ```
+    #[must_use]
     pub const fn streak(self) -> u32 {
         self.streak
     }
@@ -260,6 +261,7 @@ impl LastHit {
     ///
     /// assert_eq!(LastHit::default().last_at(), None);
     /// ```
+    #[must_use]
     pub const fn last_at(self) -> Option<Duration> {
         self.last_at
     }
@@ -325,6 +327,10 @@ pub enum HitProfile {
 /// normalized world-space direction by the selected magnitude when creating a
 /// [`super::messages::RagdollHit`].
 #[derive(Clone, Copy, Debug, PartialEq, bevy::prelude::Resource, Reflect)]
+#[expect(
+    clippy::struct_field_names,
+    reason = "each field is the impulse for the matching HitProfile variant"
+)]
 pub struct HitSettings {
     /// Default impulse for [`HitProfile::Pistol`] in kilogram metres per second.
     pistol_impulse: f32,
@@ -373,6 +379,7 @@ impl HitSettings {
     /// assert_eq!(settings.impulse_magnitude(HitProfile::Rifle), Some(20.0));
     /// assert_eq!(settings.impulse_magnitude(HitProfile::Custom(f32::NAN)), None);
     /// ```
+    #[must_use]
     pub fn impulse_magnitude(&self, profile: HitProfile) -> Option<f32> {
         let magnitude = match profile {
             HitProfile::Pistol => self.pistol_impulse,
@@ -525,7 +532,9 @@ fn apply_strength_drop(
 ) {
     // Normalize severity and rapid-fire stacking before traversing body slots.
     let severity = (magnitude / REFERENCE_IMPULSE).clamp(0.0, 1.0);
-    let drop_streak = 1.0 + STREAK_DROP_MULTIPLIER * streak as f32;
+    // Streaks above 2^16 hits already drop everything, so saturating loses nothing.
+    let drop_streak =
+        1.0 + STREAK_DROP_MULTIPLIER * f32::from(u16::try_from(streak).unwrap_or(u16::MAX));
     let hops_limit = maximum_hops(magnitude);
 
     // Visit only slots that contain a checked body index.
@@ -714,7 +723,7 @@ fn hop_falloff(candidate: usize, target: usize, tree: &HitImpulseTree) -> Option
         tree.parent(*position)
     })) {
         if position == candidate {
-            return Some((hops, 0.5_f32.powi(hops as i32)));
+            return Some((hops, 0.5_f32.powi(i32::try_from(hops).unwrap_or(i32::MAX))));
         }
     }
 
@@ -724,7 +733,7 @@ fn hop_falloff(candidate: usize, target: usize, tree: &HitImpulseTree) -> Option
         tree.parent(*parent)
     })) {
         if parent == target {
-            return Some((hops, 0.7_f32.powi(hops as i32)));
+            return Some((hops, 0.7_f32.powi(i32::try_from(hops).unwrap_or(i32::MAX))));
         }
     }
     // Return no falloff for siblings, unrelated branches, or malformed cycles.
@@ -1105,7 +1114,7 @@ mod tests {
         let mut app = App::new();
         app.add_message::<RagdollImpulse>().add_systems(
             Update,
-            |mut impulses: bevy::ecs::message::MessageWriter<RagdollImpulse>| {
+            |mut impulses: bevy::ecs::message::MessageWriter<'_, RagdollImpulse>| {
                 let mut tree = HitImpulseTree {
                     masses: [1.0; MAX_BODIES],
                     body_count: 1,

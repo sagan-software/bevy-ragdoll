@@ -11,6 +11,7 @@ use crate::runtime::body::BodyShape;
 use crate::runtime::sets::RagdollSystems;
 
 /// Adds a colored mesh matching its collision shape to every new body.
+#[derive(Clone, Copy, Debug, Default)]
 pub struct RagdollDebugPlugin;
 
 impl Plugin for RagdollDebugPlugin {
@@ -26,11 +27,15 @@ impl Plugin for RagdollDebugPlugin {
 }
 
 /// Spawns one shape mesh as a child of each newly created body entity.
+#[expect(
+    clippy::indexing_slicing,
+    reason = "the index is reduced modulo the palette length"
+)]
 fn add_body_meshes(
-    mut commands: Commands,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
-    bodies: Query<(Entity, &BodyShape, &BodyIndex), Added<BodyShape>>,
+    mut commands: Commands<'_, '_>,
+    mut meshes: ResMut<'_, Assets<Mesh>>,
+    mut materials: ResMut<'_, Assets<StandardMaterial>>,
+    bodies: Query<'_, '_, (Entity, &BodyShape, &BodyIndex), Added<BodyShape>>,
 ) {
     const PALETTE: [Color; 3] = [
         Color::srgb(0.18, 0.62, 0.76),

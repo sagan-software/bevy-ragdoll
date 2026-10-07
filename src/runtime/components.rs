@@ -69,6 +69,7 @@ impl Ragdoll {
     /// let ragdoll = Ragdoll::new(Handle::<RagdollProfile>::default());
     /// assert!(ragdoll.profile.is_some());
     /// ```
+    #[must_use]
     pub fn new(profile: bevy::asset::Handle<RagdollProfile>) -> Self {
         Self {
             profile: Some(profile),
@@ -142,6 +143,7 @@ impl RagdollDrive {
     /// let drive = RagdollDrive::new(1.5, f32::NAN); assert_eq!(drive.muscle(),
     /// 1.0); assert_eq!(drive.pin(), 0.0);
     /// ```
+    #[must_use]
     pub fn new(muscle: f32, pin: f32) -> Self {
         Self {
             muscle: Strength::clamped(muscle),
@@ -162,6 +164,7 @@ impl RagdollDrive {
     ///
     /// assert_eq!(RagdollDrive::default().muscle(), 1.0);
     /// ```
+    #[must_use]
     pub const fn muscle(self) -> f32 {
         self.muscle.get()
     }
@@ -179,6 +182,7 @@ impl RagdollDrive {
     ///
     /// assert_eq!(RagdollDrive::default().pin(), 1.0);
     /// ```
+    #[must_use]
     pub const fn pin(self) -> f32 {
         self.pin.get()
     }
@@ -241,6 +245,7 @@ impl BodyWeights {
     /// let weights = BodyWeights::new(0.5, 1.5); assert_eq!(weights.pin(),
     /// 1.0);
     /// ```
+    #[must_use]
     pub fn new(muscle: f32, pin: f32) -> Self {
         Self {
             muscle: Strength::clamped(muscle),
@@ -260,6 +265,7 @@ impl BodyWeights {
     ///
     /// assert_eq!(BodyWeights::default().muscle(), 1.0);
     /// ```
+    #[must_use]
     pub const fn muscle(self) -> f32 {
         self.muscle.get()
     }
@@ -277,6 +283,7 @@ impl BodyWeights {
     ///
     /// assert_eq!(BodyWeights::default().pin(), 1.0);
     /// ```
+    #[must_use]
     pub const fn pin(self) -> f32 {
         self.pin.get()
     }
@@ -312,6 +319,7 @@ impl RagdollBodyWeights {
     /// let weights = RagdollBodyWeights::new(vec![BodyWeights::default()]);
     /// assert_eq!(weights.get(0), Some(BodyWeights::default()));
     /// ```
+    #[must_use]
     pub fn new(weights: Vec<BodyWeights>) -> Self {
         Self {
             base_weights: weights.clone(),
@@ -384,6 +392,7 @@ impl RagdollBodyWeights {
     /// let weights = RagdollBodyWeights::new(vec![BodyWeights::default()]);
     /// assert_eq!(weights.get(1), None);
     /// ```
+    #[must_use]
     pub fn get(&self, index: usize) -> Option<BodyWeights> {
         self.weights.get(index).copied()
     }
@@ -452,6 +461,7 @@ impl RagdollBlend {
     ///
     /// assert_eq!(RagdollBlend::new(1.5).get(), 1.0);
     /// ```
+    #[must_use]
     pub fn new(weight: f32) -> Self {
         Self {
             weight: Strength::clamped(weight),
@@ -471,6 +481,7 @@ impl RagdollBlend {
     ///
     /// assert_eq!(RagdollBlend::default().get(), 1.0);
     /// ```
+    #[must_use]
     pub const fn get(self) -> f32 {
         self.weight.get()
     }
@@ -530,6 +541,7 @@ impl RagdollTargetPose {
     /// BodyIndex::try_from(0).expect("zero is a valid body index");
     /// assert_eq!(targets.current_pose(index), None);
     /// ```
+    #[must_use]
     pub fn current_pose(&self, index: BodyIndex) -> Option<Isometry3d> {
         self.current.get(index.get()).copied()
     }
@@ -551,6 +563,7 @@ impl RagdollTargetPose {
     /// BodyIndex::try_from(0).expect("zero is a valid body index");
     /// assert_eq!(targets.previous_pose(index), None);
     /// ```
+    #[must_use]
     pub fn previous_pose(&self, index: BodyIndex) -> Option<Isometry3d> {
         self.previous.get(index.get()).copied()
     }
@@ -572,6 +585,7 @@ impl RagdollTargetPose {
     /// BodyIndex::try_from(0).expect("zero is a valid body index");
     /// assert_eq!(targets.velocity(index), None);
     /// ```
+    #[must_use]
     pub fn velocity(&self, index: BodyIndex) -> Option<super::body::BodyVelocity> {
         self.velocities.get(index.get()).copied()
     }
@@ -711,7 +725,8 @@ impl RagdollBodies {
     ///
     /// assert_eq!(RagdollBodies::default().len(), 0);
     /// ```
-    pub fn len(&self) -> usize {
+    #[must_use]
+    pub const fn len(&self) -> usize {
         self.0.len()
     }
 
@@ -729,7 +744,8 @@ impl RagdollBodies {
     ///
     /// assert!(RagdollBodies::default().is_empty());
     /// ```
-    pub fn is_empty(&self) -> bool {
+    #[must_use]
+    pub const fn is_empty(&self) -> bool {
         self.0.is_empty()
     }
 }
@@ -783,8 +799,8 @@ mod tests {
         assert_eq!(targets.velocity(index), Some(velocity));
 
         let adjustments = RagdollTargetAdjust::default();
-        assert!(adjustments.replace.is_empty());
-        assert!(adjustments.additive.is_empty());
+        assert_eq!(adjustments.replace, []);
+        assert_eq!(adjustments.additive, []);
         assert_eq!(adjustments.root_offset, Isometry3d::IDENTITY);
         assert_eq!(Quat::IDENTITY, adjustments.root_offset.rotation);
     }
@@ -832,7 +848,7 @@ mod tests {
     #[test]
     fn body_relationship_target_reports_empty_and_populated_states() {
         let empty = RagdollBodies::default();
-        assert!(empty.is_empty());
+        assert_eq!(empty.len(), 0);
         assert_eq!(empty.len(), 0);
         assert_eq!(empty.iter().count(), 0);
 

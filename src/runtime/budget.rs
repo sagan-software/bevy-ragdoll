@@ -65,6 +65,7 @@ impl RagdollBudget {
     ///
     /// let budget = RagdollBudget::new(8); assert_eq!(budget.max_dynamic, 8);
     /// ```
+    #[must_use]
     pub const fn new(max_dynamic: usize) -> Self {
         Self {
             max_dynamic,

@@ -1,7 +1,5 @@
 //! Unit tests for skeleton-based profile generation.
 
-use bevy::math::Vec3;
-
 use super::humanoid::{Side, normalize, role_of};
 use super::*;
 use crate::profile::{AngleRange, BodyRole, JointLimits, ShapeSpec};
@@ -87,7 +85,7 @@ fn alien() -> Skeleton {
         } else {
             ("upper_torso", 3.0, 1.2)
         };
-        let angle = index as f32 / count * std::f32::consts::TAU;
+        let angle = float(index) / count * std::f32::consts::TAU;
         let out = Vec3::new(angle.cos(), 0.0, angle.sin());
         let points = if index < 7 {
             [
@@ -115,7 +113,7 @@ fn reference_humanoid_gets_sixteen_named_bodies() {
     let bones = profile
         .bodies()
         .iter()
-        .map(|body| body.bone())
+        .map(crate::Body::bone)
         .collect::<Vec<_>>();
     assert_eq!(
         bones,
@@ -346,7 +344,7 @@ fn a_creature_of_only_legs_has_no_spine() {
         .map(|i| [format!("a{i}"), format!("b{i}")])
         .collect::<Vec<_>>();
     for (i, [a, b]) in names.iter().enumerate() {
-        let out = Vec3::new((i as f32).cos(), 0.0, (i as f32).sin());
+        let out = Vec3::new(float(i).cos(), 0.0, float(i).sin());
         bones.push((
             a.as_str(),
             Some("body"),
@@ -365,7 +363,7 @@ fn a_snake_is_a_spine_chain() {
     let names = (0..6).map(|i| format!("segment_{i}")).collect::<Vec<_>>();
     let bones = names.iter().enumerate().map(|(i, name)| {
         let parent = i.checked_sub(1).map(|p| names[p].as_str());
-        (name.as_str(), parent, Vec3::new(0.0, 0.05, i as f32 * 0.2))
+        (name.as_str(), parent, Vec3::new(0.0, 0.05, float(i) * 0.2))
     });
     let profile = generate(&Skeleton::from_positions(bones));
     assert_eq!(profile.bodies().len(), 6);
@@ -421,7 +419,7 @@ fn topology_merges_short_bones_into_their_parent() {
     let bones = profile
         .bodies()
         .iter()
-        .map(|body| body.bone())
+        .map(crate::Body::bone)
         .collect::<Vec<_>>();
     assert_eq!(bones, ["a", "b"]);
     // The leaf body reaches its farthest merged bone.
@@ -436,7 +434,7 @@ fn oversized_skeletons_raise_the_minimum_segment() {
     let names = (0..100).map(|i| format!("b{i}")).collect::<Vec<_>>();
     let bones = names.iter().enumerate().map(|(i, name)| {
         let parent = i.checked_sub(1).map(|p| names[p].as_str());
-        (name.as_str(), parent, Vec3::new(0.0, i as f32 * 0.01, 0.0))
+        (name.as_str(), parent, Vec3::new(0.0, float(i) * 0.01, 0.0))
     });
     let profile = generate(&Skeleton::from_positions(bones));
     assert!(profile.bodies().len() <= crate::MAX_BODIES);
@@ -454,7 +452,7 @@ fn extra_roots_keep_only_the_largest_tree() {
     let bones = profile
         .bodies()
         .iter()
-        .map(|body| body.bone())
+        .map(crate::Body::bone)
         .collect::<Vec<_>>();
     assert_eq!(bones, ["hips", "chest"]);
 }
@@ -528,7 +526,9 @@ fn overrides_change_bodies_and_values() {
     let body = &profile.bodies()[head.get()];
     assert_eq!(body.mass().kilograms(), 9.0);
     assert_eq!(body.role(), BodyRole::Other);
-    assert!(matches!(body.shape(), ShapeSpec::Capsule { radius, .. } if *radius == 0.2));
+    assert!(
+        matches!(body.shape(), ShapeSpec::Capsule { radius, .. } if (*radius - 0.2).abs() < f32::EPSILON)
+    );
     let joint = profile.joint_of(head).unwrap();
     assert_eq!(joint.limits(), limits);
     assert_eq!(joint.max_torque(), 77.0);
@@ -602,7 +602,7 @@ fn default<T: Default>() -> T {
 #[test]
 fn x_along_bone_rigs_get_the_same_limits_through_a_basis() {
     // UE-style bones: local X points along the bone instead of local Y.
-    let quarter = bevy::math::Quat::from_rotation_z(std::f32::consts::FRAC_PI_2);
+    let quarter = Quat::from_rotation_z(std::f32::consts::FRAC_PI_2);
     let y_rig = Skeleton::humanoid();
     let mut x_rig = y_rig.clone();
     for bone in &mut x_rig.bones {
@@ -612,10 +612,10 @@ fn x_along_bone_rigs_get_the_same_limits_through_a_basis() {
     // Any world-space pose measures the same joint angles on both rigs.
     let poses = |profile: &RagdollProfile| {
         profile
-            .rest_poses(bevy::math::Isometry3d::IDENTITY)
+            .rest_poses(Isometry3d::IDENTITY)
             .enumerate()
             .map(|(index, mut pose)| {
-                let bend = bevy::math::Quat::from_rotation_x(0.3 * index as f32);
+                let bend = Quat::from_rotation_x(0.3 * float(index));
                 pose.rotation = bend * pose.rotation;
                 pose
             })
@@ -623,8 +623,8 @@ fn x_along_bone_rigs_get_the_same_limits_through_a_basis() {
     };
     let (y_poses, x_poses) = (poses(&y_profile), poses(&x_profile));
     for (y_joint, x_joint) in y_profile.joints().iter().zip(x_profile.joints()) {
-        assert_eq!(y_joint.basis(), bevy::math::Quat::IDENTITY);
-        assert!(x_joint.basis().angle_between(bevy::math::Quat::IDENTITY) > 1.0);
+        assert_eq!(y_joint.basis(), Quat::IDENTITY);
+        assert!(x_joint.basis().angle_between(Quat::IDENTITY) > 1.0);
         let (y_limits, x_limits) = (y_joint.limits(), x_joint.limits());
         for (a, b) in [
             (y_limits.x, x_limits.x),
@@ -649,5 +649,10 @@ fn twist_basis_maps_y_onto_the_nearest_signed_axis() {
     for axis in [Vec3::X, Vec3::NEG_X, Vec3::Z, Vec3::NEG_Z, Vec3::NEG_Y] {
         assert!((twist_basis(axis * 0.9 + Vec3::splat(0.05)) * Vec3::Y).distance(axis) < 1.0e-5);
     }
-    assert_eq!(twist_basis(Vec3::Y), bevy::math::Quat::IDENTITY);
+    assert_eq!(twist_basis(Vec3::Y), Quat::IDENTITY);
+}
+
+/// Converts a small test index to `f32` without a lossy cast.
+fn float(index: usize) -> f32 {
+    f32::from(u16::try_from(index).unwrap())
 }

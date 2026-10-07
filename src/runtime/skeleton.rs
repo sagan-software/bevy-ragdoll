@@ -315,12 +315,10 @@ fn assign_ragdoll_id(world: &mut World, character: Entity) -> Option<()> {
         return None;
     };
     // A character may have despawned since the binding query snapshot was made.
-    if let Ok(mut entity) = world.get_entity_mut(character) {
+    world.get_entity_mut(character).map_or(None, |mut entity| {
         entity.insert(id);
         Some(())
-    } else {
-        None
-    }
+    })
 }
 
 /// Freezes the oldest dynamic ragdolls until the configured budget is met.
@@ -591,9 +589,10 @@ fn initial_body_targets(
 ) -> (Vec<Isometry3d>, Vec<BodyVelocity>) {
     // Use captured poses when available and validated rest poses before the first capture.
     let targets = world.get::<RagdollTargetPose>(character);
-    let poses = targets
-        .map(|target| target.current().to_vec())
-        .unwrap_or_else(|| profile.bodies().iter().map(|body| body.rest()).collect());
+    let poses = targets.map_or_else(
+        || profile.bodies().iter().map(Body::rest).collect(),
+        |target| target.current().to_vec(),
+    );
     // Missing target history has no measured motion, so new bodies begin without velocity.
     let velocities = targets
         .map(|target| target.velocities().to_vec())
@@ -769,10 +768,9 @@ fn update_body_kinds(world: &mut World, character: Entity, mode: RagdollMode) {
 /// Maps character mode to the backend's body kind.
 const fn body_kind(mode: RagdollMode) -> BodyKind {
     match mode {
-        RagdollMode::Animated => BodyKind::Fixed,
         RagdollMode::Kinematic => BodyKind::Kinematic,
         RagdollMode::Dynamic => BodyKind::Dynamic,
-        RagdollMode::Frozen => BodyKind::Fixed,
+        RagdollMode::Animated | RagdollMode::Frozen => BodyKind::Fixed,
     }
 }
 
@@ -897,7 +895,10 @@ mod tests {
         let bone = world.spawn(Transform::IDENTITY).id();
         let supplied_pose = Isometry3d::from_translation(Vec3::new(4.0, 5.0, 6.0));
         let mut targets = RagdollTargetPose::default();
-        targets.record(vec![supplied_pose], vec![Default::default()]);
+        targets.record(
+            vec![supplied_pose],
+            vec![super::super::body::BodyVelocity::default()],
+        );
         let character = world
             .spawn((
                 SkeletonMap {
