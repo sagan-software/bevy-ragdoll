@@ -15,8 +15,6 @@
 //! App::new() .add_plugins((MinimalPlugins, RagdollPlugin::default())) .run();
 //! ```
 
-use bevy_transform as _;
-
 #[cfg(feature = "gltf")]
 pub mod gltf;
 pub mod profile;

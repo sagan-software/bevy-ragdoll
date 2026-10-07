@@ -111,9 +111,8 @@ fn explicit_profile_roles_override_bone_name_hints() {
 #[test]
 /// Loads pre-role RON data and infers roles from its existing bone names.
 fn legacy_profile_ron_infers_body_roles() {
-    let spec: ProfileSpec =
-        ron::from_str(include_str!("../../../assets/profiles/human.ragdoll.ron"))
-            .expect("the existing profile RON remains valid without role fields");
+    let spec: ProfileSpec = ron::from_str(include_str!("../assets/profiles/human.ragdoll.ron"))
+        .expect("the existing profile RON remains valid without role fields");
     let profile = RagdollProfile::new(spec).expect("the human profile is valid");
 
     assert_eq!(profile.bodies()[0].role(), BodyRole::Pelvis);

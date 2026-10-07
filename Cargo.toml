@@ -1,12 +1,159 @@
+[package]
+name = "bevy_ragdoll"
+description = "Active ragdolls for Bevy on any skeleton and physics engine"
+publish = true
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lib]
+# Criterion benches use `bench_main`; libtest would reject Criterion arguments.
+bench = false
+
+[features]
+default = ["3d", "gltf", "serialize"]
+3d = []
+2d = []
+gltf = ["serialize", "dep:serde_json"]
+serialize = ["dep:ron", "dep:serde", "bevy/serialize"]
+
+[dependencies]
+bevy = { workspace = true, features = ["std", "bevy_asset", "bevy_animation", "bevy_log"] }
+ron = { workspace = true, optional = true }
+serde = { workspace = true, optional = true }
+serde_json = { workspace = true, optional = true }
+thiserror.workspace = true
+
+[dev-dependencies]
+bevy = { workspace = true, features = [
+    "std",
+    "3d",
+    "bevy_text",
+    "bevy_ui",
+    "bevy_ui_render",
+    "default_font",
+    "png",
+    "x11",
+] }
+bevy_ragdoll_conformance.workspace = true
+bevy_ragdoll_rapier3d.workspace = true
+bevy_rapier3d = { workspace = true, features = ["dim3"] }
+clap.workspace = true
+criterion.workspace = true
+rand_chacha.workspace = true
+rand_core.workspace = true
+ron.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[[example]]
+name = "minimal"
+required-features = ["serialize"]
+doc-scrape-examples = true
+
+[package.metadata.example.minimal]
+name = "Minimal"
+description = "Drop the TGF human ragdoll and inspect its landing and joints."
+category = "Basics"
+wasm = true
+
+[[example]]
+name = "from_code"
+doc-scrape-examples = true
+
+[package.metadata.example.from_code]
+name = "From Code"
+description = "Build and run a pinned three-body chain from Rust."
+category = "Basics"
+wasm = true
+
+[[example]]
+name = "from_ron"
+required-features = ["serialize"]
+doc-scrape-examples = true
+
+[package.metadata.example.from_ron]
+name = "From RON"
+description = "Load a validated human ragdoll profile from RON."
+category = "Basics"
+wasm = true
+
+[[example]]
+name = "from_gltf_skein"
+required-features = ["gltf"]
+doc-scrape-examples = true
+
+[package.metadata.example.from_gltf_skein]
+name = "From glTF Skein"
+description = "Import the TGF human rig and Skein body annotations from GLB."
+category = "Basics"
+wasm = true
+
+[[example]]
+name = "profile_builder"
+doc-scrape-examples = true
+
+[package.metadata.example.profile_builder]
+name = "Profile Builder"
+description = "Build and validate a one-body profile without an app."
+category = "Basics"
+wasm = false
+
+[[example]]
+name = "custom_backend"
+doc-scrape-examples = true
+
+[package.metadata.example.custom_backend]
+name = "Custom Backend"
+description = "Run the core runtime on the approximate mock backend."
+category = "Backends"
+wasm = true
+
+[[example]]
+name = "hit_reactions"
+required-features = ["gltf"]
+doc-scrape-examples = true
+
+[package.metadata.example.hit_reactions]
+name = "Hit Reactions"
+description = "Select hit profiles, click the rig, and edit local muscle and pin strengths."
+category = "Active Control"
+wasm = true
+
+[[example]]
+name = "partial_ragdoll"
+required-features = ["gltf"]
+doc-scrape-examples = true
+
+[package.metadata.example.partial_ragdoll]
+name = "Partial Ragdoll"
+description = "Keep the legs driven while periodic impacts move the loose upper body."
+category = "Active Control"
+wasm = true
+
+[[example]]
+name = "ragdoll_stress"
+required-features = ["serialize"]
+test = true
+
+[package.metadata.example.ragdoll_stress]
+name = "Ragdoll Stress"
+description = "Measure ragdoll body, joint, and fixed-step costs across stress scenarios."
+category = "Stress Tests"
+wasm = true
+
+[[bench]]
+name = "bench_main"
+harness = false
+
+[lints]
+workspace = true
+
 [workspace]
 resolver = "3"
-members = [
-    "crates/bevy_ragdoll",
-    "crates/bevy_ragdoll_conformance",
-    "crates/bevy_ragdoll_rapier3d",
-    "examples",
-    "benches",
-]
+members = [".", "crates/bevy_ragdoll_conformance", "crates/bevy_ragdoll_rapier3d"]
 
 [workspace.package]
 version = "0.1.0-dev"
@@ -16,20 +163,23 @@ license = "MIT OR Apache-2.0"
 repository = "https://github.com/sagan-software/bevy-ragdoll"
 
 [workspace.dependencies]
+# Local crates
+bevy_ragdoll = { path = ".", version = "0.1.0-dev", default-features = false }
+bevy_ragdoll_conformance = { path = "crates/bevy_ragdoll_conformance", version = "0.1.0-dev" }
+bevy_ragdoll_rapier3d = { path = "crates/bevy_ragdoll_rapier3d", version = "0.1.0-dev" }
+
+# crates.io
 bevy = { version = "=0.19.1", default-features = false }
-bevy_transform = "=0.19.1"
 bevy_rapier3d = { version = "=0.36.0", default-features = false }
-avian3d = "=0.7.0"
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-ron = "0.12"
-thiserror = "2"
-criterion = "0.8"
-argh = "0.1"
-clap = { version = "4", features = ["derive"] }
-rand_chacha = "0.9"
-rand_core = "0.9"
+clap = { version = "4.6", features = ["derive"] }
+criterion = "0.8.2"
 num-traits = "=0.2.19"
+rand_chacha = "0.10"
+rand_core = "0.10"
+ron = "0.12.2"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
+thiserror = "2.0.21"
 
 [workspace.lints.rust]
 missing_docs = "warn"

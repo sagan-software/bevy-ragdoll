@@ -7,8 +7,6 @@
 //! [`RapierRagdollPlugin`]. The adapter leaves Rapier world ownership with the
 //! application and reports backend-neutral contacts and query responses.
 
-use bevy_ragdoll_conformance as _;
-
 mod body;
 mod contact;
 mod joint;

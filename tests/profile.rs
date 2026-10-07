@@ -16,7 +16,7 @@ use bevy_ragdoll::{
     ProfileSpec, RagdollPlugin, RagdollProfile, ShapeSpec,
 };
 
-const HUMAN_GLB: &[u8] = include_bytes!("../../../assets/rigs/tgf_human/tgf_human.glb");
+const HUMAN_GLB: &[u8] = include_bytes!("../assets/rigs/tgf_human/tgf_human.glb");
 const OLD_BODY_PATH: &str = "tgf_rig::ragdoll::RagdollBody";
 const OLD_JOINT_PATH: &str = "tgf_rig::ragdoll::RagdollJoint";
 const NEW_BODY_PATH: &str = "bevy_ragdoll::skein::RagdollBody";
@@ -82,7 +82,7 @@ fn generated_human_ron() -> String {
 #[test]
 #[ignore = "run once to generate assets/profiles/tgf_human.ragdoll.ron"]
 fn generate_tgf_human_profile_asset() {
-    let asset_path = Path::new("../../assets/profiles/tgf_human.ragdoll.ron");
+    let asset_path = Path::new("assets/profiles/tgf_human.ragdoll.ron");
     fs::create_dir_all(asset_path.parent().expect("asset path has a parent"))
         .expect("profile asset directory is created");
     fs::write(asset_path, generated_human_ron()).expect("profile asset is written");
@@ -359,7 +359,7 @@ fn ron_round_trip_is_exact() {
 /// Keeps the checked-in RON profile synchronized with its source GLB.
 #[test]
 fn checked_in_ron_matches_glb() {
-    let asset_path = Path::new("../../assets/profiles/tgf_human.ragdoll.ron");
+    let asset_path = Path::new("assets/profiles/tgf_human.ragdoll.ron");
     let checked_in = fs::read_to_string(asset_path).expect("the profile RON asset exists");
     assert_eq!(checked_in, generated_human_ron());
 }
@@ -370,7 +370,7 @@ fn ron_asset_loads_through_the_asset_server() {
     let mut app = App::new();
     app.add_plugins(MinimalPlugins)
         .add_plugins(AssetPlugin {
-            file_path: "../../assets".to_owned(),
+            file_path: "assets".to_owned(),
             ..Default::default()
         })
         .add_plugins(RagdollPlugin::default());

@@ -6,10 +6,11 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
+publish = true
 
 [dependencies]
 bevy = { workspace = true, features = ["std", "bevy_asset", "bevy_animation", "bevy_log"] }
-bevy_ragdoll = { path = "../bevy_ragdoll", default-features = false, features = ["3d", "gltf"] }
+bevy_ragdoll = { workspace = true, features = ["3d", "gltf"] }
 
 [lints]
 workspace = true
