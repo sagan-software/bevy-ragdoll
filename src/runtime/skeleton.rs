@@ -161,8 +161,17 @@ fn resolve_profile(
     if let Some(profile) = &ragdoll.profile {
         return Some(profile.clone());
     }
+    let skeleton = character_skeleton(world, character)?;
+    let profile = generate_profile(world, character, &skeleton)?;
+    store_profile(world, character, profile)
+}
+
+/// Reads the character's skeleton with its overrides and requested mass.
+///
+/// Returns `None` while the overrides asset loads, so a later frame retries.
+fn character_skeleton(world: &World, character: Entity) -> Option<crate::auto::Skeleton> {
+    let ragdoll = world.get::<Ragdoll>(character)?;
     let mass = ragdoll.mass;
-    // Returning `None` while the overrides asset loads retries on a later frame.
     let overrides = match &ragdoll.overrides {
         Some(handle) => Some(loaded_overrides(world, handle)?),
         None => None,
@@ -174,8 +183,17 @@ fn resolve_profile(
             .and_then(|overrides| overrides.mass)
             .and_then(|kilograms| crate::profile::Mass::try_from(kilograms).ok())
     });
-    let profile = generate_profile(world, character, &skeleton)?;
-    // Storing the handle on the component makes later frames take the explicit path.
+    Some(skeleton)
+}
+
+/// Adds `profile` as an asset and stores its handle on the character's [`Ragdoll`].
+///
+/// Storing the handle makes later frames take the explicit-profile path.
+fn store_profile(
+    world: &mut World,
+    character: Entity,
+    profile: RagdollProfile,
+) -> Option<bevy::asset::Handle<RagdollProfile>> {
     let handle = world
         .get_resource_mut::<Assets<RagdollProfile>>()?
         .add(profile);
@@ -643,6 +661,18 @@ fn spawn_bodies(world: &mut World, character: Entity, profile: &RagdollProfile, 
     let entities = spawn_profile_bodies(world, profile, &context);
 
     // Attach constraints only after every parent and child entity has been created.
+    attach_joints(world, profile, &entities);
+
+    // Notify observers only after bodies, relationships, and joints have been installed.
+    world.trigger(RagdollActivated { entity: character });
+}
+
+/// Inserts each profile joint on its child body entity.
+///
+/// `entities` holds the body entity for each profile index. A non-identity
+/// joint basis also inserts [`super::body::JointBasis`].
+fn attach_joints(world: &mut World, profile: &RagdollProfile, entities: &[Entity]) {
+    // Skip joints whose parent or child entity is missing.
     for joint in profile.joints() {
         let (Some(child), Some(parent)) = (
             entities.get(joint.child().get()).copied(),
@@ -665,9 +695,6 @@ fn spawn_bodies(world: &mut World, character: Entity, profile: &RagdollProfile, 
             }
         }
     }
-
-    // Notify observers only after bodies, relationships, and joints have been installed.
-    world.trigger(RagdollActivated { entity: character });
 }
 
 /// Spawns one physics entity for each validated profile body.
@@ -1033,23 +1060,38 @@ mod tests {
         // Assignment fails, records the error, and keeps the character Animated without an ID.
         assert_eq!(assign_ragdoll_id(&mut world, character), None);
         assert_eq!(
-            world.get::<RagdollError>(character),
-            Some(&RagdollError::IdentityExhausted)
+            (
+                world.get::<RagdollError>(character),
+                world.get::<RagdollMode>(character),
+                world.get::<RagdollId>(character).is_none(),
+            ),
+            (
+                Some(&RagdollError::IdentityExhausted),
+                Some(&RagdollMode::Animated),
+                true
+            )
         );
-        assert_eq!(
-            world.get::<RagdollMode>(character),
-            Some(&RagdollMode::Animated)
-        );
-        assert!(world.get::<RagdollId>(character).is_none());
     }
 
     /// Animated and frozen modes map to fixed bodies, with active modes
     /// preserved.
     #[test]
     fn body_kind_covers_every_ragdoll_mode() {
-        assert_eq!(body_kind(RagdollMode::Animated), BodyKind::Fixed);
-        assert_eq!(body_kind(RagdollMode::Kinematic), BodyKind::Kinematic);
-        assert_eq!(body_kind(RagdollMode::Dynamic), BodyKind::Dynamic);
-        assert_eq!(body_kind(RagdollMode::Frozen), BodyKind::Fixed);
+        let kinds = [
+            RagdollMode::Animated,
+            RagdollMode::Kinematic,
+            RagdollMode::Dynamic,
+            RagdollMode::Frozen,
+        ]
+        .map(body_kind);
+        assert_eq!(
+            kinds,
+            [
+                BodyKind::Fixed,
+                BodyKind::Kinematic,
+                BodyKind::Dynamic,
+                BodyKind::Fixed
+            ]
+        );
     }
 }
