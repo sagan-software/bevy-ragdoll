@@ -18,6 +18,7 @@ use bevy_ragdoll::runtime::components::{Ragdoll, RagdollBodyOf, RagdollDrive};
 use bevy_ragdoll::runtime::sets::RagdollFixedSystems;
 use bevy_ragdoll::runtime::settings::RagdollPhysicsSettings;
 
+use crate::settings::AvianRagdollSettings;
 use crate::{body, joint, query};
 
 /// Capabilities of the Avian adapter.
@@ -53,8 +54,9 @@ pub const AVIAN_CAPABILITIES: BackendCapabilities = BackendCapabilities {
 /// ```
 ///
 /// The adapter copies `RagdollPhysicsSettings::gravity` to `Gravity` and
-/// `solver_iterations` to Avian's `SubstepCount`; `pgs_iterations`,
-/// `max_substeps` and `threads` have no Avian equivalent.
+/// [`crate::AvianRagdollSettings::substep_count`] to Avian's `SubstepCount`.
+/// `solver_iterations`, `pgs_iterations`, `max_substeps` and `threads` have
+/// no Avian equivalent.
 #[derive(Clone, Copy, Debug)]
 pub struct AvianRagdollPlugin;
 
@@ -62,6 +64,7 @@ impl Plugin for AvianRagdollPlugin {
     fn build(&self, app: &mut App) {
         let fixed_schedule = validate_plugin_order(app);
         app.init_resource::<AvianSleepTimers>()
+            .init_resource::<AvianRagdollSettings>()
             .insert_resource(AVIAN_CAPABILITIES);
         app.add_systems(
             fixed_schedule,
@@ -131,6 +134,7 @@ fn validate_plugin_order(
 /// Copies shared gravity and solver settings into Avian resources.
 fn apply_avian_settings(
     settings: Res<'_, RagdollPhysicsSettings>,
+    avian_settings: Res<'_, AvianRagdollSettings>,
     mut gravity: ResMut<'_, Gravity>,
     mut substeps: ResMut<'_, SubstepCount>,
 ) {
@@ -143,8 +147,7 @@ fn apply_avian_settings(
     if gravity.0 != target_gravity {
         gravity.0 = target_gravity;
     }
-    let target_substeps = u32::try_from(settings.solver_iterations.max(1)).unwrap_or(u32::MAX);
-    substeps.set_if_neq(SubstepCount(target_substeps));
+    substeps.set_if_neq(SubstepCount(avian_settings.substep_count.max(1)));
 }
 
 /// Forces a body to sleep and ignores bodies that have no island yet.
@@ -227,8 +230,8 @@ mod tests {
     use bevy_ragdoll::{RagdollPlugin, RagdollProfile};
 
     use super::{
-        AvianRagdollPlugin, AvianSleepTimers, TrySleepBody, apply_avian_settings,
-        force_sleep_limp_ragdolls, should_force_sleep,
+        AvianRagdollPlugin, AvianRagdollSettings, AvianSleepTimers, TrySleepBody,
+        apply_avian_settings, force_sleep_limp_ragdolls, should_force_sleep,
     };
 
     /// Builds the headless core stack.
@@ -260,13 +263,16 @@ mod tests {
         app.add_plugins(AvianRagdollPlugin);
     }
 
-    /// Non-finite gravity becomes zero and solver iterations become substeps.
+    /// Non-finite gravity becomes zero and a zero substep count becomes one.
     #[test]
     fn settings_sanitize_gravity_and_map_substeps() {
         let mut world = World::new();
         world.insert_resource(RagdollPhysicsSettings {
             gravity: bevy::math::Vec3::splat(f32::NAN),
-            solver_iterations: 0,
+            ..Default::default()
+        });
+        world.insert_resource(AvianRagdollSettings {
+            substep_count: 0,
             ..Default::default()
         });
         world.insert_resource(Gravity::default());

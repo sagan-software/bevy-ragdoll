@@ -23,6 +23,7 @@ use bevy_ragdoll::runtime::components::{Ragdoll, RagdollBodyOf, RagdollDrive, Ra
 use bevy_ragdoll::runtime::messages::RagdollImpulse;
 use bevy_ragdoll::runtime::settings::RagdollPhysicsSettings;
 
+use crate::settings::AvianRagdollSettings;
 use crate::shape::collider_for_shape;
 use crate::spawn::spawn_lift;
 
@@ -78,6 +79,7 @@ impl SpawnLiftWorld<'_, '_> {
 pub(crate) fn create_avian_bodies(
     mut commands: Commands<'_, '_>,
     settings: Res<'_, RagdollPhysicsSettings>,
+    avian_settings: Res<'_, AvianRagdollSettings>,
     drivers: Query<'_, '_, &RagdollDrive>,
     lift_world: SpawnLiftWorld<'_, '_>,
     mut bodies: NewBodyQuery<'_, '_>,
@@ -127,7 +129,7 @@ pub(crate) fn create_avian_bodies(
         if is_driven(drive) {
             body.insert(SleepingDisabled);
         }
-        if let Some(swept_ccd) = ccd(settings.is_ccd_enabled) {
+        if let Some(swept_ccd) = ccd(settings.is_ccd_enabled && avian_settings.use_swept_ccd) {
             body.insert(swept_ccd);
         }
     }
