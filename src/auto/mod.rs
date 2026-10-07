@@ -15,12 +15,12 @@ mod scene;
 #[cfg(test)]
 mod tests;
 
-use bevy::math::{Isometry3d, Quat, Vec3};
+use bevy::math::{Isometry3d, Mat3, Quat, Vec3};
 
-pub(crate) use self::scene::skeleton_from_world;
 pub use self::overrides::{BoneBody, RagdollBone, RagdollOverrides};
 #[cfg(feature = "serialize")]
 pub use self::overrides::{RagdollOverridesLoader, RagdollOverridesLoaderError};
+pub(crate) use self::scene::skeleton_from_world;
 
 use crate::profile::{Mass, ProfileError, ProfileSpec, RagdollProfile};
 
@@ -54,9 +54,10 @@ impl Skeleton {
     /// Builds a skeleton from `(name, parent name, head position)` triples.
     ///
     /// Entries must list each parent before its children; an unknown parent
-    /// name makes the bone a root. Each bone's local Y axis is rotated to point
-    /// at its first child (leaves follow their parent), which is the bone
-    /// orientation the generator expects.
+    /// name makes the bone a root. Each bone's local Y axis points at the child
+    /// that best continues its parent link (leaves follow their parent), and
+    /// local Z stays closest to
+    /// +Z, matching Blender's glTF export.
     ///
     /// # Examples
     ///
@@ -97,41 +98,41 @@ impl Skeleton {
         self.bones.iter().position(|bone| bone.name == name)
     }
 
-    /// An 80 kg, 1.8 m reference humanoid in T-pose with UE mannequin bone names.
+    /// An 80 kg, 1.8 m reference humanoid in A-pose with UE4 mannequin names.
     ///
     /// It faces +Z with +Y up and its feet on `y = 0`. Tests, benches and
     /// examples use it when no glTF asset is loaded.
     pub fn humanoid() -> Self {
         const BONES: &[(&str, Option<&str>, [f32; 3])] = &[
-            ("pelvis", None, [0.0, 0.95, 0.0]),
-            ("spine_01", Some("pelvis"), [0.0, 1.05, 0.0]),
-            ("spine_02", Some("spine_01"), [0.0, 1.18, 0.0]),
-            ("spine_03", Some("spine_02"), [0.0, 1.32, 0.0]),
-            ("neck_01", Some("spine_03"), [0.0, 1.50, 0.0]),
+            ("pelvis", None, [0.0, 0.96, 0.0]),
+            ("spine_01", Some("pelvis"), [0.0, 1.11, 0.0]),
+            ("spine_02", Some("spine_01"), [0.0, 1.28, 0.0]),
+            ("clavicle_l", Some("spine_02"), [0.04, 1.42, 0.0]),
+            ("upperarm_l", Some("clavicle_l"), [0.17, 1.44, 0.0]),
+            ("lowerarm_l", Some("upperarm_l"), [0.368, 1.242, 0.0]),
+            ("hand_l", Some("lowerarm_l"), [0.552, 1.058, 0.0]),
+            ("clavicle_r", Some("spine_02"), [-0.04, 1.42, 0.0]),
+            ("upperarm_r", Some("clavicle_r"), [-0.17, 1.44, 0.0]),
+            ("lowerarm_r", Some("upperarm_r"), [-0.368, 1.242, 0.0]),
+            ("hand_r", Some("lowerarm_r"), [-0.552, 1.058, 0.0]),
+            ("neck_01", Some("spine_02"), [0.0, 1.47, 0.0]),
             ("head", Some("neck_01"), [0.0, 1.58, 0.0]),
-            ("clavicle_l", Some("spine_03"), [0.05, 1.45, 0.0]),
-            ("upperarm_l", Some("clavicle_l"), [0.19, 1.45, 0.0]),
-            ("lowerarm_l", Some("upperarm_l"), [0.47, 1.45, 0.0]),
-            ("hand_l", Some("lowerarm_l"), [0.73, 1.45, 0.0]),
-            ("clavicle_r", Some("spine_03"), [-0.05, 1.45, 0.0]),
-            ("upperarm_r", Some("clavicle_r"), [-0.19, 1.45, 0.0]),
-            ("lowerarm_r", Some("upperarm_r"), [-0.47, 1.45, 0.0]),
-            ("hand_r", Some("lowerarm_r"), [-0.73, 1.45, 0.0]),
-            ("thigh_l", Some("pelvis"), [0.10, 0.92, 0.0]),
-            ("calf_l", Some("thigh_l"), [0.10, 0.50, 0.0]),
-            ("foot_l", Some("calf_l"), [0.10, 0.08, 0.0]),
-            ("ball_l", Some("foot_l"), [0.10, 0.02, 0.14]),
-            ("thigh_r", Some("pelvis"), [-0.10, 0.92, 0.0]),
-            ("calf_r", Some("thigh_r"), [-0.10, 0.50, 0.0]),
-            ("foot_r", Some("calf_r"), [-0.10, 0.08, 0.0]),
-            ("ball_r", Some("foot_r"), [-0.10, 0.02, 0.14]),
+            ("thigh_l", Some("pelvis"), [0.09, 0.93, 0.0]),
+            ("calf_l", Some("thigh_l"), [0.10, 0.51, 0.0]),
+            ("foot_l", Some("calf_l"), [0.11, 0.09, -0.03]),
+            ("ball_l", Some("foot_l"), [0.12, 0.02, 0.10]),
+            ("thigh_r", Some("pelvis"), [-0.09, 0.93, 0.0]),
+            ("calf_r", Some("thigh_r"), [-0.10, 0.51, 0.0]),
+            ("foot_r", Some("calf_r"), [-0.11, 0.09, -0.03]),
+            ("ball_r", Some("foot_r"), [-0.12, 0.02, 0.10]),
         ];
         let mut skeleton = Self::from_positions(
             BONES
                 .iter()
                 .map(|(name, parent, at)| (*name, *parent, Vec3::from_array(*at))),
         );
-        skeleton.mass = Mass::try_from(80.0).ok();
+        // The segment-mass table sums to 80.02 kg.
+        skeleton.mass = Mass::try_from(80.02).ok();
         skeleton
     }
 
@@ -149,12 +150,19 @@ impl Skeleton {
         for bone in &self.bones {
             let parent = bone.parent.filter(|parent| *parent < entities.len());
             let (parent_entity, local) = match parent {
-                Some(parent) => (entities[parent], self.bones[parent].rest.inverse() * bone.rest),
+                Some(parent) => (
+                    entities[parent],
+                    self.bones[parent].rest.inverse() * bone.rest,
+                ),
                 None => (character, bone.rest),
             };
             let transform =
                 Transform::from_translation(local.translation.into()).with_rotation(local.rotation);
-            let mut entity = commands.spawn((Name::new(bone.name.clone()), transform, ChildOf(parent_entity)));
+            let mut entity = commands.spawn((
+                Name::new(bone.name.clone()),
+                transform,
+                ChildOf(parent_entity),
+            ));
             if bone.overrides != RagdollBone::default() {
                 entity.insert(bone.overrides.clone());
             }
@@ -169,19 +177,49 @@ impl Skeleton {
         let directions = (0..self.bones.len())
             .map(|index| {
                 let head = self.bones[index].rest.translation;
-                let child = self.bones.iter().find(|bone| bone.parent == Some(index));
-                let toward = match (child, self.bones[index].parent) {
-                    (Some(child), _) => Vec3::from(child.rest.translation - head),
-                    (None, Some(parent)) => {
-                        Vec3::from(head - self.bones[parent].rest.translation)
-                    }
+                let parent = self.bones[index].parent;
+                let incoming = parent
+                    .and_then(|parent| {
+                        Vec3::from(head - self.bones[parent].rest.translation).try_normalize()
+                    })
+                    .unwrap_or(Vec3::ZERO);
+                // Follow the child that best continues the incoming direction.
+                let child = self
+                    .bones
+                    .iter()
+                    .filter(|bone| bone.parent == Some(index))
+                    .map(|bone| Vec3::from(bone.rest.translation - head))
+                    // Ties keep the earlier child, so a root follows its first child.
+                    .reduce(|best, next| {
+                        let score = |v: Vec3| v.normalize_or_zero().dot(incoming);
+                        if score(next) > score(best) {
+                            next
+                        } else {
+                            best
+                        }
+                    });
+                let toward = match (child, parent) {
+                    (Some(child), _) => child,
+                    (None, Some(parent)) => Vec3::from(head - self.bones[parent].rest.translation),
                     (None, None) => Vec3::Y,
                 };
                 toward.try_normalize().unwrap_or(Vec3::Y)
             })
             .collect::<Vec<_>>();
         for (bone, direction) in self.bones.iter_mut().zip(directions) {
-            bone.rest.rotation = Quat::from_rotation_arc(Vec3::Y, direction);
+            // Local Z stays as close to the +Z front as possible; bones that
+            // point mostly forward or backward keep local X horizontal instead.
+            let reference = if direction.z.abs() > 0.7 {
+                Vec3::Y
+            } else {
+                Vec3::Z
+            };
+            let x = direction
+                .cross(reference)
+                .try_normalize()
+                .unwrap_or_else(|| Vec3::Y.cross(direction).normalize());
+            let z = x.cross(direction);
+            bone.rest.rotation = Quat::from_mat3(&Mat3::from_cols(x, direction, z)).normalize();
         }
     }
 }

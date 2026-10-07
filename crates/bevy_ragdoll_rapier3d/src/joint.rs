@@ -3,7 +3,7 @@
 use bevy::math::{Quat, Vec3};
 use bevy::prelude::{Added, Commands, Entity, Query, Res};
 use bevy_ragdoll::runtime::backend::BackendCapabilities;
-use bevy_ragdoll::runtime::body::{JointDriveTarget, JointToParent};
+use bevy_ragdoll::runtime::body::{JointBasis, JointDriveTarget, JointToParent};
 use bevy_rapier3d::prelude::{
     GenericJointBuilder, ImpulseJoint, JointAxesMask, JointAxis, MotorModel, TypedJoint,
 };
@@ -20,9 +20,10 @@ pub(crate) struct RapierJointMotorState {
 pub(crate) fn create_rapier_joints(
     mut commands: Commands<'_, '_>,
     capabilities: Res<'_, BackendCapabilities>,
-    joints: Query<'_, '_, (Entity, &JointToParent), Added<JointToParent>>,
+    joints: Query<'_, '_, (Entity, &JointToParent, Option<&JointBasis>), Added<JointToParent>>,
 ) {
-    for (entity, joint) in &joints {
+    for (entity, joint, basis) in &joints {
+        let basis = basis.map_or(Quat::IDENTITY, |basis| basis.0);
         // Native motor profiles use a softer joint spring than fallback torque profiles.
         // Measured physics conformance uses softer limits for native motors and firmer limits for fallback torque.
         let softness_hz = if capabilities.has_native_joint_motors {
@@ -32,8 +33,9 @@ pub(crate) fn create_rapier_joints(
         };
         let mut generic = GenericJointBuilder::new(JointAxesMask::LOCKED_SPHERICAL_AXES)
             .local_anchor1(joint.frame.translation.into())
-            .local_basis1(joint.frame.rotation)
+            .local_basis1(joint.frame.rotation * basis)
             .local_anchor2(Vec3::ZERO)
+            .local_basis2(basis)
             .build();
         generic.raw.softness = SpringCoefficients::new(softness_hz, 1.0);
         generic.set_contacts_enabled(false);

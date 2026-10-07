@@ -190,8 +190,8 @@ pub(super) fn detect(bones: &Bones<'_>) -> Option<Vec<(usize, BodyRole)>> {
             .take_while(|bone| *bone != hips)
             .filter(|bone| bones.eligible[*bone])
             .collect::<Vec<_>>();
-        // `between` runs from the chest down, so this picks the upper middle bone.
-        if let Some(spine) = between.get(between.len().saturating_sub(1) / 2) {
+        // `between` runs from the chest down, so this picks the lower middle bone.
+        if let Some(spine) = between.get(between.len() / 2) {
             slots.push((*spine, BodyRole::Spine));
         }
         slots.push((chest, BodyRole::Chest));

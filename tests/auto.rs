@@ -4,14 +4,18 @@ use bevy::asset::{AssetPlugin, Assets};
 use bevy::prelude::{App, Entity, MinimalPlugins, Transform};
 use bevy_ragdoll::runtime::RagdollError;
 use bevy_ragdoll::{
-    BoneBody, BodyRole, Ragdoll, RagdollBone, RagdollOverrides, RagdollPlugin, RagdollProfile,
+    BodyRole, BoneBody, Ragdoll, RagdollBone, RagdollOverrides, RagdollPlugin, RagdollProfile,
     Skeleton,
 };
 
 /// Builds a headless app with the ragdoll runtime and asset storage.
 fn app() -> App {
     let mut app = App::new();
-    app.add_plugins((MinimalPlugins, AssetPlugin::default(), RagdollPlugin::default()));
+    app.add_plugins((
+        MinimalPlugins,
+        AssetPlugin::default(),
+        RagdollPlugin::default(),
+    ));
     app
 }
 
@@ -53,7 +57,13 @@ fn a_character_without_bones_waits() {
     let mut app = app();
     let character = app.world_mut().spawn(Ragdoll::default()).id();
     app.update();
-    assert!(app.world().get::<Ragdoll>(character).unwrap().profile.is_none());
+    assert!(
+        app.world()
+            .get::<Ragdoll>(character)
+            .unwrap()
+            .profile
+            .is_none()
+    );
 }
 
 #[test]
@@ -99,7 +109,13 @@ fn an_unloaded_override_asset_delays_generation() {
     };
     let character = spawn(&mut app, ragdoll, &Skeleton::humanoid());
     app.update();
-    assert!(app.world().get::<Ragdoll>(character).unwrap().profile.is_none());
+    assert!(
+        app.world()
+            .get::<Ragdoll>(character)
+            .unwrap()
+            .profile
+            .is_none()
+    );
 }
 
 #[test]
@@ -113,4 +129,24 @@ fn an_invalid_override_stores_a_generation_error() {
         app.world().get::<RagdollError>(character),
         Some(RagdollError::InvalidSkeleton(_))
     ));
+}
+
+#[test]
+fn x_along_bone_rigs_insert_a_joint_basis_on_their_bodies() {
+    let mut app = app();
+    let mut skeleton = Skeleton::humanoid();
+    let quarter = bevy::math::Quat::from_rotation_z(std::f32::consts::FRAC_PI_2);
+    for bone in &mut skeleton.bones {
+        bone.rest.rotation *= quarter;
+    }
+    let character = spawn(&mut app, Ragdoll::default(), &skeleton);
+    app.world_mut()
+        .entity_mut(character)
+        .insert(bevy_ragdoll::runtime::components::RagdollMode::Kinematic);
+    app.update();
+    app.update();
+    let mut bases = app
+        .world_mut()
+        .query::<&bevy_ragdoll::runtime::body::JointBasis>();
+    assert_eq!(bases.iter(app.world()).count(), 15);
 }

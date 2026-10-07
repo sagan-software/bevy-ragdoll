@@ -127,6 +127,25 @@ pub struct JointSpec {
     /// Maximum motor torque in newton metres; the value must be finite and
     /// nonnegative before a backend creates the corresponding constraint.
     pub max_torque: f32,
+    /// Limit axes in the child body frame: `limits` apply about this basis's
+    /// X, Y (twist) and Z axes. Identity means the child bone's own axes.
+    #[cfg_attr(
+        feature = "serialize",
+        serde(default = "identity", skip_serializing_if = "is_identity")
+    )]
+    pub basis: Quat,
+}
+
+/// Serde default for [`JointSpec::basis`].
+#[cfg(feature = "serialize")]
+const fn identity() -> Quat {
+    Quat::IDENTITY
+}
+
+/// Skips serializing an identity [`JointSpec::basis`].
+#[cfg(feature = "serialize")]
+fn is_identity(basis: &Quat) -> bool {
+    *basis == Quat::IDENTITY
 }
 
 impl ShapeSpec {

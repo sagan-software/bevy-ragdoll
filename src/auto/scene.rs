@@ -41,7 +41,11 @@ pub(crate) fn skeleton_from_world(
             order.len() - 1
         });
         if let Some(children) = world.get::<Children>(entity) {
-            queue.extend(children.iter().map(|child| (*child, pose, index.or(parent))));
+            queue.extend(
+                children
+                    .iter()
+                    .map(|child| (*child, pose, index.or(parent))),
+            );
         }
     }
     // Keep joints of skinned meshes when present, else all named entities.

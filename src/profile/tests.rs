@@ -39,6 +39,7 @@ fn spec() -> ProfileSpec {
             frame: Isometry3d::from_xyz(0.0, 1.0, 0.0),
             limits,
             max_torque: 4.0,
+            basis: Quat::IDENTITY,
         }],
     }
 }
@@ -346,6 +347,7 @@ fn tree_validation_and_negative_quaternion_are_handled() {
         Isometry3d::from_rotation(Quat::from_xyzw(0.0, 0.0, 0.0, 2.0)),
         joint.limits(),
         joint.max_torque(),
+        joint.basis(),
     );
     assert!(
         invalid_frame

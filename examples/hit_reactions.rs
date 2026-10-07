@@ -16,10 +16,8 @@ use std::collections::HashMap;
 
 use bevy::app::AnimationSystems;
 use bevy::prelude::*;
-use bevy::transform::TransformSystems;
 use bevy::window::PrimaryWindow;
 use bevy_ragdoll::runtime::backend::RayHit;
-use bevy_ragdoll::runtime::body::BodyShape;
 use bevy_ragdoll::runtime::components::{
     BodyWeights, Ragdoll, RagdollBodyOf, RagdollBodyWeights, RagdollDrive, RagdollMode,
 };
@@ -29,8 +27,8 @@ use bevy_ragdoll::runtime::messages::{
 };
 use bevy_ragdoll::runtime::pin::PinTargets;
 use bevy_ragdoll::runtime::sets::RagdollSystems;
-use bevy_ragdoll::{
-    Body, BodyIndex, BodyRole, RagdollPlugin, RagdollProfile, ShapeSpec,
+use bevy_ragdoll::{RagdollDebugPlugin, 
+    Body, BodyIndex, BodyRole, RagdollPlugin, RagdollProfile,
 };
 use bevy_ragdoll_rapier3d::{RapierRagdollHooks, RapierRagdollPlugin};
 use bevy_rapier3d::plugin::{RapierPhysicsPlugin, TimestepMode};
@@ -78,16 +76,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .insert_resource(Rig(profile))
         .init_resource::<Controls>()
         .add_systems(Startup, (setup_scene, spawn_ragdoll, spawn_hud))
+        .add_plugins(RagdollDebugPlugin)
         .add_systems(
             PostUpdate,
-            (
-                animate_idle_targets
-                    .after(AnimationSystems)
-                    .before(RagdollSystems::CaptureTargets),
-                add_body_meshes
-                    .after(RagdollSystems::Bind)
-                    .before(TransformSystems::Propagate),
-            ),
+            animate_idle_targets
+                .after(AnimationSystems)
+                .before(RagdollSystems::CaptureTargets),
         )
         .add_systems(
             Update,
@@ -328,55 +322,6 @@ fn animate_idle_targets(time: Res<Time>, mut bones: Query<(&IdleTarget, &mut Tra
         };
         let sway = (time.elapsed_secs() * 0.82 + phase).sin() * amplitude;
         transform.rotation = bone.rest_rotation * Quat::from_rotation_z(sway);
-    }
-}
-
-/// Adds a mesh matching each physics body's collider once the runtime creates it.
-fn add_body_meshes(
-    mut commands: Commands,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
-    bodies: Query<(Entity, &BodyShape, &BodyIndex), Added<BodyShape>>,
-) {
-    let palette = [
-        Color::srgb(0.18, 0.62, 0.76),
-        Color::srgb(0.25, 0.78, 0.64),
-        Color::srgb(0.92, 0.66, 0.34),
-    ];
-    for (entity, shape, index) in &bodies {
-        let (mesh, transform) = match shape.0 {
-            ShapeSpec::Capsule { a, b, radius } => (
-                Mesh::from(Capsule3d::new(radius, a.distance(b))),
-                Transform::from_translation((a + b) * 0.5).with_rotation(Quat::from_rotation_arc(
-                    Vec3::Y,
-                    (b - a).normalize_or(Vec3::Y),
-                )),
-            ),
-            ShapeSpec::Sphere { center, radius } => (
-                Mesh::from(Sphere::new(radius)),
-                Transform::from_translation(center),
-            ),
-            ShapeSpec::Cuboid {
-                center,
-                rotation,
-                half_extents,
-            } => (
-                Mesh::from(Cuboid::from_size(half_extents * 2.0)),
-                Transform::from_translation(center).with_rotation(rotation),
-            ),
-        };
-        commands.entity(entity).insert(Visibility::Inherited);
-        commands.spawn((
-            Mesh3d(meshes.add(mesh)),
-            MeshMaterial3d(materials.add(StandardMaterial {
-                base_color: palette[index.get() % palette.len()],
-                metallic: 0.02,
-                perceptual_roughness: 0.42,
-                ..default()
-            })),
-            transform,
-            ChildOf(entity),
-        ));
     }
 }
 

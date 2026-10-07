@@ -1,19 +1,27 @@
 //! Debug meshes that show each physics body's collision shape.
 
 use bevy::prelude::{
-    Added, App, Assets, ChildOf, Color, Commands, Entity, Mesh, Mesh3d, MeshMaterial3d, Plugin,
-    Query, ResMut, StandardMaterial, Update, Visibility,
+    Added, App, Assets, ChildOf, Color, Commands, Entity, IntoScheduleConfigs, Mesh, Mesh3d,
+    MeshMaterial3d, Plugin, PostUpdate, Query, ResMut, StandardMaterial, Visibility,
 };
+use bevy::transform::TransformSystems;
 
 use crate::profile::BodyIndex;
 use crate::runtime::body::BodyShape;
+use crate::runtime::sets::RagdollSystems;
 
 /// Adds a colored mesh matching its collision shape to every new body.
 pub struct RagdollDebugPlugin;
 
 impl Plugin for RagdollDebugPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Update, add_body_meshes);
+        // Run right after bodies spawn so their meshes render on the same frame.
+        app.add_systems(
+            PostUpdate,
+            add_body_meshes
+                .after(RagdollSystems::Bind)
+                .before(TransformSystems::Propagate),
+        );
     }
 }
 
@@ -34,7 +42,12 @@ fn add_body_meshes(
         commands.entity(body).insert(Visibility::Inherited);
         commands.spawn((
             Mesh3d(meshes.add(mesh)),
-            MeshMaterial3d(materials.add(PALETTE[index.get() % PALETTE.len()])),
+            MeshMaterial3d(materials.add(StandardMaterial {
+                base_color: PALETTE[index.get() % PALETTE.len()],
+                metallic: 0.02,
+                perceptual_roughness: 0.42,
+                ..Default::default()
+            })),
             transform,
             ChildOf(body),
         ));
