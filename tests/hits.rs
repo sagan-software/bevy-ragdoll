@@ -337,7 +337,7 @@ fn pin_settings_match_the_idle_defaults() {
     assert_eq!(pin_values(invalid), [0.0; 5]);
 }
 
-/// Returns frequency, damping ratio, force cap, torque cap, and distance falloff in order.
+/// Returns frequency, damping, force cap, torque cap, and falloff in order.
 const fn pin_values(settings: PinSettings) -> [f32; 5] {
     [
         settings.frequency_hz(),

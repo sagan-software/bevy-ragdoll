@@ -164,12 +164,7 @@ fn resolve_profile(
     let mass = ragdoll.mass;
     // Returning `None` while the overrides asset loads retries on a later frame.
     let overrides = match &ragdoll.overrides {
-        Some(handle) => Some(
-            world
-                .get_resource::<Assets<crate::auto::RagdollOverrides>>()?
-                .get(handle)?
-                .clone(),
-        ),
+        Some(handle) => Some(loaded_overrides(world, handle)?),
         None => None,
     };
     let mut skeleton = crate::auto::skeleton_from_world(world, character, overrides.as_ref())?;
@@ -186,6 +181,15 @@ fn resolve_profile(
         .add(profile);
     world.get_mut::<Ragdoll>(character)?.profile = Some(handle.clone());
     Some(handle)
+}
+
+/// Returns the loaded overrides asset, or `None` while it is still loading.
+fn loaded_overrides(
+    world: &World,
+    handle: &bevy::asset::Handle<crate::auto::RagdollOverrides>,
+) -> Option<crate::auto::RagdollOverrides> {
+    let assets = world.get_resource::<Assets<crate::auto::RagdollOverrides>>()?;
+    assets.get(handle).cloned()
 }
 
 /// Builds a profile from `skeleton`, or records [`RagdollError::InvalidSkeleton`]
@@ -977,6 +981,7 @@ mod tests {
     #[test]
     fn settle_tracking_requires_fixed_time_and_settings() {
         let mut no_clock = World::new();
+        // Each call must return early instead of panicking on the missing resource.
         update_settle_state(&mut no_clock);
 
         let mut no_settings = World::new();

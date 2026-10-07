@@ -98,6 +98,7 @@ fn knees_are_hinges_that_bend_backward() {
     for bone in ["calf_l", "calf_r"] {
         let index = profile.body_index(bone).expect("the rig has each calf");
         let joint = profile.joint_of(index).expect("each calf has a joint");
+        // A knee is a single-axis hinge whose range includes bending backward.
         assert!(joint.limits().is_hinge());
         assert!(joint.limits().x.is_angle_within_range(-1.0));
         let rest_pose = *rest.get(index.get()).expect("the calf has a rest pose");
@@ -128,6 +129,7 @@ fn hips_bend_forward() {
     for bone in ["thigh_l", "thigh_r"] {
         let index = profile.body_index(bone).expect("the rig has each thigh");
         let joint = profile.joint_of(index).expect("each thigh has a joint");
+        // A hip's X range includes bending forward.
         assert!(joint.limits().x.is_angle_within_range(1.0));
         let rest_pose = *rest.get(index.get()).expect("the thigh has a rest pose");
         let body = profile
@@ -341,6 +343,7 @@ fn builder_matches_spec() {
         rest: Isometry3d::from_xyz(0.0, 2.0, 0.0),
         role: None,
     };
+    // Both joints share one single-axis limit set.
     let limits = JointLimits {
         x: AngleRange {
             min: -1.0,
@@ -456,6 +459,7 @@ fn cuboid_shapes_round_trip_through_ron() {
         half_extents: Vec3::splat(0.25),
     };
     let encoded = ron::to_string(&spec).unwrap();
+    // Decoding must give back the cuboid unchanged.
     let decoded = ron::from_str::<ProfileSpec>(&encoded).unwrap();
     assert_eq!(decoded, spec);
     assert_eq!(decoded.bodies[1].shape, spec.bodies[1].shape);
