@@ -156,6 +156,7 @@ fn register_backend_types(app: &mut App) {
         .register_type::<BodyDriveOutput>()
         .register_type::<BodyKind>()
         .register_type::<JointToParent>()
+        .register_type::<super::body::JointBasis>()
         .register_type::<JointDriveTarget>()
         .register_type::<NoContactWith>()
         .register_type::<BodyAtRest>();

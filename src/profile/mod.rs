@@ -428,6 +428,7 @@ impl TryFrom<ProfileSpec> for ValidatedProfile {
                     joint.frame,
                     joint.limits,
                     joint.max_torque,
+                    joint.basis,
                 )
             })
             .collect();
@@ -568,7 +569,7 @@ fn validate_joint_limits_and_frames(
             }
         }
         // A finite unit frame rotation and finite translation define the constraint anchor.
-        if !is_valid_isometry(joint.frame) {
+        if !is_valid_isometry(joint.frame) || !is_valid_rotation(joint.basis) {
             return Err(ProfileError::BadLimit {
                 joint: BodyIndex(joint.child),
                 axis: JointAxis::Frame,
@@ -680,8 +681,8 @@ fn set_mask_bit(
 /// Measures the child's joint angles after validating both pose rotations.
 fn joint_angles(joint: &Joint, parent_pose: Isometry3d, child_pose: Isometry3d) -> Option<Vec3> {
     // Compose the parent pose with the joint frame before measuring child rotation.
-    let frame_rotation = parent_pose.rotation * joint.frame().rotation;
-    let relative = frame_rotation.inverse() * child_pose.rotation;
+    let frame_rotation = parent_pose.rotation * joint.frame().rotation * joint.basis();
+    let relative = frame_rotation.inverse() * child_pose.rotation * joint.basis();
     if !is_valid_rotation(relative) {
         return None;
     }

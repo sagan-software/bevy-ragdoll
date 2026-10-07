@@ -114,3 +114,27 @@ fn an_invalid_override_stores_a_generation_error() {
         Some(RagdollError::InvalidSkeleton(_))
     ));
 }
+
+#[test]
+fn x_along_bone_rigs_insert_a_joint_basis_on_their_bodies() {
+    let mut app = app();
+    let mut skeleton = Skeleton::humanoid();
+    let quarter = bevy::math::Quat::from_rotation_z(std::f32::consts::FRAC_PI_2);
+    for bone in &mut skeleton.bones {
+        bone.rest.rotation *= quarter;
+    }
+    let character = spawn(
+        &mut app,
+        Ragdoll::default(),
+        &skeleton,
+    );
+    app.world_mut()
+        .entity_mut(character)
+        .insert(bevy_ragdoll::runtime::components::RagdollMode::Kinematic);
+    app.update();
+    app.update();
+    let mut bases = app
+        .world_mut()
+        .query::<&bevy_ragdoll::runtime::body::JointBasis>();
+    assert_eq!(bases.iter(app.world()).count(), 15);
+}

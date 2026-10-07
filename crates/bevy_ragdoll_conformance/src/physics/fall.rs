@@ -85,7 +85,7 @@ fn drop_and_check(
     let chest = snapshots(scene.app.world_mut(), scene.character)
         .into_iter()
         .find(|body| body.index == chest_index)
-        .expect("the spine_04 body was spawned");
+        .expect("the chest body was spawned");
     // Apply the impulse at the chest centre to avoid adding angular momentum.
     scene.app.world_mut().write_message(RagdollImpulse {
         body: chest.entity,

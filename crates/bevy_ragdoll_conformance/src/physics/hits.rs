@@ -150,7 +150,7 @@ fn assert_pistol_chest_result(response: PistolChestResponse) {
 }
 
 /// Runs the headshot physics check and measures neck-proxy and head rotation.
-/// The rig uses `spine_04` as the head parent because its profile has no
+/// The rig uses the chest (`spine_02`) as the head parent because its profile has no
 /// separate neck body.
 ///
 /// # Examples
@@ -251,7 +251,7 @@ struct HeadshotResponse {
 
 /// Captures the head chain, applies an impulse, and samples nine fixed steps.
 fn measure_headshot_response(scene: &mut PhysicsScene) -> HeadshotResponse {
-    // Resolve the head chain; spine_04 is the head's parent segment.
+    // Resolve the head chain; spine_02 is the head parent segment.
     let neck_proxy_index = body_index(&scene.profile, "spine_02");
     let upper_spine_index = body_index(&scene.profile, "spine_01");
     let head_index = body_index(&scene.profile, "head");

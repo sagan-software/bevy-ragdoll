@@ -491,3 +491,49 @@ fn from_positions_points_bones_at_their_first_child() {
 fn default<T: Default>() -> T {
     T::default()
 }
+
+#[test]
+fn x_along_bone_rigs_get_the_same_limits_through_a_basis() {
+    // UE-style bones: local X points along the bone instead of local Y.
+    let quarter = bevy::math::Quat::from_rotation_z(std::f32::consts::FRAC_PI_2);
+    let y_rig = Skeleton::humanoid();
+    let mut x_rig = y_rig.clone();
+    for bone in &mut x_rig.bones {
+        bone.rest.rotation *= quarter;
+    }
+    let (y_profile, x_profile) = (generate(&y_rig), generate(&x_rig));
+    // Any world-space pose measures the same joint angles on both rigs.
+    let poses = |profile: &RagdollProfile| {
+        profile
+            .rest_poses(bevy::math::Isometry3d::IDENTITY)
+            .enumerate()
+            .map(|(index, mut pose)| {
+                let bend = bevy::math::Quat::from_rotation_x(0.3 * index as f32);
+                pose.rotation = bend * pose.rotation;
+                pose
+            })
+            .collect::<Vec<_>>()
+    };
+    let (y_poses, x_poses) = (poses(&y_profile), poses(&x_profile));
+    for (y_joint, x_joint) in y_profile.joints().iter().zip(x_profile.joints()) {
+        assert_eq!(y_joint.basis(), bevy::math::Quat::IDENTITY);
+        assert!(x_joint.basis().angle_between(bevy::math::Quat::IDENTITY) > 1.0);
+        let (y_limits, x_limits) = (y_joint.limits(), x_joint.limits());
+        for (a, b) in [(y_limits.x, x_limits.x), (y_limits.twist, x_limits.twist), (y_limits.z, x_limits.z)] {
+            assert!((a.min - b.min).abs() < 1.0e-4 && (a.max - b.max).abs() < 1.0e-4);
+        }
+        let child = y_joint.child();
+        let y_angles = y_profile.joint_angles(child, &y_poses).unwrap();
+        let x_angles = x_profile.joint_angles(child, &x_poses).unwrap();
+        assert!(y_angles.distance(x_angles) < 1.0e-4, "{y_angles} != {x_angles}");
+    }
+}
+
+#[test]
+fn twist_basis_maps_y_onto_the_nearest_signed_axis() {
+    use super::generate::twist_basis;
+    for axis in [Vec3::X, Vec3::NEG_X, Vec3::Z, Vec3::NEG_Z, Vec3::NEG_Y] {
+        assert!((twist_basis(axis * 0.9 + Vec3::splat(0.05)) * Vec3::Y).distance(axis) < 1.0e-5);
+    }
+    assert_eq!(twist_basis(Vec3::Y), bevy::math::Quat::IDENTITY);
+}

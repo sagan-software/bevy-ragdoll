@@ -732,7 +732,7 @@ pub fn an_impulse_gives_its_momentum(backend: PhysicsBackend) {
     let chest = snapshots(scene.app.world_mut(), scene.character)
         .into_iter()
         .find(|body| body.index == chest_index)
-        .expect("the spine_04 body was spawned");
+        .expect("the chest body was spawned");
     let center =
         Vec3::from(chest.pose.translation) + chest.pose.rotation * local_center(chest.shape);
     scene.app.world_mut().write_message(RagdollImpulse {

@@ -2,7 +2,7 @@
 
 use std::f32::consts::PI;
 
-use bevy::math::Vec3;
+use bevy::math::{Quat, Vec3};
 
 use super::humanoid::{self, Bones};
 use super::{BoneBody, Skeleton};
@@ -541,14 +541,16 @@ impl<'a> Rig<'a> {
         let parent_rest = self.skeleton.bones[tree.bones[parent]].rest;
         let role = roles[child];
         let template = Template::of(role);
+        let along = segments[child].direction();
+        let basis = twist_basis(source.rest.rotation.inverse() * along);
+        let limit_axes = source.rest.rotation * basis;
         let limits = source.overrides.limits.unwrap_or_else(|| {
             let axis = self.flex_axis(role, &segments[parent], &segments[child]);
             let away = self.abduction(role, &segments[child]);
-            let along = segments[child].direction();
-            // Rotating about local `axis` moves the tip toward `axis × along`.
-            template.limits(source.rest.rotation.inverse() * axis, |side_x| {
+            // Rotating about an axis moves the tip toward `axis × along`.
+            template.limits(limit_axes.inverse() * axis, |side_x| {
                 let local = if side_x { Vec3::X } else { Vec3::Z };
-                (source.rest.rotation * local).cross(along).dot(away)
+                (limit_axes * local).cross(along).dot(away)
             })
         });
         JointSpec {
@@ -560,6 +562,7 @@ impl<'a> Rig<'a> {
                 .overrides
                 .max_torque
                 .unwrap_or(template.torque * total_mass / REFERENCE_MASS),
+            basis,
         }
     }
 
@@ -594,6 +597,27 @@ impl<'a> Rig<'a> {
             .into_iter()
             .find_map(|toward| along.cross(toward).try_normalize())
             .unwrap_or(Vec3::X)
+    }
+}
+
+/// Returns the joint basis that puts the twist axis (Y) on the bone axis.
+///
+/// `along` is the bone direction in the child bone frame. Blender and Mixamo
+/// bones point along local +Y and get identity. Other rigs, such as the UE
+/// mannequin with bones along local X, get the quarter or half turn that maps
+/// Y onto the signed local axis nearest `along`.
+pub(super) fn twist_basis(along: Vec3) -> Quat {
+    let axes = [Vec3::Y, Vec3::X, Vec3::Z, Vec3::NEG_X, Vec3::NEG_Y, Vec3::NEG_Z];
+    let nearest = axes
+        .into_iter()
+        .reduce(|best, next| if next.dot(along) > best.dot(along) { next } else { best })
+        .unwrap_or(Vec3::Y);
+    if nearest == Vec3::Y {
+        Quat::IDENTITY
+    } else if nearest == Vec3::NEG_Y {
+        Quat::from_rotation_z(PI)
+    } else {
+        Quat::from_rotation_arc(Vec3::Y, nearest)
     }
 }
 

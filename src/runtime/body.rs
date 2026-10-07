@@ -7,7 +7,7 @@
 //! targets on the following tick. Geometry and mass use metres and kilograms so
 //! backend adapters can perform unit conversion at their integration boundary.
 
-use bevy::math::{Isometry3d, Vec3};
+use bevy::math::{Isometry3d, Quat, Vec3};
 use bevy::prelude::{Component, Entity};
 
 use crate::profile::{JointLimits, ShapeSpec};
@@ -265,6 +265,15 @@ pub struct JointToParent {
     /// contract during fixed simulation.
     pub max_torque: f32,
 }
+
+/// Limit axes of a joint in the child body frame, present only when they
+/// differ from the child body's own axes.
+///
+/// Backends place the joint frame at `JointToParent::frame.rotation * basis`
+/// on the parent body and at `basis` on the child body, and apply
+/// `JointToParent::limits` and `JointDriveTarget::rotation` about those axes.
+#[derive(Component, Clone, Copy, Debug, PartialEq, bevy::prelude::Reflect)]
+pub struct JointBasis(pub Quat);
 
 /// Target rotation, angular velocity, and gains for a backend's native joint
 /// motor.

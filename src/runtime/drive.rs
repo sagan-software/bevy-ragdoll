@@ -675,18 +675,20 @@ struct JointFrameState {
 /// Derives current and target child motion in the profile joint's parent frame.
 fn joint_frame_state(
     joint: JointToParent,
+    basis: Quat,
     parent: BodyDriveState,
     child: BodyDriveState,
     parent_target: Isometry3d,
     child_target: Isometry3d,
 ) -> JointFrameState {
     // Compose the authored joint frame separately with current and target parent poses.
-    let current_frame = parent.current_pose.rotation * joint.frame.rotation;
-    let target_frame = parent_target.rotation * joint.frame.rotation;
+    // The basis turns both frames onto the joint's limit axes.
+    let current_frame = parent.current_pose.rotation * joint.frame.rotation * basis;
+    let target_frame = parent_target.rotation * joint.frame.rotation * basis;
     JointFrameState {
         current_frame,
-        current_relative: current_frame.inverse() * child.current_pose.rotation,
-        target_relative: target_frame.inverse() * child_target.rotation,
+        current_relative: current_frame.inverse() * child.current_pose.rotation * basis,
+        target_relative: target_frame.inverse() * child_target.rotation * basis,
         current_relative_velocity: child.current_velocity.angular - parent.current_velocity.angular,
         target_relative_velocity: target_frame.inverse()
             * (child.target_velocity.angular - parent.target_velocity.angular),
@@ -753,7 +755,10 @@ fn calculate_child_joint_target(
     };
 
     // Express current and target rotation and velocity in the authored parent joint frame.
-    let frames = joint_frame_state(joint, parent, child, parent_target, child_target);
+    let basis = world
+        .get::<super::body::JointBasis>(child_entity)
+        .map_or(Quat::IDENTITY, |basis| basis.0);
+    let frames = joint_frame_state(joint, basis, parent, child, parent_target, child_target);
 
     // Combine whole-character muscle strength with the checked child-body override.
     let muscle = config.drive.muscle()

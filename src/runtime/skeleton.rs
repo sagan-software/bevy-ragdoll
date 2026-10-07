@@ -640,6 +640,9 @@ fn spawn_bodies(world: &mut World, character: Entity, profile: &RagdollProfile, 
                 },
                 JointDriveTarget::default(),
             ));
+            if joint.basis() != bevy::math::Quat::IDENTITY {
+                entity.insert(super::body::JointBasis(joint.basis()));
+            }
         }
     }
 

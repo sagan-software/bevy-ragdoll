@@ -1,6 +1,6 @@
 //! A validated joint entry between profile bodies.
 
-use bevy::math::Isometry3d;
+use bevy::math::{Isometry3d, Quat};
 
 use super::{AngleRange, BodyIndex, JointLimits};
 
@@ -20,6 +20,8 @@ pub struct Joint {
     limits: JointLimits,
     /// The maximum motor torque in newton metres.
     max_torque: f32,
+    /// The limit axes in the child body frame.
+    basis: Quat,
 }
 
 impl Joint {
@@ -30,6 +32,7 @@ impl Joint {
         frame: Isometry3d,
         limits: JointLimits,
         max_torque: f32,
+        basis: Quat,
     ) -> Self {
         Self {
             child,
@@ -37,7 +40,26 @@ impl Joint {
             frame,
             limits,
             max_torque,
+            basis,
         }
+    }
+
+    /// Returns the limit axes in the child body frame.
+    ///
+    /// The limit axes in the parent body frame are `frame().rotation * basis()`.
+    /// It is identity unless the child bone does not point along its local Y.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use bevy::math::Quat;
+    /// # use bevy_ragdoll::Joint;
+    /// # fn basis(joint: &Joint) -> Quat {
+    /// joint.basis()
+    /// # }
+    /// ```
+    pub const fn basis(&self) -> Quat {
+        self.basis
     }
 
     /// Returns the checked child body index constrained by this joint.
@@ -82,7 +104,7 @@ impl Joint {
     /// # Examples
     ///
     /// ```
-    /// # use bevy::math::Isometry3d;
+    /// # use bevy::math::{Isometry3d, Quat};
     /// # use bevy_ragdoll::Joint;
     /// # fn frame(joint: &Joint) -> Isometry3d {
     /// joint.frame()

@@ -53,6 +53,7 @@ fn valid_spec() -> ProfileSpec {
                 z: AngleRange { min: 0.0, max: 0.0 },
             },
             max_torque: 5.0,
+            basis: Quat::IDENTITY,
         }],
     }
 }
@@ -265,6 +266,7 @@ fn no_contact_holds_neighbours_and_touching_capsules() {
                 z: AngleRange { min: 0.0, max: 0.0 },
             },
             max_torque: 5.0,
+            basis: Quat::IDENTITY,
         })
         .collect();
 
@@ -334,6 +336,7 @@ fn builder_matches_spec() {
                 frame: Isometry3d::from_xyz(0.0, 1.0, 0.0),
                 limits,
                 max_torque: 12.0,
+                basis: Quat::IDENTITY,
             },
             JointSpec {
                 child: 2,
@@ -341,6 +344,7 @@ fn builder_matches_spec() {
                 frame: Isometry3d::from_xyz(0.0, 1.0, 0.0),
                 limits,
                 max_torque: 8.0,
+                basis: Quat::IDENTITY,
             },
         ],
     };

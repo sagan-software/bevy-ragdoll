@@ -93,6 +93,7 @@ impl ProfileBuilder {
             frame,
             limits,
             max_torque,
+            basis: bevy::math::Quat::IDENTITY,
         });
         self
     }
