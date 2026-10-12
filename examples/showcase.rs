@@ -21,9 +21,12 @@ use bevy::asset::RenderAssetUsages;
 use bevy::diagnostic::{DiagnosticsStore, FrameTimeDiagnosticsPlugin};
 use bevy::input::mouse::{AccumulatedMouseMotion, AccumulatedMouseScroll};
 use bevy::light::CascadeShadowConfigBuilder;
+use bevy::picking::hover::Hovered;
 use bevy::platform::time::Instant;
 use bevy::prelude::*;
 use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
+use bevy::ui::Pressed;
+use bevy::ui_widgets::Button;
 use bevy::window::PrimaryWindow;
 use bevy_ragdoll::runtime::body::{BodyMass, BodyPhysicsPose, BodyShape, BodyVelocity};
 use bevy_ragdoll::runtime::components::{RagdollBodyOf, RagdollDrive, RagdollMode};
@@ -120,7 +123,10 @@ impl Backend {
         // The web reloads with a new query; native starts a fresh process and exits.
         #[cfg(target_arch = "wasm32")]
         if let Some(window) = web_sys::window() {
-            let _ = window.location().set_search(&format!("backend={name}"));
+            // A failed navigation leaves the current backend running.
+            if let Err(error) = window.location().set_search(&format!("backend={name}")) {
+                warn!(?error, "could not switch backend");
+            }
         }
         #[cfg(not(target_arch = "wasm32"))]
         if let Ok(exe) = std::env::current_exe() {
@@ -1007,6 +1013,8 @@ fn button(
     let button = commands
         .spawn((
             Button,
+            // Picking keeps this current so pointer presses can skip the panel.
+            Hovered::default(),
             action,
             Node {
                 min_width: px(26),
@@ -1025,7 +1033,7 @@ fn button(
 /// Applies pressed panel buttons.
 fn handle_buttons(
     mut commands: Commands<'_, '_>,
-    buttons: Query<'_, '_, (&Interaction, &Action), Changed<Interaction>>,
+    buttons: Query<'_, '_, &Action, (With<Button>, Added<Pressed>)>,
     backend: Res<'_, ActiveBackend>,
     settings: Res<'_, HitSettings>,
     mut params: ResMut<'_, Params>,
@@ -1034,10 +1042,7 @@ fn handle_buttons(
     mut hits: MessageWriter<'_, RagdollHit>,
 ) {
     // React only to the press, not to hover or release.
-    for (interaction, action) in &buttons {
-        if *interaction != Interaction::Pressed {
-            continue;
-        }
+    for action in &buttons {
         match *action {
             Action::Step(param, sign) => param.step(&mut params, f32::from(sign)),
             Action::UseBackend(choice) if choice != backend.0 => choice.restart_into(),
@@ -1120,7 +1125,7 @@ fn cursor_ray(
 /// Sends a backend ray on left press, and moves the grab goal while dragging.
 fn press_pointer(
     buttons: Res<'_, ButtonInput<MouseButton>>,
-    interactions: Query<'_, '_, &Interaction>,
+    hovered_buttons: Query<'_, '_, &Hovered, With<Button>>,
     windows: Query<'_, '_, &Window, With<PrimaryWindow>>,
     cameras: Query<'_, '_, (&Camera, &GlobalTransform)>,
     mut pointer: ResMut<'_, PointerState>,
@@ -1130,7 +1135,7 @@ fn press_pointer(
         return;
     };
     // Clicks on the panel must not also hit a ragdoll.
-    let is_over_panel = interactions.iter().any(|i| *i != Interaction::None);
+    let is_over_panel = hovered_buttons.iter().any(Hovered::get);
     // A press asks the backend which body is under the cursor; the answer arrives later.
     if buttons.just_pressed(MouseButton::Left) && !is_over_panel {
         let id = pointer.next_request;

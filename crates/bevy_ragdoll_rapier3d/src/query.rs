@@ -158,7 +158,7 @@ fn raycast_hit(
     }
     // Exclude the requested body and every body owned by a requested character.
     let direction = request.direction.normalize();
-    let accepts = |entity| match (request.filter, body_tags.get(entity)) {
+    let accepts = |entity, _: &_| match (request.filter, body_tags.get(entity)) {
         (Some(excluded), _) if entity == excluded => false,
         (Some(excluded), Ok((owner, _))) if owner.0 == excluded => false,
         _ => true,

@@ -303,6 +303,8 @@ fn sleeping_for_drive(
             normalized_linear_threshold: finite_nonnegative(settings.sleep_linear_threshold)
                 .unwrap_or(0.0),
             angular_threshold: finite_nonnegative(settings.sleep_angular_threshold).unwrap_or(0.0),
+            // Keep Rapier's default sleep delay; the shared settings define thresholds only.
+            time_until_sleep: Sleeping::default().time_until_sleep,
             sleeping: is_sleeping,
         }
     }

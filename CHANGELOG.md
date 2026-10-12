@@ -4,6 +4,15 @@ All notable changes to this project are recorded here.
 
 ## Unreleased
 
+- Update to Bevy 0.20 and `bevy_rapier3d` 0.37. The Avian adapter pins
+  the upstream Avian port to Bevy 0.20 by git commit until Avian publishes
+  a release.
+- Avian: swept CCD is now opted out explicitly when
+  `AvianRagdollSettings::is_swept_ccd_enabled` is off, because Avian 0.8
+  sweeps fast bodies by default; when it is on, bodies sweep against every
+  body type as before.
+- Raise the minimum supported Rust version to 1.97.1, the version Bevy 0.20
+  requires.
 - Recognize 3ds Max Biped style humanoid bone names, with a rig prefix and a
   middle side marker such as `Bip01 L Thigh`.
 - Pick each humanoid limb chain from candidates that descend from one

@@ -1,7 +1,7 @@
 //! Run the shared contract and physics tiers against the public Avian adapter.
 //!
 //! `motors_hold_a_target_pose` is not run: it checks native joint motors, and
-//! Avian 0.7 has no spherical joint motor, so the adapter reports
+//! Avian 0.8 has no spherical joint motor, so the adapter reports
 //! `has_native_joint_motors: false`. Physics-tier cases that do not pass yet
 //! are `#[ignore]`d with their measured values; the contract tier passes.
 
@@ -159,28 +159,28 @@ fn frozen_ragdoll_stays_put() {
 
 /// Checks landing, joint limits, contact response, and sleep.
 #[test]
-#[ignore = "not met yet on Avian 0.7: sinks 1.7 cm into the floor (bound 1 cm)"]
+#[ignore = "not met yet on Avian 0.8: sinks 1.7 cm into the floor (bound 1 cm)"]
 fn dropped_ragdoll_lands_and_settles() {
     bevy_ragdoll_conformance::physics::a_dropped_ragdoll_lands_and_settles(avian_backend());
 }
 
 /// Checks that a high-energy throw preserves connected body constraints.
 #[test]
-#[ignore = "not met yet on Avian 0.7: sinks 4.2 cm into the floor (bound 2.5 cm)"]
+#[ignore = "not met yet on Avian 0.8: sinks 6.1 cm into the floor (bound 2.5 cm)"]
 fn hard_throw_keeps_joints_together() {
     bevy_ragdoll_conformance::physics::a_hard_throw_keeps_the_joints_together(avian_backend());
 }
 
 /// Checks repeatable results for the same scene and input.
 #[test]
-#[ignore = "not met yet on Avian 0.7: the shared drop sinks 1.3 cm (bound 1 cm) before repeatability is compared"]
+#[ignore = "not met yet on Avian 0.8: the shared drop sinks 1.7 cm (bound 1 cm) before repeatability is compared"]
 fn same_input_gives_the_same_output() {
     bevy_ragdoll_conformance::physics::the_same_input_gives_the_same_output(avian_backend());
 }
 
 /// Checks the backend-neutral torque fallback holds a target pose.
 #[test]
-#[ignore = "not met yet: calf_r ends at -92.7 degrees for a -60 degree target (bound 5); with core soft_limit_torque disabled the calves end at -56.9 and -60.2"]
+#[ignore = "not met yet: calf_l ends at -53.6 degrees for a -60 degree target (bound 5)"]
 fn torque_drive_holds_a_target_pose() {
     bevy_ragdoll_conformance::physics::torque_drive_holds_a_target_pose(avian_backend());
 }
@@ -195,14 +195,14 @@ fn spawn_with_feet_in_floor_lifts_out() {
 
 /// Checks a pinned pelvis and torso stay near the standing target for ten seconds.
 #[test]
-#[ignore = "not met yet on Avian 0.7: pelvis drifts 10.9 cm from the standing target"]
+#[ignore = "not met yet on Avian 0.8: pelvis drifts 10.2 cm from the standing target"]
 fn pinned_pelvis_stands_for_ten_seconds() {
     bevy_ragdoll_conformance::physics::pinned_pelvis_stands_for_ten_seconds(avian_backend());
 }
 
 /// Checks the profile's headshot response against the TGF look thresholds.
 #[test]
-#[ignore = "not met yet on Avian 0.7: upperarm_r goes 58 deg past its X limit at 0.42 s inside the symmetric swing cone"]
+#[ignore = "not met yet on Avian 0.8: upperarm_r goes 28 deg past its X limit at 0.78 s inside the symmetric swing cone"]
 fn headshot_drops_body_like_the_references() {
     bevy_ragdoll_conformance::physics::a_headshot_drops_the_body_like_the_references(
         avian_backend(),
@@ -211,21 +211,21 @@ fn headshot_drops_body_like_the_references() {
 
 /// Checks chest-hit knee flexion, horizontal slide, bounce, and rest time.
 #[test]
-#[ignore = "not met yet on Avian 0.7: the body does not come to rest"]
+#[ignore = "not met yet on Avian 0.8: slides 0.52 m (bound 0.5 m) and does not come to rest"]
 fn chest_hit_buckles_knees_and_stops() {
     bevy_ragdoll_conformance::physics::a_chest_hit_buckles_the_knees_and_stops(avian_backend());
 }
 
 /// Checks the running death response against the TGF look thresholds.
 #[test]
-#[ignore = "not met yet on Avian 0.7: the body never comes to rest after landing"]
+#[ignore = "not met yet on Avian 0.8: the body never comes to rest after landing"]
 fn running_death_stops_within_a_body_length() {
     bevy_ragdoll_conformance::physics::a_running_death_stops_within_a_body_length(avian_backend());
 }
 
 /// Checks the stair parity case.
 #[test]
-#[ignore = "not met yet on Avian 0.7 (also ignored on Rapier): the body never comes to rest after landing"]
+#[ignore = "not met yet on Avian 0.8: the body never comes to rest after landing"]
 fn body_shot_onto_stairs_stays_on_them() {
     bevy_ragdoll_conformance::physics::a_body_shot_onto_stairs_stays_on_them(avian_backend());
 }
@@ -238,7 +238,7 @@ fn bullet_moves_downed_body_a_little() {
 
 /// Checks the standing chest-hit displacement, rotation, and muscle recovery bounds.
 #[test]
-#[ignore = "not met yet on Avian 0.7: pelvis moves 48 cm"]
+#[ignore = "not met yet on Avian 0.8: pelvis moves 72 cm"]
 fn pistol_to_the_chest_does_not_move_the_pelvis_far() {
     bevy_ragdoll_conformance::physics::pistol_to_the_chest_does_not_move_the_pelvis_far(
         avian_backend(),

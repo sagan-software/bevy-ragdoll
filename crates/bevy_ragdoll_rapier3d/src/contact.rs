@@ -88,7 +88,7 @@ pub fn ragdoll_filter_contact_pair(
         return None;
     }
 
-    Some(SolverFlags::COMPUTE_IMPULSES)
+    Some(SolverFlags::COMPUTE_RIGID_IMPULSES)
 }
 
 /// Checks symmetric profile exclusion masks for two bodies in one ragdoll.

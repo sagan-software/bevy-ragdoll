@@ -119,8 +119,29 @@
           };
 
           manifest = builtins.fromTOML (builtins.readFile ./Cargo.toml);
-          commonArgs = {
+
+          # Cargo.toml pins Avian's Bevy 0.20 port by git commit. Its crates read
+          # `../../src` and the root README, which crane's per-crate vendoring
+          # drops, so lay the crate out as Avian's publish.sh does before vendoring.
+          # Remove this once Cargo.toml uses an Avian release from crates.io.
+          cargoVendorDir = craneLib.vendorCargoDeps {
             inherit src;
+            overrideVendorGitCheckout =
+              packages: drv:
+              if lib.any (package: lib.hasPrefix "avian" package.name) packages then
+                drv.overrideAttrs (old: {
+                  postPatch = (old.postPatch or "") + ''
+                    for crate in crates/avian2d crates/avian3d; do
+                      cp -r src README.md LICENSE-MIT LICENSE-APACHE "$crate"/
+                      sed -i 's#\.\./\.\./src#src#g' "$crate"/Cargo.toml
+                    done
+                  '';
+                })
+              else
+                drv;
+          };
+          commonArgs = {
+            inherit src cargoVendorDir;
             pname = "bevy-ragdoll";
             version = manifest.workspace.package.version or "0.0.0";
             strictDeps = true;

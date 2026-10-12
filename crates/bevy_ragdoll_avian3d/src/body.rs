@@ -3,10 +3,10 @@
 use std::collections::BTreeMap;
 
 use avian3d::prelude::{
-    ActiveCollisionHooks, AngularDamping, AngularInertia, AngularVelocity, CenterOfMass,
+    ActiveCollisionHooks, AngularDamping, AngularInertia, AngularVelocity, CcdFilter, CenterOfMass,
     ColliderOf, Forces, Friction, LinearDamping, LinearVelocity, Mass, Position, Restitution,
-    RigidBody, Rotation, SleepThreshold, SleepingDisabled, SpatialQuery, SpeculativeMargin,
-    SweptCcd, WakeBody, WriteRigidBodyForces,
+    RigidBody, Rotation, SleepThreshold, SleepingDisabled, SpatialQuery, SpeculativeCcd, SweptCcd,
+    WakeBody, WriteRigidBodyForces,
 };
 use bevy::ecs::system::SystemParam;
 use bevy::math::{Isometry3d, Vec3};
@@ -152,9 +152,7 @@ pub(crate) fn create_avian_bodies(
         if is_driven(drive) {
             body.insert(SleepingDisabled);
         }
-        if let Some(swept_ccd) = ccd(is_swept_ccd_used) {
-            body.insert(swept_ccd);
-        }
+        body.insert(ccd(is_swept_ccd_used));
     }
 }
 
@@ -196,14 +194,21 @@ fn body_material(settings: &RagdollPhysicsSettings) -> impl bevy::ecs::bundle::B
         Restitution::new(restitution.clamp(0.0, 1.0)),
         LinearDamping(finite_nonnegative(settings.linear_damping).unwrap_or(0.0)),
         AngularDamping(finite_nonnegative(settings.angular_damping).unwrap_or(0.0)),
-        SpeculativeMargin(finite_nonnegative(settings.soft_ccd_prediction).unwrap_or(0.0)),
+        SpeculativeCcd::new(finite_nonnegative(settings.soft_ccd_prediction).unwrap_or(0.0)),
         sleep_threshold(settings),
     )
 }
 
-/// Returns swept CCD when enabled, or an empty bundle.
-fn ccd(is_enabled: bool) -> Option<SweptCcd> {
-    is_enabled.then(SweptCcd::default)
+/// Returns swept CCD against every body type when enabled, or swept CCD
+/// with an empty filter when disabled. Avian sweeps fast dynamic bodies by
+/// default, so a disabled setting must opt out explicitly.
+const fn ccd(is_enabled: bool) -> SweptCcd {
+    let filter = if is_enabled {
+        CcdFilter::ALL
+    } else {
+        CcdFilter::NONE
+    };
+    SweptCcd::new().with_filter(filter)
 }
 
 /// Applies the profile inertia floor to each principal axis.
@@ -379,7 +384,7 @@ pub(crate) fn finite_nonnegative(value: f32) -> Option<f32> {
 mod tests {
     //! Checks pure body mapping helpers and skipped update branches.
 
-    use avian3d::prelude::{AngularInertia, RigidBody, SweptCcd};
+    use avian3d::prelude::{AngularInertia, CcdFilter, RigidBody, SweptCcd};
     use bevy::math::{Quat, Vec3};
     use bevy::prelude::{Command, World};
     use bevy_ragdoll::runtime::body::{BodyKind, BodyMass};
@@ -455,11 +460,11 @@ mod tests {
         assert!(!is_driven(RagdollDrive::new(0.0, 0.0)));
     }
 
-    /// Swept CCD is present only when enabled.
+    /// Swept CCD sweeps every body type only when enabled.
     #[test]
     fn ccd_component_follows_the_setting() {
-        assert_eq!(ccd(true), Some(SweptCcd::default()));
-        assert_eq!(ccd(false), None);
+        assert_eq!(ccd(true), SweptCcd::new().with_filter(CcdFilter::ALL));
+        assert_eq!(ccd(false).filter, CcdFilter::NONE);
     }
 
     /// Scalars must be finite and nonnegative.

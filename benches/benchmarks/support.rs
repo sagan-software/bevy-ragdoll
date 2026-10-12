@@ -584,6 +584,7 @@ fn mark_bodies_asleep(world: &mut World) -> Result<(), BenchmarkSetupError> {
     let sleeping = Sleeping {
         normalized_linear_threshold: RigidBodyActivation::default_normalized_linear_threshold(),
         angular_threshold: RigidBodyActivation::default_angular_threshold(),
+        time_until_sleep: RigidBodyActivation::default_time_until_sleep(),
         sleeping: true,
     };
     // Apply the same explicit sleeping thresholds to every measured body.

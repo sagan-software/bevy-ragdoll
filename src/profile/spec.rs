@@ -163,7 +163,7 @@ impl ShapeSpec {
     /// ```
     #[must_use]
     pub fn mesh(&self) -> (bevy::mesh::Mesh, bevy::transform::components::Transform) {
-        use bevy::math::primitives::{Capsule3d, Cuboid, Sphere};
+        use bevy::shape::{Capsule3d, Cuboid, Sphere};
         use bevy::transform::components::Transform;
         match *self {
             Self::Capsule { a, b, radius } => (

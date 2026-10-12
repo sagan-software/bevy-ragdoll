@@ -26,7 +26,7 @@ pub(crate) fn spawn_lift(
     // Quantize the configured bound to centimetre search positions.
     let steps = lift_steps(max_spawn_lift);
     // Exclude ragdoll bodies so profiles do not push one another during spawn correction.
-    let is_world_collider = |entity| ragdoll_colliders.get(entity).is_err();
+    let is_world_collider = |entity, _: &_| ragdoll_colliders.get(entity).is_err();
     let filter = QueryFilter {
         flags: QueryFilterFlags::ONLY_FIXED,
         groups: None,
@@ -76,7 +76,7 @@ fn shape_is_intersecting_fixed(
         pose.rotation,
         &*collider.raw,
         filter,
-        |_| {
+        |_, _| {
             is_intersecting = true;
             false
         },

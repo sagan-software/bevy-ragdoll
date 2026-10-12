@@ -37,6 +37,7 @@ bevy = { workspace = true, features = [
     "bevy_text",
     "bevy_ui",
     "bevy_ui_render",
+    "bevy_ui_widgets",
     "default_font",
     "png",
     "x11",
@@ -170,7 +171,7 @@ members = [
 [workspace.package]
 version = "0.1.0-dev"
 edition = "2024"
-rust-version = "1.95"
+rust-version = "1.97.1"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/sagan-software/bevy-ragdoll"
 
@@ -182,9 +183,13 @@ bevy_ragdoll_conformance = { path = "crates/bevy_ragdoll_conformance", version =
 bevy_ragdoll_rapier3d = { path = "crates/bevy_ragdoll_rapier3d", version = "0.1.0-dev" }
 
 # crates.io
-avian3d = { version = "=0.7.0", default-features = false }
-bevy = { version = "=0.19.1", default-features = false }
-bevy_rapier3d = { version = "=0.36.0", default-features = false }
+# Avian has no Bevy 0.20 release; upstream main still targets Bevy 0.19.
+# Pin the head of the open upstream port, avianphysics/avian#1070
+# (https://github.com/avianphysics/avian/pull/1070). Replace with the
+# crates.io release once Avian publishes one for Bevy 0.20.
+avian3d = { git = "https://github.com/andriyDev/avian", rev = "34c9b008d2f40638a953d9218db48d54f661365d", default-features = false }
+bevy = { version = "=0.20.0", default-features = false }
+bevy_rapier3d = { version = "=0.37.0", default-features = false }
 clap = { version = "4.6.7", features = ["derive"] }
 criterion = "0.8.2"
 num-traits = "=0.2.19"
@@ -192,7 +197,7 @@ rand_chacha = "0.10.0"
 rand_core = "0.10.1"
 ron = "0.12.2"
 serde = { version = "1.0.229", features = ["derive"] }
-serde_json = "1.0.151"
+serde_json = "1.0.154"
 thiserror = "2.0.21"
 web-sys = "0.3.106"
 

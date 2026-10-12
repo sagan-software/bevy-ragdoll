@@ -9,7 +9,7 @@ Active ragdolls for [Bevy] on any skeleton and physics engine.
 [![Coverage](https://img.shields.io/endpoint?url=https%3A%2F%2Fsagan-software.github.io%2Fbevy-ragdoll%2Fcoverage%2Fbadge.json)](https://sagan-software.github.io/bevy-ragdoll/coverage/)
 [![crates.io](https://img.shields.io/crates/v/bevy_ragdoll)](https://crates.io/crates/bevy_ragdoll)
 [![docs.rs](https://img.shields.io/docsrs/bevy_ragdoll)](https://docs.rs/bevy_ragdoll)
-[![Bevy 0.19](https://img.shields.io/badge/Bevy-0.19-232326)](https://bevy.org)
+[![Bevy 0.20](https://img.shields.io/badge/Bevy-0.20-232326)](https://bevy.org)
 [![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue)](#license)
 
 **[Live examples](https://sagan-software.github.io/bevy-ragdoll/)** ·
@@ -36,10 +36,10 @@ Active ragdolls for [Bevy] on any skeleton and physics engine.
 
 ```toml
 [dependencies]
-bevy = "0.19"
+bevy = "0.20"
 bevy_ragdoll = { git = "https://github.com/sagan-software/bevy-ragdoll" }
 bevy_ragdoll_rapier3d = { git = "https://github.com/sagan-software/bevy-ragdoll" }
-bevy_rapier3d = "0.36"
+bevy_rapier3d = "0.37"
 ```
 
 ```rust
@@ -73,9 +73,12 @@ fn main() {
 
 | Backend   | Crate                   | Engine               | Status    | Web     |
 | --------- | ----------------------- | -------------------- | --------- | ------- |
-| Rapier 3D | `bevy_ragdoll_rapier3d` | `bevy_rapier3d` 0.36 | Available | Yes     |
-| Avian 3D  | `bevy_ragdoll_avian3d`  | `avian3d` 0.7        | Available | Yes     |
+| Rapier 3D | `bevy_ragdoll_rapier3d` | `bevy_rapier3d` 0.37 | Available | Yes     |
+| Avian 3D  | `bevy_ragdoll_avian3d`  | `avian3d` 0.8 (git)  | Available | Yes     |
 | Custom    | your crate              | any                  | Supported | Depends |
+
+Avian has no crates.io release for Bevy 0.20 yet.
+`bevy_ragdoll_avian3d` pins the open upstream port, [avianphysics/avian#1070](https://github.com/avianphysics/avian/pull/1070), by commit; switch to the Avian release once it is published.
 
 A custom backend creates bodies and joints for the runtime's body entities and reports their poses back.
 [`examples/custom_backend.rs`](examples/custom_backend.rs) runs the core on a small mock backend.
@@ -112,7 +115,7 @@ To tune one bone, add a `RagdollBone` override to it, or build a profile in Rust
 
 | bevy_ragdoll | Bevy |
 | ------------ | ---- |
-| `main`       | 0.19 |
+| `main`       | 0.20 |
 
 ## License
 

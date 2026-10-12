@@ -72,8 +72,8 @@ feature-depth = 1
 # A list of advisory IDs to ignore. Note that ignored advisories will still
 # output a note when they are encountered.
 ignore = [
-    { id = "RUSTSEC-2024-0436", reason = "Rapier 0.35 pulls the unmaintained paste crate through simba; RustSec reports no safe upgrade. Reevaluate when the upstream dependency graph removes paste." },
-    { id = "RUSTSEC-2026-0192", reason = "Bevy 0.19.1 `3d` enables `default_platform`, whose `wayland` feature enables winit/wayland-csd-adwaita; that pulls the unmaintained ttf-parser through sctk-adwaita and ab_glyph. RustSec reports no safe upgrade. Only the windowed example features enable it. Remove when winit or Bevy drops sctk-adwaita, or when the examples stop enabling Bevy `wayland`." },
+    { id = "RUSTSEC-2024-0436", reason = "Rapier pulls the unmaintained paste crate through simba; RustSec reports no safe upgrade. Reevaluate when the upstream dependency graph removes paste." },
+    { id = "RUSTSEC-2026-0192", reason = "Bevy `3d` enables `default_platform`, whose `wayland` feature enables winit/wayland-csd-adwaita; that pulls the unmaintained ttf-parser through sctk-adwaita and ab_glyph. RustSec reports no safe upgrade. Only the windowed example features enable it. Remove when winit or Bevy drops sctk-adwaita, or when the examples stop enabling Bevy `wayland`." },
     #"RUSTSEC-0000-0000",
     #{ id = "RUSTSEC-0000-0000", reason = "you can specify a reason the advisory is ignored" },
     #"a-crate-that-is-yanked@0.1.1", # you can also ignore yanked crate versions if you wish
@@ -229,41 +229,32 @@ deny = [
 
 # Certain crates/versions that will be skipped when doing duplicate detection.
 skip = [
-    { crate = "itertools@0.10.5", reason = "avian3d 0.7.0 requires this through obvhs, rdst and criterion 0.5.1." },
-    { crate = "itertools@0.13.0", reason = "criterion 0.8.2, a benchmark dev-dependency, requires this." },
-    { crate = "itertools@0.14.0", reason = "Bevy 0.19.1 requires this through bevy_math, bevy_gltf and bevy_render." },
-    { crate = "parry3d@0.27.0", reason = "avian3d 0.7.0 requires parry3d 0.27 while Rapier 0.35 requires parry3d 0.30." },
-    { crate = "rstar@0.12.2", reason = "parry3d 0.27.0, required by avian3d 0.7.0, requires rstar 0.12 while parry3d 0.30 requires 0.13." },
-    { crate = "foldhash@0.1.5", reason = "Bevy 0.19.1 requires this through petgraph and also uses foldhash 0.2.0." },
-    { crate = "heapless@0.8.0", reason = "Rapier 0.35 requires heapless 0.8.0 through rstar while Bevy 0.19.1 requires 0.9.3." },
-    { crate = "heapless@0.9.3", reason = "Bevy 0.19.1 requires heapless 0.9.3 through bevy_tasks while Rapier 0.35 requires 0.8.0." },
-    { crate = "hashbrown@0.15.5", reason = "Bevy 0.19.1 requires this through petgraph while other Bevy dependencies use newer hashbrown versions." },
-    { crate = "hashbrown@0.16.1", reason = "Bevy 0.19.1 requires this through bevy_platform while other Bevy dependencies use hashbrown 0.15.5 and 0.17.1." },
-    { crate = "jni-sys@0.3.1", reason = "Bevy 0.19.1 Android dependencies require this alongside jni-sys 0.4.1." },
-    { crate = "rand_core@0.9.5", reason = "The benchmarks depend on rand_chacha 0.9 and rand_core 0.9 directly while Bevy 0.19.1 uses rand_core 0.10.1. Remove by bumping both to 0.10." },
-    { crate = "rand_core@0.10.1", reason = "Bevy 0.19.1 requires this alongside the benchmarks' direct rand_core 0.9.5 dependency." },
-    { crate = "syn@2.0.119", reason = "Bevy 0.19.1 and its derive dependencies require this alongside syn 3.0.6." },
+    { crate = "itertools@0.10.5", reason = "avian3d 0.8.0-dev requires this through obvhs, rdst and criterion 0.5.1." },
+    { crate = "itertools@0.14.0", reason = "Bevy 0.20.0 requires this through bevy_curve, bevy_gltf and bevy_render." },
+    { crate = "foldhash@0.1.5", reason = "Bevy 0.20.0 requires this through petgraph and hashbrown 0.15.5 and also uses foldhash 0.2." },
+    { crate = "heapless@0.8.0", reason = "Rapier 0.36 requires heapless 0.8.0 through rstar while Bevy 0.20.0 requires 0.9.3." },
+    { crate = "heapless@0.9.3", reason = "Bevy 0.20.0 requires heapless 0.9.3 through bevy_tasks while Rapier 0.36 requires 0.8.0." },
+    { crate = "hashbrown@0.15.5", reason = "Bevy 0.20.0 requires this through petgraph while other Bevy dependencies use newer hashbrown versions." },
+    { crate = "hashbrown@0.16.1", reason = "Bevy 0.20.0 requires this through bevy_platform while other Bevy dependencies use hashbrown 0.15.5 and 0.17." },
+    { crate = "jni-sys@0.3.1", reason = "Bevy 0.20.0 Android dependencies (ndk 0.9) require this alongside jni-sys 0.4." },
+    { crate = "rustc-hash@1.1.0", reason = "wgpu 30 and naga 30 require this alongside rustc-hash 2." },
+    { crate = "syn@2.0.119", reason = "Bevy 0.20.0, avian3d and their derive dependencies require this alongside syn 3." },
     { crate = "thiserror@1.0.69", reason = "winit 0.30 Wayland and Android dependencies (calloop, ndk, smithay-client-toolkit) require this alongside thiserror 2.0.21." },
     { crate = "thiserror-impl@1.0.69", reason = "winit 0.30 Wayland and Android dependencies require this alongside thiserror-impl 2.0.21." },
     # The remaining duplicates appear only with the windowed example features
     # (Bevy `3d`, `bevy_text`, and `bevy_ui`).
-    { crate = "accesskit_consumer@0.35.0", reason = "Bevy 0.19.1 uses accesskit_windows 0.32, which requires this while accesskit_macos 0.26 requires 0.38." },
     { crate = "bitflags@1.3.2", reason = "winit 0.30 requires this through core-graphics 0.23 and redox_syscall 0.4." },
-    { crate = "block2@0.5.1", reason = "winit 0.30 and accesskit_macos 0.26 use the objc2 0.5 stack while wgpu 29 uses objc2 0.6." },
-    { crate = "objc2@0.5.2", reason = "winit 0.30 and accesskit_macos 0.26 use the objc2 0.5 stack while wgpu 29 uses objc2 0.6." },
-    { crate = "objc2-foundation@0.2.2", reason = "winit 0.30 and accesskit_macos 0.26 use the objc2 0.5 stack while wgpu 29 uses objc2 0.6." },
-    { crate = "codespan-reporting@0.12.0", reason = "Bevy 0.19.1 uses naga_oil 0.22, which requires this while naga 29 requires 0.13." },
-    { crate = "downcast-rs@1.2.1", reason = "winit 0.30 requires this through wayland-backend 0.3 while Bevy 0.19.1 uses downcast-rs 2." },
-    { crate = "font-types@0.11.3", reason = "Bevy 0.19.1 text uses parley 0.9 (skrifa 0.42) and swash 0.2.10 (skrifa 0.44)." },
-    { crate = "read-fonts@0.39.2", reason = "Bevy 0.19.1 text uses parley 0.9 (skrifa 0.42) and swash 0.2.10 (skrifa 0.44)." },
-    { crate = "skrifa@0.42.1", reason = "Bevy 0.19.1 text uses parley 0.9 (skrifa 0.42) and swash 0.2.10 (skrifa 0.44)." },
+    { crate = "block2@0.5.1", reason = "winit 0.30 and accesskit_macos 0.26 use the objc2 0.5 stack while wgpu 30 uses objc2 0.6." },
+    { crate = "objc2@0.5.3", reason = "winit 0.30 and accesskit_macos 0.26 use the objc2 0.5 stack while wgpu 30 uses objc2 0.6." },
+    { crate = "objc2-foundation@0.2.2", reason = "winit 0.30 and accesskit_macos 0.26 use the objc2 0.5 stack while wgpu 30 uses objc2 0.6." },
+    { crate = "downcast-rs@1.2.1", reason = "winit 0.30 requires this through wayland-backend 0.3 while Bevy 0.20.0 uses downcast-rs 2." },
     { crate = "getrandom@0.3.4", reason = "winit 0.30 requires this through ahash 0.8 while uuid uses getrandom 0.4." },
     { crate = "r-efi@5.3.0", reason = "winit 0.30 requires this through ahash 0.8 and getrandom 0.3." },
     { crate = "linux-raw-sys@0.4.15", reason = "winit 0.30 Wayland support requires this through rustix 0.38." },
     { crate = "rustix@0.38.44", reason = "winit 0.30 Wayland support requires this through calloop 0.13." },
-    { crate = "miniz_oxide@0.8.9", reason = "Bevy 0.19.1 uses png 0.18.1, which requires this directly and miniz_oxide 0.9 through flate2." },
+    { crate = "miniz_oxide@0.8.9", reason = "Bevy 0.20.0 uses png 0.18.1, which requires this directly and miniz_oxide 0.9 through flate2." },
     { crate = "redox_syscall@0.4.1", reason = "winit 0.30 requires this directly." },
-    { crate = "redox_syscall@0.5.18", reason = "wgpu 29 requires this through parking_lot_core 0.9." },
+    { crate = "redox_syscall@0.5.18", reason = "wgpu 30 requires this through parking_lot_core 0.9." },
     { crate = "windows-sys@0.52.0", reason = "winit 0.30 requires this directly." },
     { crate = "windows-sys@0.59.0", reason = "winit 0.30 requires this through rustix 0.38." },
     #"ansi_term@0.11.0",
@@ -292,7 +283,14 @@ unknown-git = "warn"
 # if not specified. If it is specified but empty, no registries are allowed.
 allow-registry = ["https://github.com/rust-lang/crates.io-index"]
 # List of URLs for allowed Git repositories
-allow-git = []
+# Avian has no Bevy 0.20 release; Cargo.toml pins the commit of the upstream
+# port, avianphysics/avian#1070, and its git-only dependencies.
+allow-git = [
+    "https://github.com/andriyDev/avian",
+    "https://github.com/andriyDev/bevy_heavy.git",
+    "https://github.com/andriyDev/bevy_transform_interpolation.git",
+    "https://github.com/andriyDev/glam_matrix_extras.git",
+]
 
 [sources.allow-org]
 # github.com organizations to allow git sources for
