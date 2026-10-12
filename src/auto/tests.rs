@@ -265,6 +265,111 @@ fn mixamo_leg_is_the_lower_leg_and_unsided_limbs_do_not_match() {
     assert_eq!(roles, expected);
 }
 
+#[test]
+fn helper_bones_named_like_limbs_do_not_hide_the_limb_chain() {
+    // An IK target named like a hand sits outside the arm chain, before the hand.
+    let mut skeleton = renamed(|name| {
+        lookup(BIPED, name)
+            .unwrap_or("Bip01 R Toe0")
+            .replace("Bip01", "SkelBone")
+    });
+    let hand = skeleton
+        .bones
+        .iter()
+        .find(|bone| bone.name == "SkelBone R Hand")
+        .cloned()
+        .expect("the reference skeleton has a right hand");
+    skeleton.bones.insert(
+        1,
+        SkeletonBone {
+            name: "IKBone_RightHand".to_owned(),
+            parent: Some(0),
+            ..hand
+        },
+    );
+    // Every parent index after the insertion point moves down by one.
+    for bone in skeleton.bones.iter_mut().skip(2) {
+        bone.parent = bone
+            .parent
+            .map(|parent| if parent >= 1 { parent + 1 } else { parent });
+    }
+    let profile = generate(&skeleton);
+    assert!(profile.body_index("SkelBone R Hand").is_some());
+    assert!(profile.body_index("IKBone_RightHand").is_none());
+    let wanted = [BodyRole::Hand, BodyRole::LowerArm, BodyRole::Foot];
+    assert_eq!(counts(&profile, wanted), [2, 2, 2]);
+}
+
+#[test]
+fn skinned_skeletons_rest_in_the_bind_pose() {
+    use bevy::asset::Assets;
+    use bevy::math::{Mat4, Quat};
+    use bevy::mesh::skinning::{SkinnedMesh, SkinnedMeshInverseBindposes};
+    use bevy::prelude::{ChildOf, Name, Transform, World};
+
+    let mut world = World::new();
+    let mut bindposes = Assets::<SkinnedMeshInverseBindposes>::default();
+    // Bind pose: the root at the origin and the child 1 m above it.
+    let handle = bindposes.add(SkinnedMeshInverseBindposes::from(vec![
+        Mat4::IDENTITY,
+        Mat4::from_translation(Vec3::NEG_Y),
+    ]));
+    world.insert_resource(bindposes);
+    let character = world.spawn(Transform::IDENTITY).id();
+    // Animation has bent the child sideways and moved it.
+    let root = world
+        .spawn((Name::new("root"), Transform::IDENTITY, ChildOf(character)))
+        .id();
+    let tip = world
+        .spawn((
+            Name::new("tip"),
+            Transform::from_xyz(0.5, 0.5, 0.0).with_rotation(Quat::from_rotation_z(1.0)),
+            ChildOf(root),
+        ))
+        .id();
+    world.spawn((
+        SkinnedMesh {
+            inverse_bindposes: handle,
+            joints: vec![root, tip],
+        },
+        ChildOf(character),
+    ));
+    let skeleton =
+        skeleton_from_world(&world, character, None).expect("the skinned joints form a skeleton");
+    let tip = skeleton
+        .bones
+        .iter()
+        .find(|bone| bone.name == "tip")
+        .expect("the tip is a bone");
+    assert!((Vec3::from(tip.rest.translation) - Vec3::Y).length() < 1.0e-5);
+    assert!(tip.rest.rotation.angle_between(Quat::IDENTITY) < 1.0e-5);
+}
+
+#[test]
+fn biped_names_match_after_the_rig_prefix() {
+    // The prefix goes, a middle side marker counts, and helper bones stay unmatched.
+    let roles = [
+        "Bip01 L Thigh",
+        "Bip01_R_Forearm",
+        "Rig-Pelvis",
+        "Bip01 Head",
+        "Bip01 L Finger0",
+        "Bip01",
+        "Bip01 ",
+    ]
+    .map(role_of);
+    let expected = [
+        Some((BodyRole::Thigh, Some(Side::Left))),
+        Some((BodyRole::LowerArm, Some(Side::Right))),
+        Some((BodyRole::Pelvis, None)),
+        Some((BodyRole::Head, None)),
+        None,
+        None,
+        None,
+    ];
+    assert_eq!(roles, expected);
+}
+
 /// Mixamo names for the reference humanoid bones; `ball_r` falls back to `RightToeBase`.
 const MIXAMO: &[(&str, &str)] = &[
     ("pelvis", "Hips"),
@@ -311,6 +416,32 @@ const RIGIFY: &[(&str, &str)] = &[
     ("calf_l", "DEF-shin.L"),
 ];
 
+/// 3ds Max Biped style names for the reference humanoid bones, with a rig
+/// prefix and a middle side marker.
+const BIPED: &[(&str, &str)] = &[
+    ("pelvis", "Bip01 Pelvis"),
+    ("spine_01", "Bip01 Spine"),
+    ("spine_02", "Bip01 Spine1"),
+    ("spine_03", "Bip01 Spine2"),
+    ("neck_01", "Bip01 Neck"),
+    ("head", "Bip01 Head"),
+    ("clavicle_l", "Bip01 L Clavicle"),
+    ("upperarm_l", "Bip01 L UpperArm"),
+    ("lowerarm_l", "Bip01 L Forearm"),
+    ("hand_l", "Bip01 L Hand"),
+    ("clavicle_r", "Bip01 R Clavicle"),
+    ("upperarm_r", "Bip01 R UpperArm"),
+    ("lowerarm_r", "Bip01 R Forearm"),
+    ("hand_r", "Bip01 R Hand"),
+    ("thigh_l", "Bip01 L Thigh"),
+    ("calf_l", "Bip01 L Calf"),
+    ("foot_l", "Bip01 L Foot"),
+    ("ball_l", "Bip01 L Toe0"),
+    ("thigh_r", "Bip01 R Thigh"),
+    ("calf_r", "Bip01 R Calf"),
+    ("foot_r", "Bip01 R Foot"),
+];
+
 /// Returns the name `table` maps `name` to, if any.
 fn lookup(table: &[(&str, &'static str)], name: &str) -> Option<&'static str> {
     table
@@ -340,14 +471,29 @@ fn every_convention_yields_the_same_humanoid_layout() {
             str::to_owned,
         )
     };
+    let biped = |name: &str| lookup(BIPED, name).unwrap_or("Bip01 R Toe0").to_owned();
     // Every convention must produce the reference role sequence.
-    let generated = [renamed(mixamo), renamed(unity), renamed(rigify)].map(|skeleton| {
+    let generated = [
+        renamed(mixamo),
+        renamed(unity),
+        renamed(rigify),
+        renamed(biped),
+    ]
+    .map(|skeleton| {
         roles(&generate(&skeleton))
             .into_iter()
             .map(|(_, role)| role)
             .collect::<Vec<_>>()
     });
-    assert_eq!(generated, [reference.clone(), reference.clone(), reference]);
+    assert_eq!(
+        generated,
+        [
+            reference.clone(),
+            reference.clone(),
+            reference.clone(),
+            reference
+        ]
+    );
 }
 
 #[test]

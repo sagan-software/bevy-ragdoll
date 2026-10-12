@@ -3,9 +3,9 @@
 //! [`RagdollProfile::from_skeleton`] turns bone names, parents and rest poses
 //! into bodies, capsules, masses and joint limits. Bone names select a
 //! humanoid layout when they follow a standard convention (UE4 and UE5
-//! mannequin, Mixamo, Unity, Godot and VRM humanoid, Rigify). Other skeletons
-//! are classified by topology, so quadrupeds and many-legged creatures work
-//! too. [`RagdollBone`] holds optional sparse overrides per bone.
+//! mannequin, Mixamo, Unity, Godot and VRM humanoid, Rigify, 3ds Max Biped).
+//! Other skeletons are classified by topology, so quadrupeds and many-legged
+//! creatures work too. [`RagdollBone`] holds optional sparse overrides per bone.
 
 mod generate;
 mod humanoid;

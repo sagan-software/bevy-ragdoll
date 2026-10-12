@@ -74,6 +74,11 @@ pub struct RagdollPhysicsSettings {
     /// before clamping. The core or backend adapter reads this field at its
     /// matching physics stage and preserves the stated units.
     pub torque_scale: f32,
+    /// Natural frequency in hertz of the restoring torque that a backend
+    /// without asymmetric swing limits uses to hold each joint inside its X
+    /// and Z ranges. Zero or a non-finite value turns that torque off and
+    /// leaves only the backend's own joint limits.
+    pub soft_limit_frequency_hz: f32,
     /// Worker thread count requested by backends that expose configurable
     /// physics parallelism. The core or backend adapter reads this field at its
     /// matching physics stage and preserves the stated units.
@@ -153,6 +158,7 @@ impl Default for RagdollPhysicsSettings {
             motor_frequency_hz: 4.0,
             motor_damping_ratio: 1.0,
             torque_scale: 1.0,
+            soft_limit_frequency_hz: 8.0,
             threads: 4,
             joint_friction: 0.05,
             friction_rate: 20.0,

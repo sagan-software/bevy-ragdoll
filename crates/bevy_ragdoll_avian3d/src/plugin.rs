@@ -73,6 +73,7 @@ impl Plugin for AvianRagdollPlugin {
             fixed_schedule,
             (
                 apply_avian_settings,
+                joint::fit_new_bodies_to_limits,
                 body::create_avian_bodies,
                 joint::create_avian_joints,
                 body::apply_body_kinds_and_sleeping,

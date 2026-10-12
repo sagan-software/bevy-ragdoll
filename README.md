@@ -105,7 +105,7 @@ cargo run --release --example showcase
 ## Custom skeletons
 
 `Ragdoll::default()` reads the skeleton under the character and generates a ragdoll profile: one body per bone, with shapes, masses, and joint limits.
-Humanoids with UE mannequin bone names get the humanoid layout; other rigs are classified by topology, so quadrupeds and creatures with extra limbs work too ([`from_gltf`](examples/from_gltf.rs)).
+Humanoids with standard bone names (UE mannequin, Mixamo, Unity, Rigify, 3ds Max Biped) get the humanoid layout; other rigs are classified by topology, so quadrupeds and creatures with extra limbs work too ([`from_gltf`](examples/from_gltf.rs)).
 To tune one bone, add a `RagdollBone` override to it, or build a profile in Rust ([`from_code`](examples/from_code.rs)).
 
 ## Bevy compatibility

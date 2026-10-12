@@ -12,10 +12,13 @@
 //! cone around profile Y. The `swing_limit_axis_is_as_documented_in_this_crate`
 //! test pins this behavior.
 
+use std::collections::HashMap;
+
 use avian3d::prelude::{FixedJoint, JointCollisionDisabled, RevoluteJoint, SphericalJoint};
 use bevy::math::{Isometry3d, Quat, Vec3};
-use bevy::prelude::{Added, ChildOf, Commands, Entity, Query};
-use bevy_ragdoll::runtime::body::{JointBasis, JointToParent};
+use bevy::prelude::{Added, ChildOf, Commands, Entity, Query, Transform};
+use bevy_ragdoll::profile::{BodyIndex, JointLimits};
+use bevy_ragdoll::runtime::body::{BodyPhysicsPose, BodyShape, JointBasis, JointToParent};
 
 /// The Avian joint selected for one profile joint.
 #[derive(Clone, Debug, PartialEq)]
@@ -49,6 +52,152 @@ pub(crate) fn create_avian_joints(
     }
 }
 
+/// New bodies with their profile index, pose and optional joint.
+type NewJointBodies<'w, 's> = Query<
+    'w,
+    's,
+    (
+        Entity,
+        &'static BodyIndex,
+        &'static mut Transform,
+        &'static mut BodyPhysicsPose,
+        Option<&'static JointToParent>,
+        Option<&'static JointBasis>,
+    ),
+    Added<BodyShape>,
+>;
+
+/// Turns each new body into its joint limits before Avian reads its pose.
+///
+/// A ragdoll that activates from an animated pose can start with joints past
+/// their limits. Avian corrects a limit violation within one substep, which
+/// turns a large violation into a launch. Bodies are visited parent first:
+/// each child keeps its rotation clamped into its parent's limits and moves
+/// to its parent's joint anchor, so its own children are then fitted against
+/// the corrected pose.
+pub(crate) fn fit_new_bodies_to_limits(mut bodies: NewJointBodies<'_, '_>) {
+    let mut order = bodies
+        .iter()
+        .map(|(entity, index, ..)| (index.get(), entity))
+        .collect::<Vec<_>>();
+    if order.is_empty() {
+        return;
+    }
+    order.sort_unstable();
+    let mut poses = HashMap::new();
+    for (_, entity) in order {
+        let Ok((_, _, mut transform, mut pose, joint, basis)) = bodies.get_mut(entity) else {
+            continue;
+        };
+        let current = Isometry3d::new(transform.translation, transform.rotation);
+        let fitted = joint
+            .and_then(|joint| {
+                let parent = poses.get(&joint.parent)?;
+                let basis = basis.map_or(Quat::IDENTITY, |basis| basis.0);
+                Some(fit_child_pose(*parent, current, joint, basis))
+            })
+            .unwrap_or(current);
+        poses.insert(entity, fitted);
+        if fitted != current {
+            transform.translation = fitted.translation.into();
+            transform.rotation = fitted.rotation;
+            pose.previous = fitted;
+            pose.current = fitted;
+        }
+    }
+}
+
+/// Returns the child pose with its rotation clamped into the joint limits and
+/// its origin on the parent's joint anchor.
+fn fit_child_pose(
+    parent: Isometry3d,
+    child: Isometry3d,
+    joint: &JointToParent,
+    basis: Quat,
+) -> Isometry3d {
+    let anchor = parent * Isometry3d::new(joint.frame.translation, joint.frame.rotation * basis);
+    let relative = anchor.rotation.inverse() * child.rotation * basis;
+    let fitted = fit_relative_rotation(joint.limits, relative);
+    if !fitted.is_finite() {
+        return child;
+    }
+    Isometry3d::new(
+        anchor.translation,
+        anchor.rotation * fitted * basis.inverse(),
+    )
+}
+
+/// Fraction of each limit used when clamping, so the fitted pose starts just
+/// inside the limit rather than on it.
+// provenance: chosen so a fitted joint needs no correction on its first step.
+const LIMIT_FIT: f32 = 0.98;
+
+/// Clamps a rotation in the joint frame into the limits as [`avian_joint`]
+/// maps them: nothing for a fixed joint, the X or Z angle for a hinge, and a
+/// twist about Y plus a symmetric swing cone around Y for a spherical joint.
+pub(crate) fn fit_relative_rotation(limits: JointLimits, rotation: Quat) -> Quat {
+    let rotation = rotation.normalize();
+    match (
+        limits.x.is_locked(),
+        limits.twist.is_locked(),
+        limits.z.is_locked(),
+    ) {
+        (true, true, true) => Quat::IDENTITY,
+        (false, true, true) => {
+            let angle = 2.0 * rotation.x.atan2(rotation.w);
+            Quat::from_rotation_x(clamp_angle(angle, limits.x.min, limits.x.max))
+        }
+        (true, true, false) => {
+            let angle = 2.0 * rotation.z.atan2(rotation.w);
+            Quat::from_rotation_z(clamp_angle(angle, limits.z.min, limits.z.max))
+        }
+        _ => {
+            // Split the rotation into a twist about Y and a swing of the Y axis.
+            // A rotation of a half turn about an axis across Y has no twist part.
+            let twist_length = rotation.y.hypot(rotation.w);
+            let twist = if twist_length > f32::EPSILON {
+                Quat::from_xyzw(
+                    0.0,
+                    rotation.y / twist_length,
+                    0.0,
+                    rotation.w / twist_length,
+                )
+            } else {
+                Quat::IDENTITY
+            };
+            // The positive-w representative keeps the swing angle at or below a half turn.
+            let swing = rotation * twist.inverse();
+            let swing = if swing.w < 0.0 { -swing } else { swing };
+            let twist_angle = 2.0 * twist.y.atan2(twist.w);
+            let twist =
+                Quat::from_rotation_y(clamp_angle(twist_angle, limits.twist.min, limits.twist.max));
+            let cone = [limits.x.min, limits.x.max, limits.z.min, limits.z.max]
+                .into_iter()
+                .fold(0.0_f32, |extent, angle| extent.max(angle.abs()));
+            let (axis, angle) = swing.to_axis_angle();
+            let swing = if angle > cone {
+                Quat::from_axis_angle(axis, cone * LIMIT_FIT)
+            } else {
+                swing
+            };
+            swing * twist
+        }
+    }
+}
+
+/// Keeps a wrapped angle inside `min..=max`; an angle outside goes to the
+/// range shrunk toward its middle by [`LIMIT_FIT`].
+fn clamp_angle(angle: f32, min: f32, max: f32) -> f32 {
+    let wrapped =
+        (angle + std::f32::consts::PI).rem_euclid(std::f32::consts::TAU) - std::f32::consts::PI;
+    if (min..=max).contains(&wrapped) {
+        return wrapped;
+    }
+    let middle = f32::midpoint(min, max);
+    let half = (max - min) * 0.5 * LIMIT_FIT;
+    wrapped.clamp(middle - half, middle + half)
+}
+
 /// Builds the Avian joint for one child body and its profile joint.
 ///
 /// `basis` is the [`JointBasis`] rotation: the joint frame sits at
@@ -75,6 +224,15 @@ pub(crate) fn avian_joint(child: Entity, joint: &JointToParent, basis: Quat) -> 
                 .with_local_frame2(frame2)
                 .with_hinge_axis(Vec3::X)
                 .with_angle_limits(limits.x.min, limits.x.max),
+        ),
+        // A Z-only range is a hinge too; a wide swing cone with a locked twist
+        // would leave the twist split ill-conditioned near a half turn.
+        (true, true, false) => AvianJoint::Revolute(
+            RevoluteJoint::new(joint.parent, child)
+                .with_local_frame1(frame1)
+                .with_local_frame2(frame2)
+                .with_hinge_axis(Vec3::Z)
+                .with_angle_limits(limits.z.min, limits.z.max),
         ),
         // The cone is a hard backstop at the largest bend extent; the core's
         // soft limit torque enforces the asymmetric X and Z ranges inside it.
@@ -110,7 +268,7 @@ mod tests {
     use bevy_ragdoll::profile::{AngleRange, JointLimits};
     use bevy_ragdoll::runtime::body::JointToParent;
 
-    use super::{AvianJoint, avian_joint};
+    use super::{AvianJoint, avian_joint, fit_new_bodies_to_limits, fit_relative_rotation};
 
     /// A locked range.
     const LOCKED: AngleRange = AngleRange { min: 0.0, max: 0.0 };
@@ -332,6 +490,154 @@ mod tests {
         assert!(
             angle_about(locked, Vec3::Y).abs() < 0.05,
             "hinge twist {locked}"
+        );
+    }
+
+    /// Z-only joints become hinges about Z that stop at the signed Z range.
+    #[test]
+    fn z_only_joint_is_revolute_with_the_signed_z_range() {
+        // A knee-like hinge: X and twist locked, a one-sided Z range.
+        let limits = JointLimits {
+            x: LOCKED,
+            twist: LOCKED,
+            z: AngleRange {
+                min: -0.6,
+                max: 0.2,
+            },
+        };
+        let mut world = World::new();
+        let (parent, child) = (world.spawn_empty().id(), world.spawn_empty().id());
+        let AvianJoint::Revolute(revolute) =
+            avian_joint(child, &joint(parent, limits), Quat::IDENTITY)
+        else {
+            panic!("a Z-only joint is a hinge");
+        };
+        assert_eq!(revolute.hinge_axis, Vec3::Z);
+        // Push both ways about the hinge axis.
+        let positive = angle_about(spin_child(limits, Vec3::Z * 0.05), Vec3::Z);
+        let negative = angle_about(spin_child(limits, Vec3::Z * -0.05), Vec3::Z);
+        assert!((positive - 0.2).abs() < TOLERANCE, "+Z hinge {positive}");
+        assert!((negative + 0.6).abs() < TOLERANCE, "-Z hinge {negative}");
+    }
+
+    /// Rotations inside the limits are kept; rotations outside are clamped to
+    /// just inside them for every joint kind.
+    #[test]
+    fn fit_clamps_rotations_into_each_joint_kind() {
+        let hinge_x = JointLimits {
+            x: AngleRange {
+                min: -0.2,
+                max: 0.6,
+            },
+            twist: LOCKED,
+            z: LOCKED,
+        };
+        let hinge_z = JointLimits {
+            x: LOCKED,
+            twist: LOCKED,
+            z: AngleRange {
+                min: -2.0,
+                max: 0.0,
+            },
+        };
+        let fixed = JointLimits {
+            x: LOCKED,
+            twist: LOCKED,
+            z: LOCKED,
+        };
+        // Inside: unchanged.
+        let inside = Quat::from_rotation_x(0.3);
+        assert!(fit_relative_rotation(hinge_x, inside).angle_between(inside) < 1.0e-5);
+        // A hinge at the end of its range stays put.
+        let straight = fit_relative_rotation(hinge_z, Quat::IDENTITY);
+        assert!(
+            straight.angle_between(Quat::IDENTITY) < 1.0e-5,
+            "{straight}"
+        );
+        let bent = Quat::from_rotation_z(-1.0);
+        assert!(fit_relative_rotation(hinge_z, bent).angle_between(bent) < 1.0e-5);
+        // Outside a hinge: clamped onto the near end, and off-axis parts dropped.
+        let past = Quat::from_rotation_x(1.5) * Quat::from_rotation_y(0.4);
+        let fitted = fit_relative_rotation(hinge_x, past);
+        assert!(
+            (angle_about(fitted, Vec3::X) - 0.6).abs() < 0.03,
+            "{fitted}"
+        );
+        assert!(angle_about(fitted, Vec3::Y).abs() < 1.0e-5);
+        let wrong_way = fit_relative_rotation(hinge_z, Quat::from_rotation_z(1.0));
+        assert!(angle_about(wrong_way, Vec3::Z).abs() < 0.03, "{wrong_way}");
+        // Fixed joints fit to the frame.
+        assert_eq!(fit_relative_rotation(fixed, past), Quat::IDENTITY);
+        // Spherical: the twist about Y and the swing cone are both clamped.
+        let cone = cone_limits();
+        let twisted = fit_relative_rotation(cone, Quat::from_rotation_y(1.5));
+        assert!(
+            (angle_about(twisted, Vec3::Y) - TWIST.max).abs() < 0.03,
+            "{twisted}"
+        );
+        let swung = fit_relative_rotation(cone, Quat::from_rotation_x(1.2));
+        assert!(
+            swung.angle_between(Quat::IDENTITY) <= 0.4 + 1.0e-4,
+            "{swung}"
+        );
+        let small = Quat::from_rotation_z(0.2);
+        assert!(fit_relative_rotation(cone, small).angle_between(small) < 1.0e-5);
+        // A half-turn swing across Y has no twist part and still fits.
+        let flipped = fit_relative_rotation(cone, Quat::from_rotation_x(std::f32::consts::PI));
+        assert!(flipped.is_finite() && flipped.angle_between(Quat::IDENTITY) <= 0.4 + 1.0e-4);
+    }
+
+    /// A new child body past its limit is turned inside the limit and moved
+    /// onto its parent's joint anchor before Avian reads it.
+    #[test]
+    fn new_bodies_start_inside_their_limits() {
+        use bevy::ecs::system::RunSystemOnce;
+        use bevy_ragdoll::profile::{BodyIndex, ShapeSpec};
+        use bevy_ragdoll::runtime::body::{BodyPhysicsPose, BodyShape};
+
+        let mut world = World::new();
+        let shape = BodyShape(ShapeSpec::Sphere {
+            center: Vec3::ZERO,
+            radius: 0.1,
+        });
+        let body = |index: usize, pose: Isometry3d| {
+            (
+                BodyIndex::try_from(index).expect("small index"),
+                shape,
+                Transform::from_translation(pose.translation.into()).with_rotation(pose.rotation),
+                BodyPhysicsPose {
+                    previous: pose,
+                    current: pose,
+                },
+            )
+        };
+        let parent = world.spawn(body(0, Isometry3d::IDENTITY)).id();
+        // The child sits off the anchor and bent 1.5 rad past a 0.6 rad hinge.
+        let start = Isometry3d::new(Vec3::new(0.2, 1.0, 0.0), Quat::from_rotation_x(1.5));
+        let limits = JointLimits {
+            x: AngleRange {
+                min: -0.2,
+                max: 0.6,
+            },
+            twist: LOCKED,
+            z: LOCKED,
+        };
+        let child = world.spawn((body(1, start), joint(parent, limits))).id();
+        world
+            .run_system_once(fit_new_bodies_to_limits)
+            .expect("the fit system runs");
+        let transform = world.get::<Transform>(child).copied().unwrap_or_default();
+        assert!(
+            (transform.translation - Vec3::Y).length() < 1.0e-5,
+            "{transform:?}"
+        );
+        assert!((angle_about(transform.rotation, Vec3::X) - 0.6).abs() < 0.03);
+        let pose = world.get::<BodyPhysicsPose>(child).map(|pose| pose.current);
+        assert_eq!(pose.map(|pose| pose.rotation), Some(transform.rotation));
+        // The root body has no joint and keeps its pose.
+        assert_eq!(
+            world.get::<Transform>(parent).copied(),
+            Some(Transform::IDENTITY)
         );
     }
 

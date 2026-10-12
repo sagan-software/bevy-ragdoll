@@ -12,6 +12,8 @@
 //! - All three ranges locked: `FixedJoint`.
 //! - Twist and Z locked: `RevoluteJoint` about the frame X axis with the exact
 //!   X range.
+//! - X and twist locked: `RevoluteJoint` about the frame Z axis with the exact
+//!   Z range.
 //! - Otherwise: `SphericalJoint` with exact twist limits about the frame Y
 //!   axis and a symmetric swing cone at the largest X or Z extent. The core's
 //!   soft-limit torque enforces the asymmetric X and Z ranges inside the cone.
@@ -22,6 +24,10 @@
 //! `twist_axis = X`, whose orthonormal vector is `+Y`, so the profile's Y twist
 //! is Avian's twist limit and the cone surrounds profile Y. The
 //! `swing_limit_axis_is_as_documented_in_this_crate` test checks this.
+//!
+//! New bodies are turned inside their joint limits before Avian reads them,
+//! because Avian corrects a limit violation within one substep and a ragdoll
+//! that activates from an animated pose can start past its limits.
 //!
 //! # Capabilities
 //!

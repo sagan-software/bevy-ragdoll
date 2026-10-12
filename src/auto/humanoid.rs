@@ -1,8 +1,9 @@
 //! Humanoid detection from standard bone-name conventions.
 //!
 //! One alias table covers UE4 and UE5 mannequins, Mixamo, Unity, Godot and VRM
-//! humanoid names, and Rigify deform bones. Spine bodies are chosen
-//! structurally, so the conventions' different spine numbering needs no table.
+//! humanoid names, Rigify deform bones, and 3ds Max Biped style names. Spine
+//! bodies are chosen structurally, so the conventions' different spine
+//! numbering needs no table.
 
 use crate::profile::BodyRole;
 
@@ -101,9 +102,29 @@ fn strip_side_token(tokens: &mut Vec<&str>) -> Option<Side> {
 }
 
 /// Returns the humanoid role named by `name`, with its side for limbs.
+///
+/// A name that matches no role is tried again without its first token, so
+/// 3ds Max Biped style names with a rig prefix and a middle side marker
+/// (`Bip01 L Thigh`, `Bip01_Pelvis`) match too.
 pub(super) fn role_of(name: &str) -> Option<(BodyRole, Option<Side>)> {
     let (base, side) = normalize(name);
-    match base.as_str() {
+    role_of_base(&base, side).or_else(|| {
+        let (base, side) = normalize(without_rig_prefix(name)?);
+        role_of_base(&base, side)
+    })
+}
+
+/// Returns `name` without its first separator-delimited token, or `None`
+/// when it has a single token.
+fn without_rig_prefix(name: &str) -> Option<&str> {
+    let (_, rest) = name.split_once(['_', '.', '-', ' '])?;
+    let rest = rest.trim_start_matches(['_', '.', '-', ' ']);
+    (!rest.is_empty()).then_some(rest)
+}
+
+/// Returns the role of a normalized base name and its side.
+fn role_of_base(base: &str, side: Option<Side>) -> Option<(BodyRole, Option<Side>)> {
+    match base {
         "hips" | "pelvis" => return Some((BodyRole::Pelvis, None)),
         "head" => return Some((BodyRole::Head, None)),
         _ => {}
@@ -111,7 +132,7 @@ pub(super) fn role_of(name: &str) -> Option<(BodyRole, Option<Side>)> {
     let side = side?;
     LIMB_ALIASES
         .iter()
-        .find(|(aliases, _)| aliases.contains(&base.as_str()))
+        .find(|(aliases, _)| aliases.contains(&base))
         .map(|(_, role)| (*role, Some(side)))
 }
 
@@ -173,25 +194,24 @@ impl Bones<'_> {
     reason = "bone indexes come from the same skeleton vectors and limb chains have three bones"
 )]
 pub(super) fn detect(bones: &Bones<'_>) -> Option<Vec<(usize, BodyRole)>> {
-    // Keep the matching bone closest to the root for each role and side.
-    let mut found: Vec<((BodyRole, Option<Side>), usize)> = Vec::new();
-    for (index, name) in bones.names.iter().enumerate() {
-        let Some(key) = role_of(name).filter(|_| bones.eligible[index]) else {
-            continue;
-        };
-        if !found.iter().any(|(existing, _)| *existing == key) {
-            found.push((key, index));
-        }
-    }
-    // Look up the first matching bone for a role and side.
-    let get = |role, side| {
+    // Every eligible bone that names a role and side, in parent-first order.
+    let found = bones
+        .names
+        .iter()
+        .enumerate()
+        .filter(|(index, _)| bones.eligible[*index])
+        .filter_map(|(index, name)| role_of(name).map(|key| (key, index)))
+        .collect::<Vec<_>>();
+    // Candidates for a role and side, closest to the root first.
+    let candidates = |role, side| {
         found
             .iter()
-            .find(|(key, _)| *key == (role, side))
+            .filter(move |(key, _)| *key == (role, side))
             .map(|(_, bone)| *bone)
     };
     // All four limbs must match before the torso is located from them.
-    let limbs = limbs(bones, get)?;
+    let limbs = limbs(bones, candidates)?;
+    let get = |role, side| candidates(role, side).next();
     let mut slots = torso(bones, get, &limbs)?;
     // Parent-first bone order is the body order the generator expects.
     slots.extend(limbs);
@@ -200,9 +220,13 @@ pub(super) fn detect(bones: &Bones<'_>) -> Option<Vec<(usize, BodyRole)>> {
 }
 
 /// Finds the twelve limb bones, left arm and leg first, each chain proximal first.
-fn limbs(
+///
+/// Each chain takes the first candidates, closest to the root, that descend
+/// from one another, so a same-named helper outside the limb, such as an IK
+/// target, does not hide the real limb bone.
+fn limbs<I: Iterator<Item = usize>>(
     bones: &Bones<'_>,
-    get: impl Fn(BodyRole, Option<Side>) -> Option<usize>,
+    candidates: impl Fn(BodyRole, Option<Side>) -> I,
 ) -> Option<Vec<(usize, BodyRole)>> {
     // Two sides with an arm chain and a leg chain each give twelve slots.
     let mut limbs = Vec::with_capacity(12);
@@ -212,12 +236,20 @@ fn limbs(
             [BodyRole::Thigh, BodyRole::Calf, BodyRole::Foot],
         ] {
             // A missing segment anywhere means the rig is not a full humanoid.
-            let [first, second, third] = chain.map(|role| get(role, Some(side)));
-            let (first, second, third) = (first?, second?, third?);
+            let [first, second, third] =
+                chain.map(|role| candidates(role, Some(side)).collect::<Vec<_>>());
             // Each limb segment must descend from the previous one.
-            if !bones.is_ancestor(first, second) || !bones.is_ancestor(second, third) {
-                return None;
-            }
+            let (first, second, third) = first.iter().find_map(|&first| {
+                second
+                    .iter()
+                    .filter(|&&second| bones.is_ancestor(first, second))
+                    .find_map(|&second| {
+                        third
+                            .iter()
+                            .find(|&&third| bones.is_ancestor(second, third))
+                            .map(|&third| (first, second, third))
+                    })
+            })?;
             limbs.extend([(first, chain[0]), (second, chain[1]), (third, chain[2])]);
         }
     }

@@ -708,6 +708,7 @@ fn fallback_joint_torque(
     delta_seconds: f32,
     motor: JointMotorValues,
     has_asymmetric_swing_limits: bool,
+    soft_limit_frequency_hz: f32,
 ) -> Vec3 {
     // Apply stable-PD feedback before soft-limit restoration in the same joint frame.
     let mut torque = stable_pd_torque(
@@ -728,6 +729,7 @@ fn fallback_joint_torque(
             frames.current_relative,
             joint.limits,
             child_inertia,
+            soft_limit_frequency_hz,
         );
     }
     torque
@@ -793,6 +795,7 @@ fn calculate_child_joint_target(
             config.delta_seconds,
             motor,
             config.capabilities.has_asymmetric_swing_limits,
+            config.settings.soft_limit_frequency_hz,
         );
         if let Some(child_state) = states.get_mut(child_position) {
             child_state.output.joint_torque += torque;
@@ -810,7 +813,13 @@ fn soft_limit_torque(
     relative_rotation: Quat,
     limits: JointLimits,
     inertia: f32,
+    frequency_hz: f32,
 ) -> Vec3 {
+    // A zero or invalid frequency leaves the joint to the backend's own limits.
+    let frequency_hz = finite_nonnegative(frequency_hz);
+    if frequency_hz == 0.0 {
+        return Vec3::ZERO;
+    }
     // Use the positive-w quaternion representative so equivalent rotations produce the same axes.
     let mut rotation = relative_rotation;
     if rotation.w < 0.0 {
@@ -819,7 +828,7 @@ fn soft_limit_torque(
     let x_angle = 2.0 * rotation.x.atan2(rotation.w);
     let y_angle = 2.0 * rotation.y.atan2(rotation.w);
     let z_angle = 2.0 * rotation.z.atan2(rotation.w);
-    let stiffness = (std::f32::consts::TAU * 8.0).powi(2);
+    let stiffness = (std::f32::consts::TAU * frequency_hz).powi(2);
     // Compute each authored range independently, preserving X bend, Y twist, and Z bend order.
     let local_torque = Vec3::new(
         inertia * stiffness * angular_limit_excess(x_angle, limits.x),
@@ -1194,9 +1203,32 @@ mod tests {
             z: range,
         };
         // Rotations past each end and one inside the range.
-        let upper = soft_limit_torque(Quat::IDENTITY, Quat::from_rotation_x(0.2), limits, 1.0);
-        let lower = soft_limit_torque(Quat::IDENTITY, -Quat::from_rotation_x(-0.2), limits, 1.0);
-        let inside = soft_limit_torque(Quat::IDENTITY, Quat::from_rotation_x(0.05), limits, 1.0);
+        let upper = soft_limit_torque(Quat::IDENTITY, Quat::from_rotation_x(0.2), limits, 1.0, 8.0);
+        let lower = soft_limit_torque(
+            Quat::IDENTITY,
+            -Quat::from_rotation_x(-0.2),
+            limits,
+            1.0,
+            8.0,
+        );
+        let inside = soft_limit_torque(
+            Quat::IDENTITY,
+            Quat::from_rotation_x(0.05),
+            limits,
+            1.0,
+            8.0,
+        );
+        // A zero or non-finite frequency turns the torque off.
+        for frequency in [0.0, f32::NAN] {
+            let off = soft_limit_torque(
+                Quat::IDENTITY,
+                Quat::from_rotation_x(0.2),
+                limits,
+                1.0,
+                frequency,
+            );
+            assert_eq!(off, Vec3::ZERO);
+        }
 
         // Torque pushes back toward the range from either side and is zero inside it.
         assert!(upper.x < 0.0);
