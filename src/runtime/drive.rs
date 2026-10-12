@@ -1189,51 +1189,62 @@ mod tests {
         assert_eq!(mismatches.len(), 0, "{mismatches:?}");
     }
 
+    /// The same 0.1 rad limit on every axis.
+    const SOFT_LIMITS: JointLimits = JointLimits {
+        x: AngleRange {
+            min: -0.1,
+            max: 0.1,
+        },
+        twist: AngleRange {
+            min: -0.1,
+            max: 0.1,
+        },
+        z: AngleRange {
+            min: -0.1,
+            max: 0.1,
+        },
+    };
+
     /// Soft joint limits restore both ends of each configured interval.
     #[test]
     fn soft_limit_torque_restores_beyond_both_limits() {
-        // The same 0.1 rad limit on every axis.
-        let range = AngleRange {
-            min: -0.1,
-            max: 0.1,
-        };
-        let limits = JointLimits {
-            x: range,
-            twist: range,
-            z: range,
-        };
         // Rotations past each end and one inside the range.
-        let upper = soft_limit_torque(Quat::IDENTITY, Quat::from_rotation_x(0.2), limits, 1.0, 8.0);
+        let upper = soft_limit_torque(
+            Quat::IDENTITY,
+            Quat::from_rotation_x(0.2),
+            SOFT_LIMITS,
+            1.0,
+            8.0,
+        );
         let lower = soft_limit_torque(
             Quat::IDENTITY,
             -Quat::from_rotation_x(-0.2),
-            limits,
+            SOFT_LIMITS,
             1.0,
             8.0,
         );
         let inside = soft_limit_torque(
             Quat::IDENTITY,
             Quat::from_rotation_x(0.05),
-            limits,
+            SOFT_LIMITS,
             1.0,
             8.0,
         );
-        // A zero or non-finite frequency turns the torque off.
-        for frequency in [0.0, f32::NAN] {
-            let off = soft_limit_torque(
-                Quat::IDENTITY,
-                Quat::from_rotation_x(0.2),
-                limits,
-                1.0,
-                frequency,
-            );
-            assert_eq!(off, Vec3::ZERO);
-        }
-
         // Torque pushes back toward the range from either side and is zero inside it.
         assert!(upper.x < 0.0);
         assert!(lower.x > 0.0);
         assert_eq!(inside, Vec3::ZERO);
+    }
+
+    /// A zero or non-finite frequency turns the soft limit torque off.
+    #[test]
+    fn soft_limit_torque_is_off_without_a_finite_frequency() {
+        // The same rotation past the upper end at each disabling frequency.
+        let past = Quat::from_rotation_x(0.2);
+        let zero = soft_limit_torque(Quat::IDENTITY, past, SOFT_LIMITS, 1.0, 0.0);
+        let nan = soft_limit_torque(Quat::IDENTITY, past, SOFT_LIMITS, 1.0, f32::NAN);
+        assert_eq!(zero, Vec3::ZERO);
+        assert_eq!(nan, Vec3::ZERO);
     }
 
     /// Numeric guards clamp strength and physical magnitudes before vector

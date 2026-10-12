@@ -15,7 +15,8 @@ use super::{RagdollBone, RagdollOverrides, Skeleton, SkeletonBone};
 /// named descendant is a bone. Rest poses compose local transforms from the
 /// character down. A joint whose parent is a joint of the same skin takes its
 /// local transform from the skin's inverse bind matrices, so the rest pose is
-/// the bind pose even after animation has moved the bones. A [`RagdollBone`] component on a bone beats `overrides`.
+/// the bind pose even after animation has moved the bones. A [`RagdollBone`]
+/// component on a bone beats `overrides`.
 #[expect(
     clippy::indexing_slicing,
     reason = "bone indexes come from the same parent-first skeleton vectors"
@@ -115,6 +116,7 @@ fn descendants(
 /// in an earlier skin are skipped.
 fn bind_locals(world: &World, character: Entity) -> HashMap<Entity, Affine3A> {
     let mut locals = HashMap::new();
+    // Without the bind pose asset store no skin can contribute a rest pose.
     let Some(bindposes) = world.get_resource::<Assets<SkinnedMeshInverseBindposes>>() else {
         return locals;
     };
@@ -124,29 +126,41 @@ fn bind_locals(world: &World, character: Entity) -> HashMap<Entity, Affine3A> {
         if let Some(children) = world.get::<Children>(entity) {
             stack.extend(children.iter().copied());
         }
+        // Skip entities without a skin and skins whose matrices have not loaded.
         let Some(skin) = world.get::<SkinnedMesh>(entity) else {
             continue;
         };
-        let Some(matrices) = bindposes.get(&skin.inverse_bindposes) else {
-            continue;
-        };
-        // Each joint's inverse bind matrix, by entity, for the parent lookup.
-        let inverse = skin
-            .joints
-            .iter()
-            .zip(matrices.iter())
-            .map(|(joint, matrix)| (*joint, Affine3A::from_mat4(*matrix)))
-            .collect::<HashMap<_, _>>();
-        for (joint, joint_inverse) in &inverse {
-            let parent = world.get::<ChildOf>(*joint).map(ChildOf::parent);
-            let Some(parent_inverse) = parent.and_then(|parent| inverse.get(&parent)) else {
-                continue;
-            };
-            let local = *parent_inverse * joint_inverse.inverse();
-            if local.is_finite() && joint_inverse.matrix3.determinant().abs() > f32::EPSILON {
-                locals.entry(*joint).or_insert(local);
-            }
+        if let Some(matrices) = bindposes.get(&skin.inverse_bindposes) {
+            insert_skin_locals(world, &skin.joints, matrices, &mut locals);
         }
     }
     locals
+}
+
+/// Adds the bind-pose local transform of each joint in one skin whose parent
+/// is a joint of the same skin, keeping entries from earlier skins.
+fn insert_skin_locals(
+    world: &World,
+    joints: &[Entity],
+    matrices: &[bevy::math::Mat4],
+    locals: &mut HashMap<Entity, Affine3A>,
+) {
+    // Each joint's inverse bind matrix, by entity, for the parent lookup.
+    let inverse = joints
+        .iter()
+        .zip(matrices)
+        .map(|(joint, matrix)| (*joint, Affine3A::from_mat4(*matrix)))
+        .collect::<HashMap<_, _>>();
+    for (joint, joint_inverse) in &inverse {
+        // Root joints of the skin keep their scene transform.
+        let parent = world.get::<ChildOf>(*joint).map(ChildOf::parent);
+        let Some(parent_inverse) = parent.and_then(|parent| inverse.get(&parent)) else {
+            continue;
+        };
+        // Reject non-invertible matrices instead of producing a degenerate pose.
+        let local = *parent_inverse * joint_inverse.inverse();
+        if local.is_finite() && joint_inverse.matrix3.determinant().abs() > f32::EPSILON {
+            locals.entry(*joint).or_insert(local);
+        }
+    }
 }

@@ -293,6 +293,7 @@ fn helper_bones_named_like_limbs_do_not_hide_the_limb_chain() {
             .parent
             .map(|parent| if parent >= 1 { parent + 1 } else { parent });
     }
+    // The real hand keeps its body; the IK target gets none.
     let profile = generate(&skeleton);
     assert!(profile.body_index("SkelBone R Hand").is_some());
     assert!(profile.body_index("IKBone_RightHand").is_none());
@@ -300,10 +301,11 @@ fn helper_bones_named_like_limbs_do_not_hide_the_limb_chain() {
     assert_eq!(counts(&profile, wanted), [2, 2, 2]);
 }
 
-#[test]
-fn skinned_skeletons_rest_in_the_bind_pose() {
+/// Spawns a two-joint skin whose bind pose puts `tip` 1 m above `root`, with
+/// animation having bent and moved `tip`, and returns the world and character.
+fn bent_skinned_world() -> (bevy::prelude::World, bevy::prelude::Entity) {
     use bevy::asset::Assets;
-    use bevy::math::{Mat4, Quat};
+    use bevy::math::Mat4;
     use bevy::mesh::skinning::{SkinnedMesh, SkinnedMeshInverseBindposes};
     use bevy::prelude::{ChildOf, Name, Transform, World};
 
@@ -334,8 +336,15 @@ fn skinned_skeletons_rest_in_the_bind_pose() {
         },
         ChildOf(character),
     ));
+    (world, character)
+}
+
+#[test]
+fn skinned_skeletons_rest_in_the_bind_pose() {
+    let (world, character) = bent_skinned_world();
     let skeleton =
         skeleton_from_world(&world, character, None).expect("the skinned joints form a skeleton");
+    // The tip rests at its bind pose, not at its animated pose.
     let tip = skeleton
         .bones
         .iter()
